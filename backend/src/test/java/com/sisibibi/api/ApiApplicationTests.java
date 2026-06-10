@@ -1,4 +1,4 @@
-package com.ssvv.api;
+package com.sisibibi.api;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
