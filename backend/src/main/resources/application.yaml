@@ -6,14 +6,15 @@ spring:
     name: sisibibi-api
 
   config:
-    import: optional:file:.env[.properties]
+    # backend 디렉토리가 아닌 루트 디렉토리에서 .env 가져옴
+    import: optional:file:../.env[.properties]
 
   # Database 설정 (MySQL)
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:23306/sisibibi?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
-    username: root
-    password: root
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
 
   # Redis 설정
   data:
