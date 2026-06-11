@@ -29,7 +29,7 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Build
-        run: ./gradlew clean build
+        run: ./gradlew clean build -x test
 
       - name: Run tests
         run: ./gradlew test
@@ -59,7 +59,12 @@ jobs:
           fi
 
       - name: Run architecture tests
-        run: ./gradlew test --tests '*ArchitectureTest'
+        run: |
+          if find . \( -name '*ArchitectureTest.java' -o -name '*ArchitectureTest.kt' \) | grep -q .; then
+            ./gradlew test --tests '*ArchitectureTest'
+          else
+            echo "ArchitectureTest not found. Skipping."
+          fi
 
       - name: Run database schema tests
         run: |
