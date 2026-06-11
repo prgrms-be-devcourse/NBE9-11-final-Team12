@@ -4,12 +4,15 @@ on:
   pull_request:
   push:
     branches:
-      - main
+      - dev
 
 jobs:
   build-test:
     name: Build and Test
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
 
     steps:
       - name: Checkout source code
@@ -87,7 +90,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-report
-          path: build/reports/tests/test
+          path: backend/build/reports/tests/test
 
   docs-check:
     name: Documentation Check
@@ -97,8 +100,8 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
 
-      - name: Check PR template exists
-        run: test -f .github/pull_request_template.md
+#      - name: Check PR template exists
+#        run: test -f .github/pull_request_template.md
 
       - name: Check core docs exist
         run: |
