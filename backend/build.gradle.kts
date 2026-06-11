@@ -18,20 +18,26 @@ repositories {
 }
 
 dependencies {
+	// 메인 애플리케이션 라이브러리
 	implementation("org.springframework.boot:spring-boot-starter-data-jpa")
 	implementation("org.springframework.boot:spring-boot-starter-security")
 	implementation("org.springframework.boot:spring-boot-starter-validation")
-	implementation("org.springframework.boot:spring-boot-starter-webmvc")
+	implementation("org.springframework.boot:spring-boot-starter-web")
+
+	// Lombok 설정
 	compileOnly("org.projectlombok:lombok")
-	developmentOnly("org.springframework.boot:spring-boot-devtools")
 	annotationProcessor("org.projectlombok:lombok")
-	testImplementation("org.springframework.boot:spring-boot-starter-data-jpa-test")
-	testImplementation("org.springframework.boot:spring-boot-starter-security-test")
-	testImplementation("org.springframework.boot:spring-boot-starter-validation-test")
-	testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
+
+	// 개발 도구
+	developmentOnly("org.springframework.boot:spring-boot-devtools")
+
+	// 테스트 통합 라이브러리 (data-jpa, security, validation, webmvc 4개의 starter를 하나로 대체)
+	testImplementation("org.springframework.boot:spring-boot-starter-test")
+
+	// 테스트용 Lombok 및 런처 설정
 	testCompileOnly("org.projectlombok:lombok")
-	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 	testAnnotationProcessor("org.projectlombok:lombok")
+	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 tasks.withType<Test> {
