@@ -33,6 +33,8 @@ dependencies {
 
 	// 테스트 통합 라이브러리 (data-jpa, security, validation, webmvc 4개의 starter를 하나로 대체)
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
+	runtimeOnly("com.mysql:mysql-connector-j")
+	runtimeOnly("com.h2database:h2")
 
 	// 테스트용 Lombok 및 런처 설정
 	testCompileOnly("org.projectlombok:lombok")
