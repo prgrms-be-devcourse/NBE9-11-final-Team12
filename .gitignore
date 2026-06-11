@@ -1,0 +1,28 @@
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Database data
+db/mysql
+db/redis
+
+# Local root documents
+/AGENTS.md
+/ARCHITECTURE.md
+/README.md
+
+# Local documentation
+/docs/
+
+# Local helper scripts
+/scripts/
