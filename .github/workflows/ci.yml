@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Grant Gradle permission
+        run: chmod +x ./gradlew
+
+      - name: Build
+        run: ./gradlew clean build
+
+      - name: Run tests
+        run: ./gradlew test
+
+      - name: Run formatting check
+        run: |
+          if ./gradlew tasks --all --console=plain | grep -q '^spotlessCheck '; then
+            ./gradlew spotlessCheck
+          else
+            echo "spotlessCheck task not found. Skipping."
+          fi
+
+      - name: Run Java lint
+        run: |
+          if ./gradlew tasks --all --console=plain | grep -q '^checkstyleMain '; then
+            ./gradlew checkstyleMain
+          else
+            echo "checkstyleMain task not found. Skipping."
+          fi
+
+      - name: Run Kotlin lint
+        run: |
+          if ./gradlew tasks --all --console=plain | grep -q '^ktlintCheck '; then
+            ./gradlew ktlintCheck
+          else
+            echo "ktlintCheck task not found. Skipping."
+          fi
+
+      - name: Run architecture tests
+        run: ./gradlew test --tests '*ArchitectureTest'
+
+      - name: Run database schema tests
+        run: |
+          if find . \( -name '*DatabaseSchemaTest.java' -o -name '*DatabaseSchemaTest.kt' \) | grep -q .; then
+            ./gradlew test --tests '*DatabaseSchemaTest'
+          else
+            echo "DatabaseSchemaTest not found. Skipping."
+          fi
+
+      - name: Build Docker image
+        run: |
+          if test -f Dockerfile; then
+            docker build -t backend-harness-ci .
+          else
+            echo "Dockerfile not found. Skipping Docker build."
+          fi
+
+      - name: Check required secret placeholders
+        shell: bash
+        run: |
+          if grep -R "password: *[a-zA-Z0-9]" src/main/resources 2>/dev/null; then
+            echo "Possible hardcoded password found."
+            exit 1
+          fi
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: build/reports/tests/test
+
+  docs-check:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Check PR template exists
+        run: test -f .github/pull_request_template.md
+
+      - name: Check core docs exist
+        run: |
+          test -f README.md
+          test -f docs/product/product-overview.md
+          test -f docs/product/requirements.md
+          test -f docs/product/user-scenarios.md
+          test -f docs/architecture/overview.md
+          test -f docs/architecture/api-spec.md
+          test -f docs/architecture/database-design.md
+          test -f docs/architecture/domain-model.md
+          test -f docs/quality/test-strategy.md
