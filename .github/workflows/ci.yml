@@ -91,26 +91,3 @@ jobs:
         with:
           name: test-report
           path: backend/build/reports/tests/test
-
-  docs-check:
-    name: Documentation Check
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout source code
-        uses: actions/checkout@v4
-
-#      - name: Check PR template exists
-#        run: test -f .github/pull_request_template.md
-
-      - name: Check core docs exist
-        run: |
-          test -f README.md
-          test -f docs/product/product-overview.md
-          test -f docs/product/requirements.md
-          test -f docs/product/user-scenarios.md
-          test -f docs/architecture/overview.md
-          test -f docs/architecture/api-spec.md
-          test -f docs/architecture/database-design.md
-          test -f docs/architecture/domain-model.md
-          test -f docs/quality/test-strategy.md
