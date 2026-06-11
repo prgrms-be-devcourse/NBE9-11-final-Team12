@@ -2,18 +2,18 @@ version: '3.8'
 services:
   mysql:
     image: mysql:8.0
-    container_name: ssvv-mysql
+    container_name: sisibibi-mysql
     restart: always # 갑자기 죽지 않게 유지
     ports:
       - "23306:3306"
     volumes:
       # 데이터가 날아가지 않게 로컬 폴더에 저장
-      - ./ssvv/db/mysql/data:/var/lib/mysql
+      - ./db/mysql/data:/var/lib/mysql
       # 나중에 테이블 설계 끝나면 여기에 .sql 넣어서 자동 세팅
-      - ./ssvv/db/mysql/init:/docker-entrypoint-initdb.d
+      - ./db/mysql/init:/docker-entrypoint-initdb.d
     environment:
       MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: ssvv
+      MYSQL_DATABASE: sisibibi
       TZ: Asia/Seoul # 한국 시간 설정
     command: # 한글 깨짐 방지
       - --character-set-server=utf8mb4
@@ -21,9 +21,9 @@ services:
 
   redis:
     image: redis:7.0
-    container_name: ssvv-redis
+    container_name: sisibibi-redis
     restart: always # 갑자기 죽지 않게 유지
     ports:
       - "26379:6379"
     volumes:
-      - ./ssvv/db/redis/data:/data
+      - ./db/redis/data:/data

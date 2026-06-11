@@ -1,3 +1,38 @@
+server:
+  port: 8080
+
 spring:
   application:
-    name: api
+    name: sisibibi-api
+
+  config:
+    # backend 디렉토리가 아닌 루트 디렉토리에서 .env 가져옴
+    import: optional:file:../.env[.properties]
+
+  # Database 설정 (MySQL)
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:23306/sisibibi?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    username: root
+    password: ${DB_PASSWORD:root}
+
+  # Redis 설정
+  data:
+    redis:
+      host: localhost
+      port: 26379
+      timeout: 2000ms # Redis 응답 지연 시 서버 멈춤 방지 (2초)
+
+  # JPA/Hibernate 설정
+  jpa:
+    hibernate:
+      ddl-auto: update # 개발 초기 환경용 (운영 환경에서는 반드시 none 또는 validate 사용)
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        default_batch_fetch_size: 100 # 배치 사이즈 설정 조정 필요
+
+app:
+  frontend:
+    url: ${FRONTEND_URL:http://localhost:3000}
