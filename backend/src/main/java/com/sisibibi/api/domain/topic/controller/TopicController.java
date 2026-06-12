@@ -2,6 +2,7 @@ package com.sisibibi.api.domain.topic.controller;
 
 import com.sisibibi.api.domain.topic.dto.response.issueRes.IssueCandidateRes;
 import com.sisibibi.api.domain.topic.dto.response.topicRes.TopicDetailRes;
+import com.sisibibi.api.domain.topic.dto.response.topicRes.TopicSummaryRes;
 import com.sisibibi.api.domain.topic.service.TopicIssueService;
 import com.sisibibi.api.domain.topic.service.TopicService;
 import com.sisibibi.api.global.response.ApiResponse;
@@ -36,6 +37,13 @@ public class TopicController {
     List<IssueCandidateRes> result = topicIssueService.createIssue();
 
     return ResponseEntity.ok(ApiResponse.ok("실시간 이슈 후보 생성이 완료되었습니다.", result));
+  }
+
+  @GetMapping
+  public ResponseEntity<ApiResponse<List<TopicSummaryRes>>> getApprovedTopics() {
+    List<TopicSummaryRes> result = topicService.getApprovedTopics();
+
+    return ResponseEntity.ok(ApiResponse.ok("승인된 토픽 목록 조회가 완료되었습니다.", result));
   }
 
 }

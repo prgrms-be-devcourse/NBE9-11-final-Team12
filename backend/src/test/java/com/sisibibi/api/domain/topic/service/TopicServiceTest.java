@@ -7,10 +7,14 @@ import static org.mockito.Mockito.*;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.topic.dto.request.UpdateTopicReq;
 import com.sisibibi.api.domain.topic.dto.response.topicRes.TopicDetailRes;
+import com.sisibibi.api.domain.topic.dto.response.topicRes.TopicSummaryRes;
 import com.sisibibi.api.domain.topic.entity.Topic;
+import com.sisibibi.api.domain.topic.entity.TopicStatus;
 import com.sisibibi.api.domain.topic.repository.TopicRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
+
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -98,5 +102,22 @@ class TopicServiceTest {
         .isEqualTo(ErrorCode.TOPIC_HAS_ROOM);
 
     verify(topicRepository, never()).delete(topic);
+  }
+
+  @Test
+  void getApprovedTopics_returnsApprovedTopicSummaries() {
+    Topic firstTopic = Topic.approved("첫 번째 토픽", "설명1", "IT", "https://example.com/1");
+    Topic secondTopic = Topic.approved("두 번째 토픽", "설명2", "경제", "https://example.com/2");
+
+    when(topicRepository.findAllByStatusOrderByCreatedAtDesc(TopicStatus.APPROVED))
+        .thenReturn(List.of(firstTopic, secondTopic));
+
+    List<TopicSummaryRes> result = topicService.getApprovedTopics();
+
+    assertThat(result).hasSize(2);
+    assertThat(result.get(0).title()).isEqualTo("첫 번째 토픽");
+    assertThat(result.get(0).category()).isEqualTo("IT");
+    assertThat(result.get(1).title()).isEqualTo("두 번째 토픽");
+    assertThat(result.get(1).category()).isEqualTo("경제");
   }
 }
