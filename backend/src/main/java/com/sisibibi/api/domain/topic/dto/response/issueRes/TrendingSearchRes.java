@@ -1,4 +1,4 @@
-package com.sisibibi.api.domain.topic.dto.response;
+package com.sisibibi.api.domain.topic.dto.response.issueRes;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
