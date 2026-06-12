@@ -28,7 +28,7 @@ public class TopicController {
 
   @GetMapping("/candidates")
   public ResponseEntity<ApiResponse<List<IssueCandidateRes>>> createIssue() {
-    List<IssueCandidateRes> result = topicIssueService.createKoreaIssueCandidates();
+    List<IssueCandidateRes> result = topicIssueService.createIssue();
 
     return ResponseEntity.ok(ApiResponse.ok("실시간 이슈 후보 생성이 완료되었습니다.", result));
   }

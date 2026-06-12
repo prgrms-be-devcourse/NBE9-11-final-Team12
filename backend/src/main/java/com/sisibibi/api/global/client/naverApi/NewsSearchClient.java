@@ -1,7 +1,7 @@
 package com.sisibibi.api.global.client.naverApi;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.sisibibi.api.domain.topic.dto.request.NewsSearchCommand;
+import com.sisibibi.api.domain.topic.dto.response.NewsSearchRes;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.extern.slf4j.Slf4j;
@@ -26,7 +26,7 @@ public class NewsSearchClient implements NewsClient {
   }
 
   @Override
-  public JsonNode search(NewsSearchCommand command) {
+  public NewsSearchRes search(NewsSearchCommand command) {
     validateCredentials();
 
     try {
@@ -40,7 +40,7 @@ public class NewsSearchClient implements NewsClient {
           .header("X-Naver-Client-Id", properties.getClientId())
           .header("X-Naver-Client-Secret", properties.getClientSecret())
           .retrieve()
-          .body(JsonNode.class);
+          .body(NewsSearchRes.class);
     } catch (RestClientResponseException e) {
       log.warn("Naver news search failed. status={}, response={}",
           e.getStatusCode(),

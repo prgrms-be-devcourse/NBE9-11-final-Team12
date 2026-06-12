@@ -10,17 +10,16 @@ public record IssueNewsRes(
     String pubDate
 ) {
 
-  public static IssueNewsRes from(JsonNode item) {
-    return new IssueNewsRes(
-        clean(item.path("title").asText()),
-        item.path("originallink").asText(),
-        item.path("link").asText(),
-        clean(item.path("description").asText()),
-        item.path("pubDate").asText()
-    );
+  public IssueNewsRes {
+    title = clean(title);
+    description = clean(description);
   }
 
   private static String clean(String value) {
+    if (value == null) {
+      return "";
+    }
+
     return value
         .replaceAll("</?b>", "")
         .replace("&quot;", "\"")

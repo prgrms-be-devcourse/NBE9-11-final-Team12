@@ -1,6 +1,6 @@
 package com.sisibibi.api.global.client.serpApi;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import com.sisibibi.api.domain.topic.dto.response.GoogleTrendsRes;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.extern.slf4j.Slf4j;
@@ -30,7 +30,7 @@ public class SerpApiGoogleTrendsClient implements GoogleTrendsClient {
   }
 
   @Override
-  public JsonNode getKoreaTrendingNow() {
+  public GoogleTrendsRes getTrendingNow() {
     validateApiKey();
 
     try {
@@ -44,7 +44,7 @@ public class SerpApiGoogleTrendsClient implements GoogleTrendsClient {
               .queryParam("api_key", properties.getApiKey())
               .build())
           .retrieve()
-          .body(JsonNode.class);
+          .body(GoogleTrendsRes.class);
     } catch (RestClientResponseException e) {
       log.warn("SerpApi Google Trends request failed. status={}, response={}",
           e.getStatusCode(),

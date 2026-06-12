@@ -1,6 +1,8 @@
 package com.sisibibi.api.domain.topic.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.sisibibi.api.domain.topic.dto.response.NewsSearchRes;
+import com.sisibibi.api.domain.topic.dto.response.TrendingSearchRes;
 import com.sisibibi.api.global.client.serpApi.GoogleTrendsClient;
 import com.sisibibi.api.global.client.naverApi.NewsClient;
 import com.sisibibi.api.domain.topic.dto.request.NewsSearchCommand;
@@ -24,19 +26,23 @@ public class TopicIssueService {
   private final GoogleTrendsClient googleTrendsClient;
   private final NewsClient naverNewsClient;
 
-  public List<IssueCandidateRes> createKoreaIssueCandidates() {
-    JsonNode trends = googleTrendsClient.getKoreaTrendingNow().path("trending_searches");
+  public List<IssueCandidateRes> createIssue() {
+    List<TrendingSearchRes> trends = googleTrendsClient.getTrendingNow().trendingSearches();
 
     List<IssueCandidateRes> result = new ArrayList<>();
 
-    for (JsonNode trend : trends) {
+    if (trends == null) {
+      return result;
+    }
+
+    for (TrendingSearchRes trend : trends) {
       if (result.size() >= TREND_KEYWORD_LIMIT) {
         break;
       }
 
-      String keyword = trend.path("query").asText();
+      String keyword = trend.query();
 
-      if (keyword.isBlank()) {
+      if (keyword == null || keyword.isBlank()) {
         continue;
       }
 
@@ -48,8 +54,8 @@ public class TopicIssueService {
 
       result.add(new IssueCandidateRes(
           keyword,
-          trend.path("search_volume").asLong(),
-          trend.path("increase_percentage").asInt(),
+          trend.searchVolume(),
+          trend.increasePercentage(),
           news
       ));
     }
@@ -58,21 +64,19 @@ public class TopicIssueService {
   }
 
   private List<IssueNewsRes> searchRecentNews(String keyword) {
-    JsonNode items = naverNewsClient.search(
+    NewsSearchRes response = naverNewsClient.search(
         new NewsSearchCommand(
             keyword,
             NEWS_PER_KEYWORD,
             NAVER_NEWS_START,
             NAVER_NEWS_SORT_DATE
         )
-    ).path("items");
+    );
 
-    List<IssueNewsRes> news = new ArrayList<>();
-
-    for (JsonNode item : items) {
-      news.add(IssueNewsRes.from(item));
+    if (response.items() == null) {
+      return new ArrayList<>();
     }
 
-    return news;
+    return response.items();
   }
 }
