@@ -1,11 +1,16 @@
 package com.sisibibi.api.domain.speech.service;
 
+import com.sisibibi.api.domain.room.entity.Room;
+import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.speech.dto.response.CurrentSpeakerRes;
+import com.sisibibi.api.domain.speech.dto.response.StageCompleteRes;
 import com.sisibibi.api.domain.speech.dto.response.StageQueueRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
+import com.sisibibi.api.domain.user.entity.User;
+import com.sisibibi.api.domain.user.repository.UserRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -25,9 +30,17 @@ public class SpeakingQueueService {
     );
 
     private final SpeakingQueueRepository speakingQueueRepository;
+    private final RoomRepository roomRepository;
+    private final UserRepository userRepository;
 
     @Transactional
     public StageRequestRes requestSpeakingTurn(Long roomId, Long userId) {
+        User user = getUser(userId);
+        user.validateCanRequestSpeakingTurn();
+
+        Room room = lockRoom(roomId);
+        room.validateOpen();
+
         if (speakingQueueRepository.existsByRoomIdAndUserIdAndStatusIn(
                 roomId,
                 userId,
@@ -59,6 +72,8 @@ public class SpeakingQueueService {
 
     @Transactional
     public void cancelMyRequest(Long roomId, Long userId) {
+        lockRoom(roomId);
+
         SpeakingQueue speakingQueue = speakingQueueRepository
                 .findFirstByRoomIdAndUserIdAndStatusOrderByQueueOrderAsc(
                         roomId,
@@ -80,6 +95,9 @@ public class SpeakingQueueService {
 
     @Transactional
     public CurrentSpeakerRes assignNextSpeaker(Long roomId) {
+        Room room = lockRoom(roomId);
+        room.validateOpen();
+
         if (speakingQueueRepository.existsByRoomIdAndStatus(
                 roomId,
                 SpeakingQueueStatus.ASSIGNED
@@ -99,6 +117,38 @@ public class SpeakingQueueService {
         return CurrentSpeakerRes.from(nextSpeaker);
     }
 
+    @Transactional
+    public StageCompleteRes completeCurrentSpeaker(Long roomId, Long userId) {
+        Room room = lockRoom(roomId);
+        room.validateOpen();
+
+        SpeakingQueue currentSpeaker = speakingQueueRepository
+                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+                        roomId,
+                        SpeakingQueueStatus.ASSIGNED
+                )
+                .orElseThrow(() -> new CustomException(ErrorCode.CURRENT_SPEAKER_NOT_FOUND));
+
+        if (!currentSpeaker.getUserId().equals(userId)) {
+            throw new CustomException(ErrorCode.FORBIDDEN);
+        }
+
+        currentSpeaker.complete();
+
+        SpeakingQueue nextSpeaker = speakingQueueRepository
+                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+                        roomId,
+                        SpeakingQueueStatus.WAITING
+                )
+                .orElse(null);
+
+        if (nextSpeaker != null) {
+            nextSpeaker.assign();
+        }
+
+        return StageCompleteRes.of(roomId, currentSpeaker, nextSpeaker);
+    }
+
     @Transactional(readOnly = true)
     public CurrentSpeakerRes getCurrentSpeaker(Long roomId) {
         SpeakingQueue currentSpeaker = speakingQueueRepository
@@ -109,5 +159,15 @@ public class SpeakingQueueService {
                 .orElseThrow(() -> new CustomException(ErrorCode.CURRENT_SPEAKER_NOT_FOUND));
 
         return CurrentSpeakerRes.from(currentSpeaker);
+    }
+
+    private Room lockRoom(Long roomId) {
+        return roomRepository.findByIdForUpdate(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+    }
+
+    private User getUser(Long userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
     }
 }

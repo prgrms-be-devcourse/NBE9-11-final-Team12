@@ -89,4 +89,8 @@ public class SpeakingQueue {
     public void assign() {
         this.status = SpeakingQueueStatus.ASSIGNED;
     }
+
+    public void complete() {
+        this.status = SpeakingQueueStatus.COMPLETED;
+    }
 }
