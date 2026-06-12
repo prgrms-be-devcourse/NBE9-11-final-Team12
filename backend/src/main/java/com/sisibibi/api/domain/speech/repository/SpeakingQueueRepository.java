@@ -25,6 +25,13 @@ public interface SpeakingQueueRepository extends JpaRepository<SpeakingQueue, Lo
 
     Optional<SpeakingQueue> findFirstByRoomIdAndUserIdOrderByIdDesc(Long roomId, Long userId);
 
+    boolean existsByRoomIdAndStatus(Long roomId, SpeakingQueueStatus status);
+
+    Optional<SpeakingQueue> findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+            Long roomId,
+            SpeakingQueueStatus status
+    );
+
     List<SpeakingQueue> findByRoomIdAndStatusOrderByQueueOrderAsc(
             Long roomId,
             SpeakingQueueStatus status

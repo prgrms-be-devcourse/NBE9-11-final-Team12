@@ -2,6 +2,7 @@ package com.sisibibi.api.domain.speech.service;
 
 import com.sisibibi.api.domain.speech.dto.response.StageQueueRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
+import com.sisibibi.api.domain.speech.dto.response.CurrentSpeakerRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
@@ -85,5 +86,62 @@ class SpeakingQueueServiceTest {
         assertThat(queue.items())
                 .extracting(StageQueueRes.StageQueueItemRes::queueOrder)
                 .isEqualTo(List.of(1, 3));
+    }
+
+    @Test
+    void assignNextSpeaker_assignsFirstWaitingRequest() {
+        speakingQueueService.requestSpeakingTurn(7L, 30L);
+        speakingQueueService.requestSpeakingTurn(7L, 10L);
+
+        CurrentSpeakerRes currentSpeaker = speakingQueueService.assignNextSpeaker(7L);
+
+        assertThat(currentSpeaker.roomId()).isEqualTo(7L);
+        assertThat(currentSpeaker.userId()).isEqualTo(30L);
+        assertThat(currentSpeaker.queueOrder()).isEqualTo(1);
+        assertThat(currentSpeaker.status()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
+
+        StageQueueRes waitingQueue = speakingQueueService.getWaitingQueue(7L);
+        assertThat(waitingQueue.items())
+                .extracting(StageQueueRes.StageQueueItemRes::userId)
+                .isEqualTo(List.of(10L));
+    }
+
+    @Test
+    void assignNextSpeaker_throwsWhenCurrentSpeakerAlreadyExists() {
+        speakingQueueService.requestSpeakingTurn(8L, 10L);
+        speakingQueueService.requestSpeakingTurn(8L, 20L);
+        speakingQueueService.assignNextSpeaker(8L);
+
+        assertThatThrownBy(() -> speakingQueueService.assignNextSpeaker(8L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CURRENT_SPEAKER_ALREADY_EXISTS);
+    }
+
+    @Test
+    void assignNextSpeaker_throwsWhenWaitingQueueIsEmpty() {
+        assertThatThrownBy(() -> speakingQueueService.assignNextSpeaker(9L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SPEAKING_QUEUE_EMPTY);
+    }
+
+    @Test
+    void getCurrentSpeaker_returnsAssignedRequest() {
+        speakingQueueService.requestSpeakingTurn(10L, 10L);
+        speakingQueueService.assignNextSpeaker(10L);
+
+        CurrentSpeakerRes currentSpeaker = speakingQueueService.getCurrentSpeaker(10L);
+
+        assertThat(currentSpeaker.userId()).isEqualTo(10L);
+        assertThat(currentSpeaker.status()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
+    }
+
+    @Test
+    void getCurrentSpeaker_throwsWhenCurrentSpeakerDoesNotExist() {
+        assertThatThrownBy(() -> speakingQueueService.getCurrentSpeaker(11L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CURRENT_SPEAKER_NOT_FOUND);
     }
 }

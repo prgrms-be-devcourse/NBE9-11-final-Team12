@@ -1,5 +1,6 @@
 package com.sisibibi.api.domain.speech.service;
 
+import com.sisibibi.api.domain.speech.dto.response.CurrentSpeakerRes;
 import com.sisibibi.api.domain.speech.dto.response.StageQueueRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
@@ -75,5 +76,38 @@ public class SpeakingQueueService {
                 .findByRoomIdAndStatusOrderByQueueOrderAsc(roomId, SpeakingQueueStatus.WAITING);
 
         return StageQueueRes.of(roomId, speakingQueues);
+    }
+
+    @Transactional
+    public CurrentSpeakerRes assignNextSpeaker(Long roomId) {
+        if (speakingQueueRepository.existsByRoomIdAndStatus(
+                roomId,
+                SpeakingQueueStatus.ASSIGNED
+        )) {
+            throw new CustomException(ErrorCode.CURRENT_SPEAKER_ALREADY_EXISTS);
+        }
+
+        SpeakingQueue nextSpeaker = speakingQueueRepository
+                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+                        roomId,
+                        SpeakingQueueStatus.WAITING
+                )
+                .orElseThrow(() -> new CustomException(ErrorCode.SPEAKING_QUEUE_EMPTY));
+
+        nextSpeaker.assign();
+
+        return CurrentSpeakerRes.from(nextSpeaker);
+    }
+
+    @Transactional(readOnly = true)
+    public CurrentSpeakerRes getCurrentSpeaker(Long roomId) {
+        SpeakingQueue currentSpeaker = speakingQueueRepository
+                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+                        roomId,
+                        SpeakingQueueStatus.ASSIGNED
+                )
+                .orElseThrow(() -> new CustomException(ErrorCode.CURRENT_SPEAKER_NOT_FOUND));
+
+        return CurrentSpeakerRes.from(currentSpeaker);
     }
 }

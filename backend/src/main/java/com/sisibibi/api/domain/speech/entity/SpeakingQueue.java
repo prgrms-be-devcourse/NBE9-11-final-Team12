@@ -85,4 +85,8 @@ public class SpeakingQueue {
         this.status = SpeakingQueueStatus.CANCELED;
         this.canceledAt = canceledAt;
     }
+
+    public void assign() {
+        this.status = SpeakingQueueStatus.ASSIGNED;
+    }
 }

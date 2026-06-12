@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.speech.controller;
 
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
+import com.sisibibi.api.domain.speech.dto.response.CurrentSpeakerRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.service.SpeakingQueueService;
 import com.sisibibi.api.global.exception.CustomException;
@@ -9,13 +10,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
 
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -26,7 +28,7 @@ class StageControllerTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @MockitoBean
     private SpeakingQueueService speakingQueueService;
 
     @Test
@@ -80,5 +82,40 @@ class StageControllerTest {
                         .param("userId", "-1"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
+    }
+
+    @Test
+    void getCurrentSpeaker_returnsOkResponse() throws Exception {
+        CurrentSpeakerRes response = new CurrentSpeakerRes(
+                1L,
+                SpeakingQueueStatus.ASSIGNED,
+                1L,
+                10L,
+                1,
+                LocalDateTime.of(2026, 6, 12, 10, 0)
+        );
+
+        given(speakingQueueService.getCurrentSpeaker(1L))
+                .willReturn(response);
+
+        mockMvc.perform(get("/api/v1/rooms/1/stage"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.message").value("현재 발언자 조회가 완료되었습니다."))
+                .andExpect(jsonPath("$.data.roomId").value(1))
+                .andExpect(jsonPath("$.data.userId").value(10))
+                .andExpect(jsonPath("$.data.queueOrder").value(1))
+                .andExpect(jsonPath("$.data.status").value("ASSIGNED"));
+    }
+
+    @Test
+    void getCurrentSpeaker_returnsNotFoundWhenCurrentSpeakerDoesNotExist() throws Exception {
+        given(speakingQueueService.getCurrentSpeaker(1L))
+                .willThrow(new CustomException(ErrorCode.CURRENT_SPEAKER_NOT_FOUND));
+
+        mockMvc.perform(get("/api/v1/rooms/1/stage"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CURRENT_SPEAKER_NOT_FOUND"))
+                .andExpect(jsonPath("$.message").value("현재 발언자가 존재하지 않습니다."));
     }
 }
