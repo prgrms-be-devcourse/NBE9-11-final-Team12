@@ -36,6 +36,15 @@ spring:
 app:
   frontend:
     url: ${FRONTEND_URL:http://localhost:3000}
+  auth:
+    jwt:
+      secret: ${JWT_SECRET:local-development-jwt-secret-key-must-be-at-least-32-bytes}
+      access-token-expiration: 30m
+      refresh-token-expiration: 14d
+    cookie:
+      secure: false
+      same-site: Lax
+      domain:
 
 naver:
   search:
