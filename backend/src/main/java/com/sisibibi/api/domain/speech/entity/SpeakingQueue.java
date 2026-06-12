@@ -110,4 +110,8 @@ public class SpeakingQueue {
         this.status = SpeakingQueueStatus.EXPIRED;
         this.endedAt = endedAt;
     }
+
+    public void complete() {
+        this.status = SpeakingQueueStatus.COMPLETED;
+    }
 }

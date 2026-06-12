@@ -173,6 +173,38 @@ public class SpeakingQueueService {
         return StageExpireRes.of(roomId, currentSpeaker, nextSpeaker);
     }
 
+    @Transactional
+    public StageCompleteRes completeCurrentSpeaker(Long roomId, Long userId) {
+        Room room = lockRoom(roomId);
+        room.validateOpen();
+
+        SpeakingQueue currentSpeaker = speakingQueueRepository
+                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+                        roomId,
+                        SpeakingQueueStatus.ASSIGNED
+                )
+                .orElseThrow(() -> new CustomException(ErrorCode.CURRENT_SPEAKER_NOT_FOUND));
+
+        if (!currentSpeaker.getUserId().equals(userId)) {
+            throw new CustomException(ErrorCode.FORBIDDEN);
+        }
+
+        currentSpeaker.complete();
+
+        SpeakingQueue nextSpeaker = speakingQueueRepository
+                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+                        roomId,
+                        SpeakingQueueStatus.WAITING
+                )
+                .orElse(null);
+
+        if (nextSpeaker != null) {
+            nextSpeaker.assign();
+        }
+
+        return StageCompleteRes.of(roomId, currentSpeaker, nextSpeaker);
+    }
+
     @Transactional(readOnly = true)
     public CurrentSpeakerRes getCurrentSpeaker(Long roomId) {
         SpeakingQueue currentSpeaker = speakingQueueRepository
