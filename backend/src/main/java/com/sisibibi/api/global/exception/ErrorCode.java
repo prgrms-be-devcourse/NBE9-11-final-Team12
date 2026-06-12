@@ -27,6 +27,10 @@ public enum ErrorCode {
     TOPIC_ALREADY_REJECTED(HttpStatus.BAD_REQUEST, "이미 반려된 토픽입니다."),
     TOPIC_NOT_APPROVED(HttpStatus.BAD_REQUEST, "승인되지 않은 토픽입니다."),
     DUPLICATE_TOPIC(HttpStatus.CONFLICT, "이미 존재하는 토픽입니다."),
+    NAVER_SEARCH_CONFIG_MISSING(HttpStatus.INTERNAL_SERVER_ERROR, "네이버 검색 API 설정이 누락되었습니다."),
+    NAVER_SEARCH_FAILED(HttpStatus.BAD_GATEWAY, "네이버 뉴스 검색에 실패했습니다."),
+    SERPAPI_CONFIG_MISSING(HttpStatus.INTERNAL_SERVER_ERROR, "SerpApi 설정이 누락되었습니다."),
+    SERPAPI_GOOGLE_TRENDS_FAILED(HttpStatus.BAD_GATEWAY, "구글 트렌드 이슈 조회에 실패했습니다."),
 
     // Room
     ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 토론방입니다."),
@@ -44,6 +48,7 @@ public enum ErrorCode {
     // Speaking Queue
     SPEAKING_REQUEST_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 발언권을 신청한 상태입니다."),
     SPEAKING_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "발언권 신청 내역이 존재하지 않습니다."),
+    SPEAKING_QUEUE_ORDER_CONFLICT(HttpStatus.CONFLICT, "발언권 대기 순번 충돌이 발생했습니다. 다시 시도해주세요."),
     SPEAKING_QUEUE_EMPTY(HttpStatus.BAD_REQUEST, "발언권 대기열이 비어 있습니다."),
     CURRENT_SPEAKER_ALREADY_EXISTS(HttpStatus.CONFLICT, "현재 발언자가 이미 존재합니다."),
     CURRENT_SPEAKER_NOT_FOUND(HttpStatus.NOT_FOUND, "현재 발언자가 존재하지 않습니다."),
