@@ -4,6 +4,7 @@ import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.speech.dto.response.CurrentSpeakerRes;
 import com.sisibibi.api.domain.speech.dto.response.StageCompleteRes;
+import com.sisibibi.api.domain.speech.dto.response.StageExpireRes;
 import com.sisibibi.api.domain.speech.dto.response.StageQueueRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
@@ -22,6 +23,8 @@ import java.util.Map;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -60,6 +63,7 @@ class SpeakingQueueConcurrencyTest {
         List<StageRequestRes> successes = successes(results);
         List<Throwable> failures = failures(results);
         StageQueueRes waitingQueue = speakingQueueService.getWaitingQueue(roomId);
+        CurrentSpeakerRes currentSpeaker = speakingQueueService.getCurrentSpeaker(roomId);
 
         logConcurrencySummary(
                 "동시 발언권 신청",
@@ -67,19 +71,24 @@ class SpeakingQueueConcurrencyTest {
                 successes.size(),
                 failures,
                 run,
-                "저장된 대기열 크기=" + waitingQueue.items().size()
+                "현재 발언자 userId=" + currentSpeaker.userId()
+                        + ", 저장된 대기열 크기=" + waitingQueue.items().size()
         );
 
         assertThat(successes).hasSize(requestCount);
         assertThat(failures).isEmpty();
-        assertThat(waitingQueue.items()).hasSize(requestCount);
+        assertThat(currentSpeaker.status()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
+        assertThat(waitingQueue.items()).hasSize(requestCount - 1);
+        assertThat(successes)
+                .extracting(StageRequestRes::queueOrder)
+                .containsExactlyInAnyOrderElementsOf(rangeClosed(1, requestCount));
         assertThat(waitingQueue.items())
                 .extracting(StageQueueRes.StageQueueItemRes::queueOrder)
-                .containsExactlyElementsOf(rangeClosed(1, requestCount));
+                .containsExactlyElementsOf(rangeClosed(2, requestCount));
     }
 
     @Test
-    void concurrentAssignNextSpeaker_allowsOnlyOneSuccessfulAssignmentWithRoomLock()
+    void duplicateAssignNextSpeakerRequest_failsWhenCurrentSpeakerAlreadyExists()
             throws Exception {
         Long roomId = createOpenRoom();
         int requestCount = 10;
@@ -101,7 +110,7 @@ class SpeakingQueueConcurrencyTest {
         CurrentSpeakerRes currentSpeaker = speakingQueueService.getCurrentSpeaker(roomId);
 
         logConcurrencySummary(
-                "동시 현재 발언자 배정",
+                "중복 현재 발언자 배정 요청 방어",
                 requestCount,
                 successes.size(),
                 failures,
@@ -111,12 +120,9 @@ class SpeakingQueueConcurrencyTest {
         );
 
         assertThat(successes)
-                .as("방 단위 락이 있으면 동시에 배정해도 하나의 호출만 성공해야 한다.")
-                .hasSize(1);
-        assertThat(successes)
-                .extracting(CurrentSpeakerRes::id)
-                .containsOnly(currentSpeaker.id());
-        assertThat(failures).hasSize(requestCount - 1);
+                .as("현재 발언자가 이미 있으면 중복 배정 시도는 모두 실패해야 한다.")
+                .isEmpty();
+        assertThat(failures).hasSize(requestCount);
         assertThat(failures)
                 .extracting(throwable -> throwable.getClass().getSimpleName())
                 .containsOnly("CustomException");
@@ -127,7 +133,7 @@ class SpeakingQueueConcurrencyTest {
     }
 
     @Test
-    void concurrentCompleteCurrentSpeaker_allowsOnlyOneSuccessfulCompletionWithRoomLock()
+    void duplicateCompleteCurrentSpeakerRequest_allowsOnlyOneSuccessfulCompletionWithRoomLock()
             throws Exception {
         Long roomId = createOpenRoom();
         int requestCount = 10;
@@ -136,7 +142,6 @@ class SpeakingQueueConcurrencyTest {
 
         speakingQueueService.requestSpeakingTurn(roomId, currentSpeakerUserId);
         speakingQueueService.requestSpeakingTurn(roomId, nextUserId);
-        speakingQueueService.assignNextSpeaker(roomId);
 
         ConcurrentRun<StageCompleteRes> run = runConcurrently(
                 requestCount,
@@ -150,7 +155,7 @@ class SpeakingQueueConcurrencyTest {
         CurrentSpeakerRes currentSpeaker = speakingQueueService.getCurrentSpeaker(roomId);
 
         logConcurrencySummary(
-                "동시 현재 발언자 종료",
+                "중복 발언 종료 요청 방어",
                 requestCount,
                 successes.size(),
                 failures,
@@ -174,6 +179,128 @@ class SpeakingQueueConcurrencyTest {
                 .containsOnly("CustomException");
         assertThat(currentSpeaker.userId()).isEqualTo(nextUserId);
         assertThat(currentSpeaker.status()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
+        assertThat(waitingQueue.items()).isEmpty();
+    }
+
+    @Test
+    void duplicateSchedulerExpiration_allowsOnlyOneSuccessfulExpirationWithRoomLock()
+            throws Exception {
+        Long roomId = createOpenRoom();
+        int requestCount = 10;
+        Long currentSpeakerUserId = createActiveUser();
+        Long nextUserId = createActiveUser();
+        LocalDateTime now = LocalDateTime.now().plusMinutes(10);
+
+        speakingQueueService.requestSpeakingTurn(roomId, currentSpeakerUserId);
+        speakingQueueService.requestSpeakingTurn(roomId, nextUserId);
+
+        ConcurrentRun<StageExpireRes> run = runConcurrently(
+                requestCount,
+                ignored -> speakingQueueService.expireCurrentSpeakerIfTimedOut(
+                        roomId,
+                        now,
+                        Duration.ofMinutes(5)
+                )
+        );
+        List<ConcurrentResult<StageExpireRes>> results = run.results();
+
+        List<StageExpireRes> successes = successes(results);
+        List<Throwable> failures = failures(results);
+        StageQueueRes waitingQueue = speakingQueueService.getWaitingQueue(roomId);
+        CurrentSpeakerRes currentSpeaker = speakingQueueService.getCurrentSpeaker(roomId);
+
+        logConcurrencySummary(
+                "중복 Scheduler 자동 만료 실행 방어",
+                requestCount,
+                successes.size(),
+                failures,
+                run,
+                "현재 발언자 userId=" + currentSpeaker.userId()
+                        + ", 남은 대기열 크기=" + waitingQueue.items().size()
+        );
+
+        assertThat(successes)
+                .as("방 단위 락이 있으면 같은 현재 발언자 자동 만료 요청은 하나만 성공해야 한다.")
+                .hasSize(1);
+        assertThat(successes.get(0).expiredSpeaker().userId())
+                .isEqualTo(currentSpeakerUserId);
+        assertThat(successes.get(0).expiredSpeaker().status())
+                .isEqualTo(SpeakingQueueStatus.EXPIRED);
+        assertThat(successes.get(0).nextSpeaker()).isNotNull();
+        assertThat(successes.get(0).nextSpeaker().userId()).isEqualTo(nextUserId);
+        assertThat(failures).hasSize(requestCount - 1);
+        assertThat(failures)
+                .extracting(throwable -> throwable.getClass().getSimpleName())
+                .containsOnly("CustomException");
+        assertThat(currentSpeaker.userId()).isEqualTo(nextUserId);
+        assertThat(currentSpeaker.status()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
+        assertThat(waitingQueue.items()).isEmpty();
+    }
+
+    @Test
+    void completeAndExpireRace_allowsOnlyOneTerminalTransitionWithRoomLock()
+            throws Exception {
+        Long roomId = createOpenRoom();
+        Long currentSpeakerUserId = createActiveUser();
+        Long nextUserId = createActiveUser();
+
+        speakingQueueService.requestSpeakingTurn(roomId, currentSpeakerUserId);
+        speakingQueueService.requestSpeakingTurn(roomId, nextUserId);
+        LocalDateTime schedulerNow = LocalDateTime.now();
+
+        ConcurrentRun<Object> run = runConcurrently(
+                2,
+                index -> {
+                    if (index == 0) {
+                        return speakingQueueService.completeCurrentSpeaker(
+                                roomId,
+                                currentSpeakerUserId
+                        );
+                    }
+
+                    return speakingQueueService.expireCurrentSpeakerIfTimedOut(
+                            roomId,
+                            schedulerNow,
+                            Duration.ZERO
+                    );
+                }
+        );
+        List<ConcurrentResult<Object>> results = run.results();
+
+        List<Object> successes = successes(results);
+        List<Throwable> failures = failures(results);
+        StageQueueRes waitingQueue = speakingQueueService.getWaitingQueue(roomId);
+        CurrentSpeakerRes currentSpeaker = speakingQueueService.getCurrentSpeaker(roomId);
+        StageRequestRes terminalRequest = speakingQueueService.getMyRequest(
+                roomId,
+                currentSpeakerUserId
+        );
+        StageRequestRes nextSpeakerRequest = speakingQueueService.getMyRequest(roomId, nextUserId);
+
+        logConcurrencySummary(
+                "발언 종료와 자동 만료 경합",
+                2,
+                successes.size(),
+                failures,
+                run,
+                "terminalStatus=" + terminalRequest.status()
+                        + ", 현재 발언자 userId=" + currentSpeaker.userId()
+        );
+
+        assertThat(successes)
+                .as("사용자 종료와 Scheduler 만료가 충돌해도 terminal 상태 전이는 하나만 성공해야 한다.")
+                .hasSize(1);
+        assertThat(successes.get(0))
+                .isInstanceOfAny(StageCompleteRes.class, StageExpireRes.class);
+        assertThat(failures).hasSize(1);
+        assertThat(failures)
+                .extracting(throwable -> throwable.getClass().getSimpleName())
+                .containsOnly("CustomException");
+        assertThat(terminalRequest.status())
+                .isIn(SpeakingQueueStatus.COMPLETED, SpeakingQueueStatus.EXPIRED);
+        assertThat(currentSpeaker.userId()).isEqualTo(nextUserId);
+        assertThat(currentSpeaker.status()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
+        assertThat(nextSpeakerRequest.status()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
         assertThat(waitingQueue.items()).isEmpty();
     }
 
@@ -256,7 +383,7 @@ class SpeakingQueueConcurrencyTest {
             String extra
     ) {
         String summary = String.format(
-                "[동시성 테스트 결과] scenario=%s, 요청 수=%d, 성공 수=%d, 실패 수=%d, 실패 타입=%s, 벽시계=%dms, 합계=%dms, 평균=%dms, 최대=%dms, %s%n",
+                "[동시성 테스트 결과] scenario=%s, \n 요청 수=%d, 성공 수=%d, 실패 수=%d, 실패 타입=%s, 실행시간=%dms, 합계=%dms, 평균=%dms, 최대=%dms, %s%n",
                 scenario,
                 requestCount,
                 successCount,

@@ -24,6 +24,10 @@ import java.time.LocalDateTime;
                 @Index(
                         name = "idx_speaking_queue_room_status_order",
                         columnList = "room_id, status, queue_order"
+                ),
+                @Index(
+                        name = "idx_speaking_queue_status_assigned_room",
+                        columnList = "status, assigned_at, room_id"
                 )
         },
         uniqueConstraints = {
@@ -59,6 +63,12 @@ public class SpeakingQueue {
     @Column(name = "canceled_at")
     private LocalDateTime canceledAt;
 
+    @Column(name = "assigned_at")
+    private LocalDateTime assignedAt;
+
+    @Column(name = "ended_at")
+    private LocalDateTime endedAt;
+
     private SpeakingQueue(
             Long roomId,
             Long userId,
@@ -86,8 +96,19 @@ public class SpeakingQueue {
         this.canceledAt = canceledAt;
     }
 
-    public void assign() {
+    public void assign(LocalDateTime assignedAt) {
         this.status = SpeakingQueueStatus.ASSIGNED;
+        this.assignedAt = assignedAt;
+    }
+
+    public void complete(LocalDateTime endedAt) {
+        this.status = SpeakingQueueStatus.COMPLETED;
+        this.endedAt = endedAt;
+    }
+
+    public void expire(LocalDateTime endedAt) {
+        this.status = SpeakingQueueStatus.EXPIRED;
+        this.endedAt = endedAt;
     }
 
     public void complete() {

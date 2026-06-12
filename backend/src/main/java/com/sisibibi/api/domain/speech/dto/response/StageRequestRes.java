@@ -12,7 +12,9 @@ public record StageRequestRes(
         Long userId,
         int queueOrder,
         LocalDateTime requestedAt,
-        LocalDateTime canceledAt
+        LocalDateTime canceledAt,
+        LocalDateTime assignedAt,
+        LocalDateTime endedAt
 ) {
 
     public static StageRequestRes from(SpeakingQueue speakingQueue) {
@@ -23,7 +25,9 @@ public record StageRequestRes(
                 speakingQueue.getUserId(),
                 speakingQueue.getQueueOrder(),
                 speakingQueue.getRequestedAt(),
-                speakingQueue.getCanceledAt()
+                speakingQueue.getCanceledAt(),
+                speakingQueue.getAssignedAt(),
+                speakingQueue.getEndedAt()
         );
     }
 }

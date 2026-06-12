@@ -2,6 +2,7 @@ package com.sisibibi.api.domain.speech.service;
 
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
+import com.sisibibi.api.domain.speech.dto.response.StageExpireRes;
 import com.sisibibi.api.domain.speech.dto.response.StageQueueRes;
 import com.sisibibi.api.domain.speech.dto.response.StageCompleteRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
@@ -16,6 +17,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -35,7 +38,7 @@ class SpeakingQueueServiceTest {
     private UserRepository userRepository;
 
     @Test
-    void requestSpeakingTurn_assignsNextQueueOrderInRoom() {
+    void requestSpeakingTurn_assignsFirstRequesterWhenCurrentSpeakerDoesNotExist() {
         Long roomId = createOpenRoom();
         Long firstUserId = createActiveUser();
         Long secondUserId = createActiveUser();
@@ -45,8 +48,12 @@ class SpeakingQueueServiceTest {
 
         assertThat(first.queueOrder()).isEqualTo(1);
         assertThat(second.queueOrder()).isEqualTo(2);
-        assertThat(first.status()).isEqualTo(SpeakingQueueStatus.WAITING);
+        assertThat(first.status()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
+        assertThat(first.assignedAt()).isNotNull();
         assertThat(second.status()).isEqualTo(SpeakingQueueStatus.WAITING);
+
+        CurrentSpeakerRes currentSpeaker = speakingQueueService.getCurrentSpeaker(roomId);
+        assertThat(currentSpeaker.userId()).isEqualTo(firstUserId);
     }
 
     @Test
@@ -82,16 +89,18 @@ class SpeakingQueueServiceTest {
     @Test
     void requestSpeakingTurn_allowsRequestAgainAfterCancelingWaitingRequest() {
         Long roomId = createOpenRoom();
-        Long userId = createActiveUser();
+        Long currentSpeakerUserId = createActiveUser();
+        Long waitingUserId = createActiveUser();
 
-        StageRequestRes first = speakingQueueService.requestSpeakingTurn(roomId, userId);
-        speakingQueueService.cancelMyRequest(roomId, userId);
+        speakingQueueService.requestSpeakingTurn(roomId, currentSpeakerUserId);
+        StageRequestRes first = speakingQueueService.requestSpeakingTurn(roomId, waitingUserId);
+        speakingQueueService.cancelMyRequest(roomId, waitingUserId);
 
-        StageRequestRes second = speakingQueueService.requestSpeakingTurn(roomId, userId);
+        StageRequestRes second = speakingQueueService.requestSpeakingTurn(roomId, waitingUserId);
 
         assertThat(first.status()).isEqualTo(SpeakingQueueStatus.WAITING);
         assertThat(second.status()).isEqualTo(SpeakingQueueStatus.WAITING);
-        assertThat(second.queueOrder()).isEqualTo(2);
+        assertThat(second.queueOrder()).isEqualTo(3);
     }
 
     @Test
@@ -100,7 +109,6 @@ class SpeakingQueueServiceTest {
         Long userId = createActiveUser();
 
         speakingQueueService.requestSpeakingTurn(roomId, userId);
-        speakingQueueService.assignNextSpeaker(roomId);
 
         assertThatThrownBy(() -> speakingQueueService.requestSpeakingTurn(roomId, userId))
                 .isInstanceOf(CustomException.class)
@@ -111,13 +119,15 @@ class SpeakingQueueServiceTest {
     @Test
     void cancelMyRequest_marksWaitingRequestCanceled() {
         Long roomId = createOpenRoom();
-        Long userId = createActiveUser();
+        Long currentSpeakerUserId = createActiveUser();
+        Long waitingUserId = createActiveUser();
 
-        speakingQueueService.requestSpeakingTurn(roomId, userId);
+        speakingQueueService.requestSpeakingTurn(roomId, currentSpeakerUserId);
+        speakingQueueService.requestSpeakingTurn(roomId, waitingUserId);
 
-        speakingQueueService.cancelMyRequest(roomId, userId);
+        speakingQueueService.cancelMyRequest(roomId, waitingUserId);
 
-        StageRequestRes canceled = speakingQueueService.getMyRequest(roomId, userId);
+        StageRequestRes canceled = speakingQueueService.getMyRequest(roomId, waitingUserId);
         assertThat(canceled.status()).isEqualTo(SpeakingQueueStatus.CANCELED);
     }
 
@@ -160,27 +170,28 @@ class SpeakingQueueServiceTest {
         assertThat(queue.roomId()).isEqualTo(roomId);
         assertThat(queue.items())
                 .extracting(StageQueueRes.StageQueueItemRes::userId)
-                .isEqualTo(List.of(firstUserId, thirdUserId));
+                .isEqualTo(List.of(thirdUserId));
         assertThat(queue.items())
                 .extracting(StageQueueRes.StageQueueItemRes::queueOrder)
-                .isEqualTo(List.of(1, 3));
+                .isEqualTo(List.of(3));
     }
 
     @Test
-    void assignNextSpeaker_assignsFirstWaitingRequest() {
+    void requestSpeakingTurn_keepsNextRequesterWaitingWhenCurrentSpeakerExists() {
         Long roomId = createOpenRoom();
         Long firstUserId = createActiveUser();
         Long secondUserId = createActiveUser();
 
         speakingQueueService.requestSpeakingTurn(roomId, firstUserId);
-        speakingQueueService.requestSpeakingTurn(roomId, secondUserId);
-
-        CurrentSpeakerRes currentSpeaker = speakingQueueService.assignNextSpeaker(roomId);
+        StageRequestRes waitingRequest = speakingQueueService.requestSpeakingTurn(roomId, secondUserId);
+        CurrentSpeakerRes currentSpeaker = speakingQueueService.getCurrentSpeaker(roomId);
 
         assertThat(currentSpeaker.roomId()).isEqualTo(roomId);
         assertThat(currentSpeaker.userId()).isEqualTo(firstUserId);
         assertThat(currentSpeaker.queueOrder()).isEqualTo(1);
         assertThat(currentSpeaker.status()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
+        assertThat(currentSpeaker.assignedAt()).isNotNull();
+        assertThat(waitingRequest.status()).isEqualTo(SpeakingQueueStatus.WAITING);
 
         StageQueueRes waitingQueue = speakingQueueService.getWaitingQueue(roomId);
         assertThat(waitingQueue.items())
@@ -196,7 +207,6 @@ class SpeakingQueueServiceTest {
 
         speakingQueueService.requestSpeakingTurn(roomId, firstUserId);
         speakingQueueService.requestSpeakingTurn(roomId, secondUserId);
-        speakingQueueService.assignNextSpeaker(roomId);
 
         assertThatThrownBy(() -> speakingQueueService.assignNextSpeaker(roomId))
                 .isInstanceOf(CustomException.class)
@@ -220,7 +230,6 @@ class SpeakingQueueServiceTest {
         Long userId = createActiveUser();
 
         speakingQueueService.requestSpeakingTurn(roomId, userId);
-        speakingQueueService.assignNextSpeaker(roomId);
 
         CurrentSpeakerRes currentSpeaker = speakingQueueService.getCurrentSpeaker(roomId);
 
@@ -246,7 +255,6 @@ class SpeakingQueueServiceTest {
 
         speakingQueueService.requestSpeakingTurn(roomId, firstUserId);
         speakingQueueService.requestSpeakingTurn(roomId, secondUserId);
-        speakingQueueService.assignNextSpeaker(roomId);
 
         StageCompleteRes result = speakingQueueService.completeCurrentSpeaker(roomId, firstUserId);
 
@@ -269,7 +277,6 @@ class SpeakingQueueServiceTest {
         Long userId = createActiveUser();
 
         speakingQueueService.requestSpeakingTurn(roomId, userId);
-        speakingQueueService.assignNextSpeaker(roomId);
 
         StageCompleteRes result = speakingQueueService.completeCurrentSpeaker(roomId, userId);
 
@@ -300,12 +307,125 @@ class SpeakingQueueServiceTest {
         Long otherUserId = createActiveUser();
 
         speakingQueueService.requestSpeakingTurn(roomId, currentSpeakerUserId);
-        speakingQueueService.assignNextSpeaker(roomId);
 
         assertThatThrownBy(() -> speakingQueueService.completeCurrentSpeaker(roomId, otherUserId))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.FORBIDDEN);
+    }
+
+    @Test
+    void completeCurrentSpeaker_allowsCleanupWhenRoomIsClosed() {
+        Long roomId = createOpenRoom();
+        Long userId = createActiveUser();
+
+        speakingQueueService.requestSpeakingTurn(roomId, userId);
+        closeRoom(roomId);
+
+        StageCompleteRes result = speakingQueueService.completeCurrentSpeaker(roomId, userId);
+
+        assertThat(result.completedSpeaker().status()).isEqualTo(SpeakingQueueStatus.COMPLETED);
+        assertThat(result.completedSpeaker().userId()).isEqualTo(userId);
+    }
+
+    @Test
+    void expireCurrentSpeakerIfTimedOut_expiresCurrentSpeakerAndAssignsNextWaitingRequest() {
+        Long roomId = createOpenRoom();
+        Long firstUserId = createActiveUser();
+        Long secondUserId = createActiveUser();
+
+        speakingQueueService.requestSpeakingTurn(roomId, firstUserId);
+        speakingQueueService.requestSpeakingTurn(roomId, secondUserId);
+
+        LocalDateTime now = LocalDateTime.now().plusMinutes(10);
+        StageExpireRes result = speakingQueueService.expireCurrentSpeakerIfTimedOut(
+                roomId,
+                now,
+                Duration.ofMinutes(5)
+        );
+
+        assertThat(result.expiredSpeaker().userId()).isEqualTo(firstUserId);
+        assertThat(result.expiredSpeaker().status()).isEqualTo(SpeakingQueueStatus.EXPIRED);
+        assertThat(result.expiredSpeaker().endedAt()).isEqualTo(now);
+        assertThat(result.nextSpeaker()).isNotNull();
+        assertThat(result.nextSpeaker().userId()).isEqualTo(secondUserId);
+        assertThat(result.nextSpeaker().status()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
+        assertThat(result.nextSpeaker().assignedAt()).isEqualTo(now);
+
+        CurrentSpeakerRes currentSpeaker = speakingQueueService.getCurrentSpeaker(roomId);
+        assertThat(currentSpeaker.userId()).isEqualTo(secondUserId);
+    }
+
+    @Test
+    void expireCurrentSpeakerIfTimedOut_expiresCurrentSpeakerWithoutNextWaitingRequest() {
+        Long roomId = createOpenRoom();
+        Long userId = createActiveUser();
+
+        speakingQueueService.requestSpeakingTurn(roomId, userId);
+
+        LocalDateTime now = LocalDateTime.now().plusMinutes(10);
+        StageExpireRes result = speakingQueueService.expireCurrentSpeakerIfTimedOut(
+                roomId,
+                now,
+                Duration.ofMinutes(5)
+        );
+
+        assertThat(result.expiredSpeaker().userId()).isEqualTo(userId);
+        assertThat(result.expiredSpeaker().status()).isEqualTo(SpeakingQueueStatus.EXPIRED);
+        assertThat(result.nextSpeaker()).isNull();
+        assertThatThrownBy(() -> speakingQueueService.getCurrentSpeaker(roomId))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CURRENT_SPEAKER_NOT_FOUND);
+    }
+
+    @Test
+    void expireCurrentSpeakerIfTimedOut_throwsWhenCurrentSpeakerIsNotTimedOut() {
+        Long roomId = createOpenRoom();
+        Long userId = createActiveUser();
+
+        speakingQueueService.requestSpeakingTurn(roomId, userId);
+
+        assertThatThrownBy(() -> speakingQueueService.expireCurrentSpeakerIfTimedOut(
+                roomId,
+                LocalDateTime.now(),
+                Duration.ofMinutes(5)
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SPEAKING_TIME_NOT_EXPIRED);
+    }
+
+    @Test
+    void expireCurrentSpeakerIfTimedOut_throwsWhenCurrentSpeakerDoesNotExist() {
+        Long roomId = createOpenRoom();
+
+        assertThatThrownBy(() -> speakingQueueService.expireCurrentSpeakerIfTimedOut(
+                roomId,
+                LocalDateTime.now(),
+                Duration.ofMinutes(5)
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CURRENT_SPEAKER_NOT_FOUND);
+    }
+
+    @Test
+    void expireCurrentSpeakerIfTimedOut_allowsCleanupWhenRoomIsClosed() {
+        Long roomId = createOpenRoom();
+        Long userId = createActiveUser();
+
+        speakingQueueService.requestSpeakingTurn(roomId, userId);
+        closeRoom(roomId);
+
+        StageExpireRes result = speakingQueueService.expireCurrentSpeakerIfTimedOut(
+                roomId,
+                LocalDateTime.now().plusMinutes(10),
+                Duration.ofMinutes(5)
+        );
+
+        assertThat(result.expiredSpeaker().status()).isEqualTo(SpeakingQueueStatus.EXPIRED);
+        assertThat(result.expiredSpeaker().userId()).isEqualTo(userId);
     }
 
     @Test
@@ -356,6 +476,12 @@ class SpeakingQueueServiceTest {
 
     private Long createClosedRoom() {
         return roomRepository.save(Room.closed()).getId();
+    }
+
+    private void closeRoom(Long roomId) {
+        Room room = roomRepository.findById(roomId).orElseThrow();
+        room.close();
+        roomRepository.save(room);
     }
 
     private Long createActiveUser() {

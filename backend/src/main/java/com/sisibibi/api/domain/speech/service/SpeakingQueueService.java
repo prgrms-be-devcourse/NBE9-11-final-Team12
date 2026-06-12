@@ -4,6 +4,7 @@ import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.speech.dto.response.CurrentSpeakerRes;
 import com.sisibibi.api.domain.speech.dto.response.StageCompleteRes;
+import com.sisibibi.api.domain.speech.dto.response.StageExpireRes;
 import com.sisibibi.api.domain.speech.dto.response.StageQueueRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
@@ -17,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -49,16 +51,26 @@ public class SpeakingQueueService {
             throw new CustomException(ErrorCode.SPEAKING_REQUEST_ALREADY_EXISTS);
         }
 
+        LocalDateTime now = LocalDateTime.now();
         int nextQueueOrder = speakingQueueRepository.findMaxQueueOrderByRoomId(roomId) + 1;
 
         SpeakingQueue speakingQueue = SpeakingQueue.create(
                 roomId,
                 userId,
                 nextQueueOrder,
-                LocalDateTime.now()
+                now
         );
 
-        return StageRequestRes.from(speakingQueueRepository.save(speakingQueue));
+        SpeakingQueue savedSpeakingQueue = speakingQueueRepository.save(speakingQueue);
+
+        if (!speakingQueueRepository.existsByRoomIdAndStatus(
+                roomId,
+                SpeakingQueueStatus.ASSIGNED
+        )) {
+            assignFirstWaitingSpeaker(roomId, now);
+        }
+
+        return StageRequestRes.from(savedSpeakingQueue);
     }
 
     @Transactional(readOnly = true)
@@ -105,16 +117,60 @@ public class SpeakingQueueService {
             throw new CustomException(ErrorCode.CURRENT_SPEAKER_ALREADY_EXISTS);
         }
 
-        SpeakingQueue nextSpeaker = speakingQueueRepository
-                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
-                        roomId,
-                        SpeakingQueueStatus.WAITING
-                )
-                .orElseThrow(() -> new CustomException(ErrorCode.SPEAKING_QUEUE_EMPTY));
-
-        nextSpeaker.assign();
+        SpeakingQueue nextSpeaker = assignFirstWaitingSpeaker(roomId, LocalDateTime.now());
 
         return CurrentSpeakerRes.from(nextSpeaker);
+    }
+
+    @Transactional
+    public StageCompleteRes completeCurrentSpeaker(Long roomId, Long userId) {
+        lockRoom(roomId);
+
+        SpeakingQueue currentSpeaker = speakingQueueRepository
+                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+                        roomId,
+                        SpeakingQueueStatus.ASSIGNED
+                )
+                .orElseThrow(() -> new CustomException(ErrorCode.CURRENT_SPEAKER_NOT_FOUND));
+
+        if (!currentSpeaker.getUserId().equals(userId)) {
+            throw new CustomException(ErrorCode.FORBIDDEN);
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+
+        currentSpeaker.complete(now);
+
+        SpeakingQueue nextSpeaker = assignFirstWaitingSpeakerIfExists(roomId, now);
+
+        return StageCompleteRes.of(roomId, currentSpeaker, nextSpeaker);
+    }
+
+    @Transactional
+    public StageExpireRes expireCurrentSpeakerIfTimedOut(
+            Long roomId,
+            LocalDateTime now,
+            Duration speakingTimeLimit
+    ) {
+        lockRoom(roomId);
+
+        SpeakingQueue currentSpeaker = speakingQueueRepository
+                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+                        roomId,
+                        SpeakingQueueStatus.ASSIGNED
+                )
+                .orElseThrow(() -> new CustomException(ErrorCode.CURRENT_SPEAKER_NOT_FOUND));
+
+        if (currentSpeaker.getAssignedAt() == null
+                || currentSpeaker.getAssignedAt().plus(speakingTimeLimit).isAfter(now)) {
+            throw new CustomException(ErrorCode.SPEAKING_TIME_NOT_EXPIRED);
+        }
+
+        currentSpeaker.expire(now);
+
+        SpeakingQueue nextSpeaker = assignFirstWaitingSpeakerIfExists(roomId, now);
+
+        return StageExpireRes.of(roomId, currentSpeaker, nextSpeaker);
     }
 
     @Transactional
@@ -169,5 +225,36 @@ public class SpeakingQueueService {
     private User getUser(Long userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+    }
+
+    private SpeakingQueue assignFirstWaitingSpeaker(Long roomId, LocalDateTime assignedAt) {
+        SpeakingQueue nextSpeaker = speakingQueueRepository
+                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+                        roomId,
+                        SpeakingQueueStatus.WAITING
+                )
+                .orElseThrow(() -> new CustomException(ErrorCode.SPEAKING_QUEUE_EMPTY));
+
+        nextSpeaker.assign(assignedAt);
+
+        return nextSpeaker;
+    }
+
+    private SpeakingQueue assignFirstWaitingSpeakerIfExists(
+            Long roomId,
+            LocalDateTime assignedAt
+    ) {
+        SpeakingQueue nextSpeaker = speakingQueueRepository
+                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+                        roomId,
+                        SpeakingQueueStatus.WAITING
+                )
+                .orElse(null);
+
+        if (nextSpeaker != null) {
+            nextSpeaker.assign(assignedAt);
+        }
+
+        return nextSpeaker;
     }
 }
