@@ -6,10 +6,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.util.LinkedHashMap;
@@ -95,6 +97,23 @@ public class GlobalExceptionHandler {
                 ));
     }
 
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    protected ResponseEntity<ApiResponse<Void>> handleHttpMessageNotReadableException(
+            HttpMessageNotReadableException e
+    ) {
+        ErrorCode errorCode = ErrorCode.INVALID_INPUT_VALUE;
+
+        log.warn("Request body cannot be read. message={}", e.getMessage());
+
+        return ResponseEntity
+                .status(errorCode.getStatus())
+                .body(ApiResponse.error(
+                        errorCode.getStatus(),
+                        errorCode.name(),
+                        errorCode.getMessage()
+                ));
+    }
+
     @ExceptionHandler(MissingServletRequestParameterException.class)
     protected ResponseEntity<ApiResponse<Map<String, String>>> handleMissingServletRequestParameterException(
             MissingServletRequestParameterException e
@@ -113,6 +132,23 @@ public class GlobalExceptionHandler {
                         errorCode.name(),
                         errorCode.getMessage(),
                         errors
+                ));
+    }
+
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    protected ResponseEntity<ApiResponse<Void>> handleMissingRequestHeaderException(
+            MissingRequestHeaderException e
+    ) {
+        ErrorCode errorCode = ErrorCode.UNAUTHORIZED;
+
+        log.warn("Required request header is missing. header={}", e.getHeaderName());
+
+        return ResponseEntity
+                .status(errorCode.getStatus())
+                .body(ApiResponse.error(
+                        errorCode.getStatus(),
+                        errorCode.name(),
+                        errorCode.getMessage()
                 ));
     }
 
