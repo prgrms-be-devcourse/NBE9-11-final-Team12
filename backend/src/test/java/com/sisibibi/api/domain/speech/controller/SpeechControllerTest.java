@@ -23,7 +23,9 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -241,5 +243,33 @@ class SpeechControllerTest {
                                 """))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    void deleteSpeech_returnsOk() throws Exception {
+        doNothing().when(speechService).deleteSpeech(10L, 2L);
+
+        mockMvc.perform(delete("/api/v1/speeches/{speechId}", 10L)
+                        .header("X-User-Id", 2L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("내 의견 삭제가 완료되었습니다."))
+                .andExpect(jsonPath("$.data").doesNotExist());
+
+        verify(speechService).deleteSpeech(10L, 2L);
+    }
+
+    @Test
+    void deleteSpeech_returnsUnauthorized_whenUserHeaderIsMissing() throws Exception {
+        mockMvc.perform(delete("/api/v1/speeches/{speechId}", 10L))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    void deleteSpeech_returnsBadRequest_whenSpeechIdIsNotPositive() throws Exception {
+        mockMvc.perform(delete("/api/v1/speeches/{speechId}", 0L)
+                        .header("X-User-Id", 2L))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
     }
 }

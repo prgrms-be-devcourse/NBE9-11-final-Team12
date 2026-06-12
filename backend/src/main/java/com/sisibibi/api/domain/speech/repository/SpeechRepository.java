@@ -7,13 +7,17 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface SpeechRepository extends JpaRepository<Speech, Long> {
+
+    Optional<Speech> findByIdAndDeletedFalse(Long id);
 
     @Query("""
             select speech
             from Speech speech
             where speech.roomId = :roomId
+              and speech.deleted = false
               and (:cursor is null or speech.id < :cursor)
             order by speech.id desc
             """)

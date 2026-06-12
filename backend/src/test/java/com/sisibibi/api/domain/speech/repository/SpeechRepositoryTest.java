@@ -59,4 +59,21 @@ class SpeechRepositoryTest {
         assertThat(speeches).extracting(Speech::getContent)
                 .containsExactly("두 번째 의견");
     }
+
+    @Test
+    void findByRoomIdBeforeCursor_excludesSoftDeletedSpeeches() {
+        Speech visible = Speech.createMainOpinion(1L, 10L, "보이는 의견", SpeechStance.CON);
+        Speech deleted = Speech.createMainOpinion(1L, 20L, "삭제된 의견", SpeechStance.PRO);
+        deleted.softDelete();
+        speechRepository.saveAllAndFlush(List.of(visible, deleted));
+
+        List<Speech> speeches = speechRepository.findByRoomIdBeforeCursor(
+                1L,
+                null,
+                PageRequest.of(0, 10)
+        );
+
+        assertThat(speeches).extracting(Speech::getContent)
+                .containsExactly("보이는 의견");
+    }
 }

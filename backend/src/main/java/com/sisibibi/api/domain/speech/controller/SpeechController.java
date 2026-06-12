@@ -16,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -82,5 +83,15 @@ public class SpeechController {
                 "내 의견 수정이 완료되었습니다.",
                 speechService.updateSpeech(speechId, userId, request.toCommand())
         ));
+    }
+
+    @DeleteMapping("/speeches/{speechId}")
+    public ResponseEntity<ApiResponse<Void>> deleteSpeech(
+            @PathVariable @Positive Long speechId,
+            @RequestHeader("X-User-Id") @Positive Long userId
+    ) {
+        speechService.deleteSpeech(speechId, userId);
+
+        return ResponseEntity.ok(ApiResponse.okMessage("내 의견 삭제가 완료되었습니다."));
     }
 }

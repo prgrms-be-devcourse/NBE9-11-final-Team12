@@ -32,6 +32,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -174,7 +175,7 @@ class SpeechServiceTest {
         given(speech.getLinkUrl()).willReturn("https://example.com/evidence");
         given(speech.getImageUrl()).willReturn("https://example.com/image.png");
         given(speech.getUpdatedAt()).willReturn(LocalDateTime.of(2026, 6, 12, 12, 30));
-        given(speechRepository.findById(3L)).willReturn(Optional.of(speech));
+        given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
 
         SpeechDetailRes response = speechService.getSpeech(3L);
 
@@ -186,7 +187,7 @@ class SpeechServiceTest {
 
     @Test
     void getSpeech_throwsSpeechNotFound_whenSpeechDoesNotExist() {
-        given(speechRepository.findById(1L)).willReturn(Optional.empty());
+        given(speechRepository.findByIdAndDeletedFalse(1L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> speechService.getSpeech(1L))
                 .isInstanceOf(CustomException.class)
@@ -197,7 +198,7 @@ class SpeechServiceTest {
     @Test
     void updateSpeech_updatesOwnEditableSpeech() {
         Speech speech = Speech.createMainOpinion(1L, 2L, "기존 의견", SpeechStance.CON);
-        given(speechRepository.findById(3L)).willReturn(Optional.of(speech));
+        given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
 
         SpeechDetailRes response = speechService.updateSpeech(
                 3L,
@@ -212,7 +213,7 @@ class SpeechServiceTest {
 
     @Test
     void updateSpeech_throwsSpeechNotFound_whenSpeechDoesNotExist() {
-        given(speechRepository.findById(3L)).willReturn(Optional.empty());
+        given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> speechService.updateSpeech(
                 3L,
@@ -228,7 +229,7 @@ class SpeechServiceTest {
     void updateSpeech_throwsAccessDenied_whenSpeechOwnerDoesNotMatch() {
         Speech speech = org.mockito.Mockito.mock(Speech.class);
         given(speech.getUserId()).willReturn(9L);
-        given(speechRepository.findById(3L)).willReturn(Optional.of(speech));
+        given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
 
         assertThatThrownBy(() -> speechService.updateSpeech(
                 3L,
@@ -245,13 +246,59 @@ class SpeechServiceTest {
         Speech speech = org.mockito.Mockito.mock(Speech.class);
         given(speech.getUserId()).willReturn(2L);
         given(speech.getStatus()).willReturn(SpeechStatus.COMPLETED);
-        given(speechRepository.findById(3L)).willReturn(Optional.of(speech));
+        given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
 
         assertThatThrownBy(() -> speechService.updateSpeech(
                 3L,
                 2L,
                 new SpeechUpdateCommand("수정", SpeechStance.PRO)
         ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SPEECH_NOT_EDITABLE);
+    }
+
+    @Test
+    void deleteSpeech_softDeletesOwnEditableSpeech() {
+        Speech speech = Speech.createMainOpinion(1L, 2L, "삭제할 의견", SpeechStance.PRO);
+        given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
+
+        speechService.deleteSpeech(3L, 2L);
+
+        assertThat(speech.isDeleted()).isTrue();
+        assertThat(speech.getDeletedAt()).isNotNull();
+    }
+
+    @Test
+    void deleteSpeech_throwsSpeechNotFound_whenSpeechDoesNotExist() {
+        given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> speechService.deleteSpeech(3L, 2L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SPEECH_NOT_FOUND);
+    }
+
+    @Test
+    void deleteSpeech_throwsAccessDenied_whenSpeechOwnerDoesNotMatch() {
+        Speech speech = org.mockito.Mockito.mock(Speech.class);
+        given(speech.getUserId()).willReturn(9L);
+        given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
+
+        assertThatThrownBy(() -> speechService.deleteSpeech(3L, 2L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SPEECH_ACCESS_DENIED);
+    }
+
+    @Test
+    void deleteSpeech_throwsNotEditable_whenSpeechAlreadyCompleted() {
+        Speech speech = org.mockito.Mockito.mock(Speech.class);
+        given(speech.getUserId()).willReturn(2L);
+        given(speech.getStatus()).willReturn(SpeechStatus.COMPLETED);
+        given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
+
+        assertThatThrownBy(() -> speechService.deleteSpeech(3L, 2L))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.SPEECH_NOT_EDITABLE);
