@@ -1,6 +1,6 @@
 package com.sisibibi.api.global.client.serpApi;
 
-import com.sisibibi.api.domain.topic.dto.response.GoogleTrendsRes;
+import com.sisibibi.api.domain.topic.dto.response.issueRes.GoogleTrendsRes;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.extern.slf4j.Slf4j;
