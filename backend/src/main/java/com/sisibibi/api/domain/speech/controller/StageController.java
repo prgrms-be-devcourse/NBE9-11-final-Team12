@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.speech.controller;
 
 import com.sisibibi.api.domain.speech.dto.response.CurrentSpeakerRes;
+import com.sisibibi.api.domain.speech.dto.response.StageCompleteRes;
 import com.sisibibi.api.domain.speech.dto.response.StageQueueRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.service.SpeakingQueueService;
@@ -65,6 +66,16 @@ public class StageController {
         StageQueueRes response = speakingQueueService.getWaitingQueue(roomId);
 
         return ResponseEntity.ok(ApiResponse.ok("발언 대기열 조회가 완료되었습니다.", response));
+    }
+
+    @PostMapping("/complete")
+    public ResponseEntity<ApiResponse<StageCompleteRes>> completeCurrentSpeaker(
+            @Positive @PathVariable Long roomId,
+            @Positive @RequestParam Long userId
+    ) {
+        StageCompleteRes response = speakingQueueService.completeCurrentSpeaker(roomId, userId);
+
+        return ResponseEntity.ok(ApiResponse.ok("발언 종료가 완료되었습니다.", response));
     }
 
     @GetMapping

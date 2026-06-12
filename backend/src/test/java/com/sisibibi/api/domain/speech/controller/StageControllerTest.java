@@ -1,5 +1,6 @@
 package com.sisibibi.api.domain.speech.controller;
 
+import com.sisibibi.api.domain.speech.dto.response.StageCompleteRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.dto.response.CurrentSpeakerRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
@@ -117,5 +118,62 @@ class StageControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("CURRENT_SPEAKER_NOT_FOUND"))
                 .andExpect(jsonPath("$.message").value("현재 발언자가 존재하지 않습니다."));
+    }
+
+    @Test
+    void completeCurrentSpeaker_returnsOkResponseAndNextSpeaker() throws Exception {
+        StageRequestRes completedSpeaker = new StageRequestRes(
+                1L,
+                SpeakingQueueStatus.COMPLETED,
+                1L,
+                10L,
+                1,
+                LocalDateTime.of(2026, 6, 12, 10, 0),
+                null
+        );
+        CurrentSpeakerRes nextSpeaker = new CurrentSpeakerRes(
+                2L,
+                SpeakingQueueStatus.ASSIGNED,
+                1L,
+                20L,
+                2,
+                LocalDateTime.of(2026, 6, 12, 10, 1)
+        );
+        StageCompleteRes response = new StageCompleteRes(1L, completedSpeaker, nextSpeaker);
+
+        given(speakingQueueService.completeCurrentSpeaker(1L, 10L))
+                .willReturn(response);
+
+        mockMvc.perform(post("/api/v1/rooms/1/stage/complete")
+                        .param("userId", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.roomId").value(1))
+                .andExpect(jsonPath("$.data.completedSpeaker.userId").value(10))
+                .andExpect(jsonPath("$.data.completedSpeaker.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.data.nextSpeaker.userId").value(20))
+                .andExpect(jsonPath("$.data.nextSpeaker.status").value("ASSIGNED"));
+    }
+
+    @Test
+    void completeCurrentSpeaker_returnsNotFoundWhenCurrentSpeakerDoesNotExist() throws Exception {
+        given(speakingQueueService.completeCurrentSpeaker(1L, 10L))
+                .willThrow(new CustomException(ErrorCode.CURRENT_SPEAKER_NOT_FOUND));
+
+        mockMvc.perform(post("/api/v1/rooms/1/stage/complete")
+                        .param("userId", "10"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CURRENT_SPEAKER_NOT_FOUND"));
+    }
+
+    @Test
+    void completeCurrentSpeaker_returnsForbiddenWhenRequesterIsNotCurrentSpeaker() throws Exception {
+        given(speakingQueueService.completeCurrentSpeaker(1L, 10L))
+                .willThrow(new CustomException(ErrorCode.FORBIDDEN));
+
+        mockMvc.perform(post("/api/v1/rooms/1/stage/complete")
+                        .param("userId", "10"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
     }
 }

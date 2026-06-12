@@ -1,3 +1,9 @@
+import org.gradle.api.tasks.testing.TestDescriptor
+import org.gradle.api.tasks.testing.TestListener
+import org.gradle.api.tasks.testing.TestResult
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+import org.gradle.api.tasks.testing.logging.TestLogEvent
+
 plugins {
 	java
 	id("org.springframework.boot") version "3.5.13"
@@ -44,4 +50,59 @@ dependencies {
 
 tasks.withType<Test> {
 	useJUnitPlatform()
+
+	testLogging {
+		events = setOf(
+			TestLogEvent.SKIPPED,
+			TestLogEvent.FAILED
+		)
+		exceptionFormat = TestExceptionFormat.FULL
+		showExceptions = true
+		showCauses = true
+		showStackTraces = true
+	}
+
+	val concurrencySummaryFile = layout.buildDirectory.file("test-results/concurrency-summary.txt")
+
+	systemProperty(
+		"concurrency.summary.file",
+		concurrencySummaryFile.get().asFile.absolutePath
+	)
+
+	doFirst {
+		val summaryFile = concurrencySummaryFile.get().asFile
+		if (summaryFile.exists()) {
+			summaryFile.delete()
+		}
+		summaryFile.parentFile.mkdirs()
+	}
+
+	addTestListener(object : TestListener {
+		override fun beforeSuite(suite: TestDescriptor) = Unit
+
+		override fun beforeTest(testDescriptor: TestDescriptor) = Unit
+
+		override fun afterTest(testDescriptor: TestDescriptor, result: TestResult) {
+			logger.lifecycle(
+				"[TEST ${result.resultType}] ${testDescriptor.className}.${testDescriptor.name}"
+			)
+		}
+
+		override fun afterSuite(suite: TestDescriptor, result: TestResult) {
+			if (suite.parent == null) {
+				val summaryFile = concurrencySummaryFile.get().asFile
+				if (summaryFile.exists()) {
+					logger.lifecycle("[CONCURRENCY TEST SUMMARY]")
+					summaryFile.readLines()
+						.filter { it.isNotBlank() }
+						.forEach { logger.lifecycle(it) }
+				}
+
+				logger.lifecycle(
+					"[TEST SUMMARY] total=${result.testCount}, passed=${result.successfulTestCount}, " +
+						"failed=${result.failedTestCount}, skipped=${result.skippedTestCount}"
+				)
+			}
+		}
+	})
 }
