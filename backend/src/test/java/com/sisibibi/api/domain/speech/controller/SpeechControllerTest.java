@@ -8,10 +8,10 @@ import com.sisibibi.api.domain.speech.dto.response.SpeechListRes;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.service.SpeechService;
-import com.sisibibi.api.global.config.SecurityConfig;
 import com.sisibibi.api.global.exception.GlobalExceptionHandler;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -31,11 +31,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(SpeechController.class)
+@AutoConfigureMockMvc(addFilters = false)
 @ContextConfiguration(classes = {
         ApiApplication.class,
         SpeechController.class,
-        GlobalExceptionHandler.class,
-        SecurityConfig.class
+        GlobalExceptionHandler.class
 })
 class SpeechControllerTest {
 
