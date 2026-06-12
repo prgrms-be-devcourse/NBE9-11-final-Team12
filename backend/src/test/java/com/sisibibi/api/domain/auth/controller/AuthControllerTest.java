@@ -20,7 +20,6 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.hamcrest.Matchers.containsString;
@@ -74,8 +73,7 @@ class AuthControllerTest {
                 .willReturn(new AuthTokenResult<>(
                         new LoginRes(1L, "user@example.com", "tester"),
                         "access-token",
-                        "refresh-token",
-                        "refresh-token-id"
+                        "refresh-token"
                 ));
         given(authCookieProvider.createAccessTokenCookie("access-token"))
                 .willReturn(ResponseCookie.from("accessToken", "access-token").path("/api").build());
@@ -107,8 +105,7 @@ class AuthControllerTest {
                 .willReturn(new AuthTokenResult<>(
                         new TokenReissueRes(1L, "user@example.com", "tester"),
                         "new-access-token",
-                        "new-refresh-token",
-                        "new-refresh-token-id"
+                        "new-refresh-token"
                 ));
         given(authCookieProvider.createAccessTokenCookie("new-access-token"))
                 .willReturn(ResponseCookie.from("accessToken", "new-access-token").path("/api").build());

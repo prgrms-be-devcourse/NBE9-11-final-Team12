@@ -3,8 +3,6 @@ package com.sisibibi.api.domain.user.controller;
 import com.sisibibi.api.domain.user.dto.request.UpdateUserReq;
 import com.sisibibi.api.domain.user.dto.response.UserMeRes;
 import com.sisibibi.api.domain.user.service.UserService;
-import com.sisibibi.api.global.exception.CustomException;
-import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.response.ApiResponse;
 import com.sisibibi.api.global.security.AuthPrincipal;
 import jakarta.validation.Valid;
@@ -28,7 +26,7 @@ public class UserController {
     public ResponseEntity<ApiResponse<UserMeRes>> getMe(
             @AuthenticationPrincipal AuthPrincipal principal
     ) {
-        UserMeRes response = userService.getMe(currentUserId(principal));
+        UserMeRes response = userService.getMe(principal.userId());
 
         return ResponseEntity.ok(ApiResponse.ok("내 정보 조회가 완료되었습니다.", response));
     }
@@ -38,16 +36,9 @@ public class UserController {
             @AuthenticationPrincipal AuthPrincipal principal,
             @Valid @RequestBody UpdateUserReq request
     ) {
-        UserMeRes response = userService.updateMe(currentUserId(principal), request);
+        UserMeRes response = userService.updateMe(principal.userId(), request);
 
         return ResponseEntity.ok(ApiResponse.ok("내 정보 수정이 완료되었습니다.", response));
     }
 
-    private Long currentUserId(AuthPrincipal principal) {
-        if (principal == null) {
-            throw new CustomException(ErrorCode.UNAUTHORIZED);
-        }
-
-        return principal.userId();
-    }
 }

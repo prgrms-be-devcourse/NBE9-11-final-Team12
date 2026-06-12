@@ -63,16 +63,12 @@ public class AuthService {
 
     @Transactional
     public void logout(String refreshToken) {
-        validateRefreshTokenExists(refreshToken);
-
         TokenClaims claims = jwtTokenProvider.parseRefreshToken(refreshToken);
         refreshTokenStore.delete(claims.userId(), claims.tokenId());
     }
 
     @Transactional
     public AuthTokenResult<TokenReissueRes> reissue(String refreshToken) {
-        validateRefreshTokenExists(refreshToken);
-
         TokenClaims claims = jwtTokenProvider.parseRefreshToken(refreshToken);
         refreshTokenStore.verifyAndDelete(claims.userId(), claims.tokenId(), refreshToken);
 
@@ -95,7 +91,7 @@ public class AuthService {
         String refreshToken = jwtTokenProvider.createRefreshToken(principal, refreshTokenId);
         refreshTokenStore.save(user.getId(), refreshTokenId, refreshToken);
 
-        return new AuthTokenResult<>(response, accessToken, refreshToken, refreshTokenId);
+        return new AuthTokenResult<>(response, accessToken, refreshToken);
     }
 
     private void validateLoginAvailable(User user) {
@@ -108,9 +104,4 @@ public class AuthService {
         }
     }
 
-    private void validateRefreshTokenExists(String refreshToken) {
-        if (refreshToken == null || refreshToken.isBlank()) {
-            throw new CustomException(ErrorCode.INVALID_TOKEN);
-        }
-    }
 }

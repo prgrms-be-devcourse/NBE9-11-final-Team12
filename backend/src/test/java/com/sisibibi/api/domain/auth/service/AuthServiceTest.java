@@ -28,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -98,7 +99,7 @@ class AuthServiceTest {
         assertThat(result.response().email()).isEqualTo("user@example.com");
         assertThat(result.accessToken()).isEqualTo("access-token");
         assertThat(result.refreshToken()).isEqualTo("refresh-token");
-        verify(refreshTokenStore).save(1L, result.refreshTokenId(), "refresh-token");
+        verify(refreshTokenStore).save(eq(1L), anyString(), eq("refresh-token"));
     }
 
     @Test
@@ -137,7 +138,7 @@ class AuthServiceTest {
         assertThat(result.accessToken()).isEqualTo("new-access-token");
         assertThat(result.refreshToken()).isEqualTo("new-refresh-token");
         verify(refreshTokenStore).verifyAndDelete(1L, "old-token-id", "old-refresh-token");
-        verify(refreshTokenStore).save(1L, result.refreshTokenId(), "new-refresh-token");
+        verify(refreshTokenStore).save(eq(1L), anyString(), eq("new-refresh-token"));
     }
 
     @Test
