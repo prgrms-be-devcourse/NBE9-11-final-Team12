@@ -4,6 +4,7 @@ import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.speech.dto.response.CurrentSpeakerRes;
 import com.sisibibi.api.domain.speech.dto.response.StageCompleteRes;
+import com.sisibibi.api.domain.speech.dto.response.StageExpireRes;
 import com.sisibibi.api.domain.speech.dto.response.StageQueueRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
@@ -17,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -112,7 +114,7 @@ public class SpeakingQueueService {
                 )
                 .orElseThrow(() -> new CustomException(ErrorCode.SPEAKING_QUEUE_EMPTY));
 
-        nextSpeaker.assign();
+        nextSpeaker.assign(LocalDateTime.now());
 
         return CurrentSpeakerRes.from(nextSpeaker);
     }
@@ -133,7 +135,9 @@ public class SpeakingQueueService {
             throw new CustomException(ErrorCode.FORBIDDEN);
         }
 
-        currentSpeaker.complete();
+        LocalDateTime now = LocalDateTime.now();
+
+        currentSpeaker.complete(now);
 
         SpeakingQueue nextSpeaker = speakingQueueRepository
                 .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
@@ -143,10 +147,46 @@ public class SpeakingQueueService {
                 .orElse(null);
 
         if (nextSpeaker != null) {
-            nextSpeaker.assign();
+            nextSpeaker.assign(now);
         }
 
         return StageCompleteRes.of(roomId, currentSpeaker, nextSpeaker);
+    }
+
+    @Transactional
+    public StageExpireRes expireCurrentSpeakerIfTimedOut(
+            Long roomId,
+            LocalDateTime now,
+            Duration speakingTimeLimit
+    ) {
+        Room room = lockRoom(roomId);
+        room.validateOpen();
+
+        SpeakingQueue currentSpeaker = speakingQueueRepository
+                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+                        roomId,
+                        SpeakingQueueStatus.ASSIGNED
+                )
+                .orElseThrow(() -> new CustomException(ErrorCode.CURRENT_SPEAKER_NOT_FOUND));
+
+        if (currentSpeaker.getAssignedAt().plus(speakingTimeLimit).isAfter(now)) {
+            throw new CustomException(ErrorCode.SPEAKING_TIME_NOT_EXPIRED);
+        }
+
+        currentSpeaker.expire(now);
+
+        SpeakingQueue nextSpeaker = speakingQueueRepository
+                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+                        roomId,
+                        SpeakingQueueStatus.WAITING
+                )
+                .orElse(null);
+
+        if (nextSpeaker != null) {
+            nextSpeaker.assign(now);
+        }
+
+        return StageExpireRes.of(roomId, currentSpeaker, nextSpeaker);
     }
 
     @Transactional(readOnly = true)

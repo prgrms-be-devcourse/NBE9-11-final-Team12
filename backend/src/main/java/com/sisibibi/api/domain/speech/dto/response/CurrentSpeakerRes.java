@@ -11,7 +11,8 @@ public record CurrentSpeakerRes(
         Long roomId,
         Long userId,
         int queueOrder,
-        LocalDateTime requestedAt
+        LocalDateTime requestedAt,
+        LocalDateTime assignedAt
 ) {
 
     public static CurrentSpeakerRes from(SpeakingQueue speakingQueue) {
@@ -21,7 +22,8 @@ public record CurrentSpeakerRes(
                 speakingQueue.getRoomId(),
                 speakingQueue.getUserId(),
                 speakingQueue.getQueueOrder(),
-                speakingQueue.getRequestedAt()
+                speakingQueue.getRequestedAt(),
+                speakingQueue.getAssignedAt()
         );
     }
 }

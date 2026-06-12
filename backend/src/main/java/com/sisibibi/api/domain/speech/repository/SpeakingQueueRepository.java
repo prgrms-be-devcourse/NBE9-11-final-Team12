@@ -5,6 +5,7 @@ import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -39,4 +40,15 @@ public interface SpeakingQueueRepository extends JpaRepository<SpeakingQueue, Lo
 
     @Query("select coalesce(max(s.queueOrder), 0) from SpeakingQueue s where s.roomId = :roomId")
     int findMaxQueueOrderByRoomId(Long roomId);
+
+    @Query("""
+            select distinct s.roomId
+            from SpeakingQueue s
+            where s.status = :status
+              and s.assignedAt <= :expiresBefore
+            """)
+    List<Long> findDistinctRoomIdsByStatusAndAssignedAtLessThanEqual(
+            SpeakingQueueStatus status,
+            LocalDateTime expiresBefore
+    );
 }

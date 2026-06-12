@@ -41,7 +41,9 @@ class StageControllerTest {
                 10L,
                 1,
                 LocalDateTime.of(2026, 6, 12, 10, 0),
-                null
+                null,
+                LocalDateTime.of(2026, 6, 12, 10, 0),
+                LocalDateTime.of(2026, 6, 12, 10, 5)
         );
 
         given(speakingQueueService.requestSpeakingTurn(1L, 10L))
@@ -93,6 +95,7 @@ class StageControllerTest {
                 1L,
                 10L,
                 1,
+                LocalDateTime.of(2026, 6, 12, 10, 0),
                 LocalDateTime.of(2026, 6, 12, 10, 0)
         );
 
@@ -129,6 +132,8 @@ class StageControllerTest {
                 10L,
                 1,
                 LocalDateTime.of(2026, 6, 12, 10, 0),
+                null,
+                null,
                 null
         );
         CurrentSpeakerRes nextSpeaker = new CurrentSpeakerRes(
@@ -137,7 +142,8 @@ class StageControllerTest {
                 1L,
                 20L,
                 2,
-                LocalDateTime.of(2026, 6, 12, 10, 1)
+                LocalDateTime.of(2026, 6, 12, 10, 1),
+                LocalDateTime.of(2026, 6, 12, 10, 5)
         );
         StageCompleteRes response = new StageCompleteRes(1L, completedSpeaker, nextSpeaker);
 

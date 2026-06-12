@@ -48,6 +48,7 @@ public enum ErrorCode {
     CURRENT_SPEAKER_ALREADY_EXISTS(HttpStatus.CONFLICT, "현재 발언자가 이미 존재합니다."),
     CURRENT_SPEAKER_NOT_FOUND(HttpStatus.NOT_FOUND, "현재 발언자가 존재하지 않습니다."),
     SPEAKING_TIME_EXPIRED(HttpStatus.BAD_REQUEST, "발언 시간이 만료되었습니다."),
+    SPEAKING_TIME_NOT_EXPIRED(HttpStatus.BAD_REQUEST, "발언 시간이 아직 만료되지 않았습니다."),
 
     // Speech
     SPEECH_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 발언입니다."),

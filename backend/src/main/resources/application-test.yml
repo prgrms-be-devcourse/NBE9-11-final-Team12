@@ -19,3 +19,8 @@ logging:
   level:
     root: ERROR
     org.hibernate.engine.jdbc.spi.SqlExceptionHelper: OFF
+
+app:
+  speaking:
+    expiration:
+      enabled: false

@@ -4,5 +4,6 @@ public enum SpeakingQueueStatus {
     WAITING,
     ASSIGNED,
     CANCELED,
-    COMPLETED
+    COMPLETED,
+    EXPIRED
 }
