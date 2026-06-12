@@ -27,6 +27,10 @@ public enum ErrorCode {
     TOPIC_ALREADY_REJECTED(HttpStatus.BAD_REQUEST, "이미 반려된 토픽입니다."),
     TOPIC_NOT_APPROVED(HttpStatus.BAD_REQUEST, "승인되지 않은 토픽입니다."),
     DUPLICATE_TOPIC(HttpStatus.CONFLICT, "이미 존재하는 토픽입니다."),
+    NAVER_SEARCH_CONFIG_MISSING(HttpStatus.INTERNAL_SERVER_ERROR, "네이버 검색 API 설정이 누락되었습니다."),
+    NAVER_SEARCH_FAILED(HttpStatus.BAD_GATEWAY, "네이버 뉴스 검색에 실패했습니다."),
+    SERPAPI_CONFIG_MISSING(HttpStatus.INTERNAL_SERVER_ERROR, "SerpApi 설정이 누락되었습니다."),
+    SERPAPI_GOOGLE_TRENDS_FAILED(HttpStatus.BAD_GATEWAY, "구글 트렌드 이슈 조회에 실패했습니다."),
 
     // Room
     ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 토론방입니다."),
