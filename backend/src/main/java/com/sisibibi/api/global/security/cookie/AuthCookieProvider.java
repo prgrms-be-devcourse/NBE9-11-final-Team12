@@ -13,7 +13,7 @@ public class AuthCookieProvider {
     public static final String ACCESS_TOKEN_COOKIE_NAME = "accessToken";
     public static final String REFRESH_TOKEN_COOKIE_NAME = "refreshToken";
     public static final String ACCESS_TOKEN_PATH = "/api";
-    public static final String REFRESH_TOKEN_PATH = "/api/v1/auth/reissue";
+    public static final String REFRESH_TOKEN_PATH = "/api/v1/auth";
 
     private final AuthProperties authProperties;
 

@@ -1,11 +1,16 @@
 package com.sisibibi.api.domain.auth.service;
 
 import com.sisibibi.api.domain.auth.dto.request.SignupReq;
+import com.sisibibi.api.domain.auth.dto.request.LoginReq;
 import com.sisibibi.api.domain.auth.dto.response.SignupRes;
 import com.sisibibi.api.domain.user.entity.User;
 import com.sisibibi.api.domain.user.repository.UserRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
+import com.sisibibi.api.global.security.jwt.JwtTokenProvider;
+import com.sisibibi.api.global.security.jwt.JwtTokenProvider.TokenClaims;
+import com.sisibibi.api.global.security.jwt.JwtTokenProvider.TokenType;
+import com.sisibibi.api.global.security.refresh.RefreshTokenStore;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -13,12 +18,16 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.Instant;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -30,6 +39,12 @@ class AuthServiceTest {
 
     @Mock
     private PasswordEncoder passwordEncoder;
+
+    @Mock
+    private JwtTokenProvider jwtTokenProvider;
+
+    @Mock
+    private RefreshTokenStore refreshTokenStore;
 
     @InjectMocks
     private AuthService authService;
@@ -66,5 +81,79 @@ class AuthServiceTest {
                 .isEqualTo(ErrorCode.DUPLICATE_EMAIL);
 
         verify(userRepository, never()).save(org.mockito.ArgumentMatchers.any(User.class));
+    }
+
+    @Test
+    void login_issuesTokens_whenCredentialsAreValid() {
+        User user = User.signup("user@example.com", "encoded-password", "tester");
+        ReflectionTestUtils.setField(user, "id", 1L);
+        given(userRepository.findByEmail("user@example.com")).willReturn(Optional.of(user));
+        given(passwordEncoder.matches("password123!", "encoded-password")).willReturn(true);
+        given(jwtTokenProvider.createAccessToken(any())).willReturn("access-token");
+        given(jwtTokenProvider.createRefreshToken(any(), anyString())).willReturn("refresh-token");
+
+        var result = authService.login(new LoginReq("user@example.com", "password123!"));
+
+        assertThat(result.response().userId()).isEqualTo(1L);
+        assertThat(result.response().email()).isEqualTo("user@example.com");
+        assertThat(result.accessToken()).isEqualTo("access-token");
+        assertThat(result.refreshToken()).isEqualTo("refresh-token");
+        verify(refreshTokenStore).save(1L, result.refreshTokenId(), "refresh-token");
+    }
+
+    @Test
+    void login_throwsInvalidCredentials_whenPasswordDoesNotMatch() {
+        User user = User.signup("user@example.com", "encoded-password", "tester");
+        given(userRepository.findByEmail("user@example.com")).willReturn(Optional.of(user));
+        given(passwordEncoder.matches("wrong-password", "encoded-password")).willReturn(false);
+
+        assertThatThrownBy(() -> authService.login(new LoginReq("user@example.com", "wrong-password")))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_CREDENTIALS);
+
+        verify(refreshTokenStore, never()).save(any(), anyString(), anyString());
+    }
+
+    @Test
+    void reissue_rotatesRefreshToken() {
+        TokenClaims claims = new TokenClaims(
+                1L,
+                "user@example.com",
+                "USER",
+                "old-token-id",
+                TokenType.REFRESH,
+                Instant.parse("2030-06-12T00:00:00Z")
+        );
+        User user = User.signup("user@example.com", "encoded-password", "tester");
+        ReflectionTestUtils.setField(user, "id", 1L);
+        given(jwtTokenProvider.parseRefreshToken("old-refresh-token")).willReturn(claims);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(jwtTokenProvider.createAccessToken(any())).willReturn("new-access-token");
+        given(jwtTokenProvider.createRefreshToken(any(), anyString())).willReturn("new-refresh-token");
+
+        var result = authService.reissue("old-refresh-token");
+
+        assertThat(result.accessToken()).isEqualTo("new-access-token");
+        assertThat(result.refreshToken()).isEqualTo("new-refresh-token");
+        verify(refreshTokenStore).verifyAndDelete(1L, "old-token-id", "old-refresh-token");
+        verify(refreshTokenStore).save(1L, result.refreshTokenId(), "new-refresh-token");
+    }
+
+    @Test
+    void logout_deletesRefreshToken() {
+        TokenClaims claims = new TokenClaims(
+                1L,
+                "user@example.com",
+                "USER",
+                "token-id",
+                TokenType.REFRESH,
+                Instant.parse("2030-06-12T00:00:00Z")
+        );
+        given(jwtTokenProvider.parseRefreshToken("refresh-token")).willReturn(claims);
+
+        authService.logout("refresh-token");
+
+        verify(refreshTokenStore).delete(1L, "token-id");
     }
 }

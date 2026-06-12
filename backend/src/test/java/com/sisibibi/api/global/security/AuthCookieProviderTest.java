@@ -27,12 +27,12 @@ class AuthCookieProviderTest {
     }
 
     @Test
-    void createRefreshTokenCookie_usesReissuePath() {
+    void createRefreshTokenCookie_usesAuthPath() {
         AuthCookieProvider cookieProvider = new AuthCookieProvider(authProperties());
 
         ResponseCookie cookie = cookieProvider.createRefreshTokenCookie("refresh-token");
 
-        assertThat(cookie.toString()).contains("Path=/api/v1/auth/reissue");
+        assertThat(cookie.toString()).contains("Path=/api/v1/auth");
         assertThat(cookie.toString()).contains("Max-Age=1209600");
     }
 

@@ -4,11 +4,14 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 
 @Getter
 @Entity
+@EntityListeners(AuditingEntityListener.class)
 @Table(
     name = "rooms",
     uniqueConstraints = @UniqueConstraint(name = "uk_rooms_topic_id", columnNames = "topic_id")
@@ -36,6 +39,7 @@ public class Room {
     @Column(name = "ended_at")
     private LocalDateTime endedAt;
 
+    @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

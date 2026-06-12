@@ -38,8 +38,8 @@ dependencies {
 	// 개발 도구
 	developmentOnly("org.springframework.boot:spring-boot-devtools")
 
-	// 테스트 통합 라이브러리 (data-jpa, security, validation, webmvc 4개의 starter를 하나로 대체)
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
+	testImplementation("org.springframework.security:spring-security-test")
 	testImplementation("org.testcontainers:junit-jupiter")
 	testImplementation("org.testcontainers:testcontainers")
 	runtimeOnly("com.mysql:mysql-connector-j")
