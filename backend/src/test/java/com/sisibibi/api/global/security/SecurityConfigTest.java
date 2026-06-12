@@ -21,9 +21,11 @@ import jakarta.servlet.http.Cookie;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import org.springframework.http.MediaType;
 
 @SpringBootTest(classes = ApiApplication.class)
 @AutoConfigureMockMvc
@@ -67,6 +69,22 @@ class SecurityConfigTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:3000"))
                 .andExpect(header().string("Access-Control-Allow-Credentials", "true"));
+    }
+
+    @Test
+    void signup_isPublicAndDoesNotRequireCsrfToken() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "security-signup@example.com",
+                                  "password": "password123!",
+                                  "nickname": "tester"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.code", is("SUCCESS")))
+                .andExpect(jsonPath("$.data.email", is("security-signup@example.com")));
     }
 
     @RestController
