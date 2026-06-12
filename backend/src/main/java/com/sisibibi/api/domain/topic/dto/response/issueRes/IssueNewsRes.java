@@ -1,6 +1,4 @@
-package com.sisibibi.api.domain.topic.dto.response;
-
-import com.fasterxml.jackson.databind.JsonNode;
+package com.sisibibi.api.domain.topic.dto.response.issueRes;
 
 public record IssueNewsRes(
     String title,

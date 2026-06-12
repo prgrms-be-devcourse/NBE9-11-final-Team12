@@ -1,13 +1,12 @@
 package com.sisibibi.api.domain.topic.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.sisibibi.api.domain.topic.dto.response.NewsSearchRes;
-import com.sisibibi.api.domain.topic.dto.response.TrendingSearchRes;
+import com.sisibibi.api.domain.topic.dto.response.issueRes.NewsSearchRes;
+import com.sisibibi.api.domain.topic.dto.response.issueRes.TrendingSearchRes;
 import com.sisibibi.api.global.client.serpApi.GoogleTrendsClient;
 import com.sisibibi.api.global.client.naverApi.NewsClient;
 import com.sisibibi.api.domain.topic.dto.request.NewsSearchCommand;
-import com.sisibibi.api.domain.topic.dto.response.IssueCandidateRes;
-import com.sisibibi.api.domain.topic.dto.response.IssueNewsRes;
+import com.sisibibi.api.domain.topic.dto.response.issueRes.IssueCandidateRes;
+import com.sisibibi.api.domain.topic.dto.response.issueRes.IssueNewsRes;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
