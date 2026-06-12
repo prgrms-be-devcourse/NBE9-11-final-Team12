@@ -1,4 +1,4 @@
-package com.sisibibi.api.domain.speech.dto.request;
+package com.sisibibi.api.domain.speech.dto.command;
 
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 

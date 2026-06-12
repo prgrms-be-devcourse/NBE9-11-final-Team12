@@ -5,7 +5,8 @@ import com.sisibibi.api.domain.room.entity.RoomStatus;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
-import com.sisibibi.api.domain.speech.dto.request.SpeechCreateCommand;
+import com.sisibibi.api.domain.speech.dto.command.SpeechCreateCommand;
+import com.sisibibi.api.domain.speech.dto.command.SpeechUpdateCommand;
 import com.sisibibi.api.domain.speech.dto.response.SpeechCreateRes;
 import com.sisibibi.api.domain.speech.dto.response.SpeechCursorPageRes;
 import com.sisibibi.api.domain.speech.dto.response.SpeechDetailRes;
@@ -191,6 +192,69 @@ class SpeechServiceTest {
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.SPEECH_NOT_FOUND);
+    }
+
+    @Test
+    void updateSpeech_updatesOwnEditableSpeech() {
+        Speech speech = Speech.createMainOpinion(1L, 2L, "기존 의견", SpeechStance.CON);
+        given(speechRepository.findById(3L)).willReturn(Optional.of(speech));
+
+        SpeechDetailRes response = speechService.updateSpeech(
+                3L,
+                2L,
+                new SpeechUpdateCommand("수정된 의견", SpeechStance.PRO)
+        );
+
+        assertThat(response.content()).isEqualTo("수정된 의견");
+        assertThat(response.stance()).isEqualTo(SpeechStance.PRO);
+        assertThat(response.updatedAt()).isAfterOrEqualTo(response.createdAt());
+    }
+
+    @Test
+    void updateSpeech_throwsSpeechNotFound_whenSpeechDoesNotExist() {
+        given(speechRepository.findById(3L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> speechService.updateSpeech(
+                3L,
+                2L,
+                new SpeechUpdateCommand("수정", SpeechStance.PRO)
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SPEECH_NOT_FOUND);
+    }
+
+    @Test
+    void updateSpeech_throwsAccessDenied_whenSpeechOwnerDoesNotMatch() {
+        Speech speech = org.mockito.Mockito.mock(Speech.class);
+        given(speech.getUserId()).willReturn(9L);
+        given(speechRepository.findById(3L)).willReturn(Optional.of(speech));
+
+        assertThatThrownBy(() -> speechService.updateSpeech(
+                3L,
+                2L,
+                new SpeechUpdateCommand("수정", SpeechStance.PRO)
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SPEECH_ACCESS_DENIED);
+    }
+
+    @Test
+    void updateSpeech_throwsNotEditable_whenSpeechAlreadyCompleted() {
+        Speech speech = org.mockito.Mockito.mock(Speech.class);
+        given(speech.getUserId()).willReturn(2L);
+        given(speech.getStatus()).willReturn(SpeechStatus.COMPLETED);
+        given(speechRepository.findById(3L)).willReturn(Optional.of(speech));
+
+        assertThatThrownBy(() -> speechService.updateSpeech(
+                3L,
+                2L,
+                new SpeechUpdateCommand("수정", SpeechStance.PRO)
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SPEECH_NOT_EDITABLE);
     }
 
     private Speech mockSpeech(

@@ -84,4 +84,10 @@ public class Speech {
     ) {
         return new Speech(roomId, userId, content, stance);
     }
+
+    public void updateMainOpinion(String content, SpeechStance stance) {
+        this.content = content;
+        this.stance = stance;
+        this.updatedAt = LocalDateTime.now();
+    }
 }
