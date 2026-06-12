@@ -26,8 +26,8 @@ public class TopicService {
   }
 
   @Transactional
-  public TopicCreateRes createPendingTopic(CreateTopicReq request) {
-    Topic topic = Topic.pending(
+  public TopicCreateRes createApprovedTopic(CreateTopicReq request) {
+    Topic topic = Topic.approved(
         request.title().trim(),
         request.description(),
         request.category().trim(),

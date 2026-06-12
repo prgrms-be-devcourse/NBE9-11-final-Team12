@@ -24,7 +24,7 @@ public class AdminTopicController {
   public ResponseEntity<ApiResponse<TopicCreateRes>> createPendingTopic(
       @Valid @RequestBody CreateTopicReq request
   ) {
-    TopicCreateRes result = topicService.createPendingTopic(request);
+    TopicCreateRes result = topicService.createApprovedTopic(request);
 
     return ResponseEntity
         .status(HttpStatus.CREATED)

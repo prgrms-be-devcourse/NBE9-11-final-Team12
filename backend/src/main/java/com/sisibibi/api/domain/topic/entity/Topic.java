@@ -37,19 +37,21 @@ public class Topic {
 
   private Long approvedBy;
 
-  public static Topic pending(
+  public static Topic approved(
       String title,
       String description,
       String category,
       String sourceUrl
   ) {
+    LocalDateTime now = LocalDateTime.now();
     Topic topic = new Topic();
     topic.title = title;
     topic.description = description;
     topic.category = category;
     topic.sourceUrl = sourceUrl;
-    topic.status = TopicStatus.PENDING;
-    topic.createdAt = LocalDateTime.now();
+    topic.status = TopicStatus.APPROVED;
+    topic.createdAt = now;
+    topic.approvedAt = now;
     return topic;
   }
 
