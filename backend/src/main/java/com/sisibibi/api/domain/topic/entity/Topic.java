@@ -17,6 +17,7 @@ public class Topic {
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
+  @Column(nullable = false)
   private String title;
 
   private String description;
@@ -26,11 +27,32 @@ public class Topic {
   private String sourceUrl;
 
   @Enumerated(EnumType.STRING)
+  @Column(nullable = false)
   private TopicStatus status;
 
+  @Column(nullable = false)
   private LocalDateTime createdAt;
 
   private LocalDateTime approvedAt;
 
   private Long approvedBy;
+
+  public static Topic approved(
+      String title,
+      String description,
+      String category,
+      String sourceUrl
+  ) {
+    LocalDateTime now = LocalDateTime.now();
+    Topic topic = new Topic();
+    topic.title = title;
+    topic.description = description;
+    topic.category = category;
+    topic.sourceUrl = sourceUrl;
+    topic.status = TopicStatus.APPROVED;
+    topic.createdAt = now;
+    topic.approvedAt = now;
+    return topic;
+  }
+
 }
