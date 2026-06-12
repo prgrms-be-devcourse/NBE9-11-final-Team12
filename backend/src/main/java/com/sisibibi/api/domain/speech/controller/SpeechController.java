@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.speech.controller;
 
 import com.sisibibi.api.domain.speech.dto.request.SpeechCreateReq;
+import com.sisibibi.api.domain.speech.dto.request.SpeechUpdateReq;
 import com.sisibibi.api.domain.speech.dto.response.SpeechCreateRes;
 import com.sisibibi.api.domain.speech.dto.response.SpeechCursorPageRes;
 import com.sisibibi.api.domain.speech.dto.response.SpeechDetailRes;
@@ -15,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -67,6 +69,18 @@ public class SpeechController {
         return ResponseEntity.ok(ApiResponse.ok(
                 "의견 상세 조회가 완료되었습니다.",
                 speechService.getSpeech(speechId)
+        ));
+    }
+
+    @PatchMapping("/speeches/{speechId}")
+    public ResponseEntity<ApiResponse<SpeechDetailRes>> updateSpeech(
+            @PathVariable @Positive Long speechId,
+            @RequestHeader("X-User-Id") @Positive Long userId,
+            @Valid @RequestBody SpeechUpdateReq request
+    ) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                "내 의견 수정이 완료되었습니다.",
+                speechService.updateSpeech(speechId, userId, request.toCommand())
         ));
     }
 }

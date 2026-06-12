@@ -25,6 +25,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -176,5 +177,69 @@ class SpeechControllerTest {
         mockMvc.perform(get("/api/v1/speeches/{speechId}", 0L))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
+    }
+
+    @Test
+    void updateSpeech_returnsOk() throws Exception {
+        given(speechService.updateSpeech(any(), any(), any())).willReturn(new SpeechDetailRes(
+                10L,
+                1L,
+                2L,
+                "수정된 의견",
+                SpeechStance.PRO,
+                null,
+                null,
+                SpeechStatus.READY,
+                null,
+                null,
+                LocalDateTime.of(2026, 6, 12, 10, 0),
+                LocalDateTime.of(2026, 6, 12, 12, 0)
+        ));
+
+        mockMvc.perform(patch("/api/v1/speeches/{speechId}", 10L)
+                        .header("X-User-Id", 2L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "content": "수정된 의견",
+                                  "stance": "PRO"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.speechId").value(10))
+                .andExpect(jsonPath("$.data.content").value("수정된 의견"))
+                .andExpect(jsonPath("$.message").value("내 의견 수정이 완료되었습니다."));
+
+        verify(speechService).updateSpeech(any(), any(), any());
+    }
+
+    @Test
+    void updateSpeech_returnsBadRequest_whenContentIsBlank() throws Exception {
+        mockMvc.perform(patch("/api/v1/speeches/{speechId}", 10L)
+                        .header("X-User-Id", 2L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "content": " ",
+                                  "stance": "CON"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"))
+                .andExpect(jsonPath("$.data.content").value("의견 내용은 비어 있을 수 없습니다."));
+    }
+
+    @Test
+    void updateSpeech_returnsUnauthorized_whenUserHeaderIsMissing() throws Exception {
+        mockMvc.perform(patch("/api/v1/speeches/{speechId}", 10L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "content": "수정된 의견",
+                                  "stance": "PRO"
+                                }
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
     }
 }

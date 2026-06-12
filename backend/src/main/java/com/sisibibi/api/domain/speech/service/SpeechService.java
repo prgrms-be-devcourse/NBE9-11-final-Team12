@@ -5,7 +5,8 @@ import com.sisibibi.api.domain.room.entity.RoomStatus;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
-import com.sisibibi.api.domain.speech.dto.request.SpeechCreateCommand;
+import com.sisibibi.api.domain.speech.dto.command.SpeechCreateCommand;
+import com.sisibibi.api.domain.speech.dto.command.SpeechUpdateCommand;
 import com.sisibibi.api.domain.speech.dto.response.SpeechCreateRes;
 import com.sisibibi.api.domain.speech.dto.response.SpeechCursorPageRes;
 import com.sisibibi.api.domain.speech.dto.response.SpeechDetailRes;
@@ -88,6 +89,27 @@ public class SpeechService {
         Speech speech = speechRepository.findById(speechId)
                 .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_NOT_FOUND));
 
+        return SpeechDetailRes.from(speech);
+    }
+
+    @Transactional
+    public SpeechDetailRes updateSpeech(
+            Long speechId,
+            Long userId,
+            SpeechUpdateCommand command
+    ) {
+        Speech speech = speechRepository.findById(speechId)
+                .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_NOT_FOUND));
+
+        if (!speech.getUserId().equals(userId)) {
+            throw new CustomException(ErrorCode.SPEECH_ACCESS_DENIED);
+        }
+
+        if (speech.getStatus() == com.sisibibi.api.domain.speech.entity.SpeechStatus.COMPLETED) {
+            throw new CustomException(ErrorCode.SPEECH_NOT_EDITABLE);
+        }
+
+        speech.updateMainOpinion(command.content(), command.stance());
         return SpeechDetailRes.from(speech);
     }
 }
