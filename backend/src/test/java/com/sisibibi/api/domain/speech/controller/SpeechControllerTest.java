@@ -2,6 +2,9 @@ package com.sisibibi.api.domain.speech.controller;
 
 import com.sisibibi.api.ApiApplication;
 import com.sisibibi.api.domain.speech.dto.response.SpeechCreateRes;
+import com.sisibibi.api.domain.speech.dto.response.SpeechCursorPageRes;
+import com.sisibibi.api.domain.speech.dto.response.SpeechDetailRes;
+import com.sisibibi.api.domain.speech.dto.response.SpeechListRes;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.service.SpeechService;
@@ -15,9 +18,13 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.LocalDateTime;
+import java.util.List;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -110,5 +117,64 @@ class SpeechControllerTest {
                                 """))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    void getSpeeches_returnsOk() throws Exception {
+        given(speechService.getSpeeches(1L, null, 20)).willReturn(
+                new SpeechCursorPageRes(List.of(new SpeechListRes(
+                        10L,
+                        1L,
+                        2L,
+                        "찬성 의견",
+                        SpeechStance.PRO,
+                        SpeechStatus.READY,
+                        LocalDateTime.of(2026, 6, 12, 12, 0)
+                )), null, false));
+
+        mockMvc.perform(get("/api/v1/rooms/{roomId}/speeches", 1L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].speechId").value(10))
+                .andExpect(jsonPath("$.data.items[0].stance").value("PRO"))
+                .andExpect(jsonPath("$.data.hasNext").value(false));
+    }
+
+    @Test
+    void getSpeeches_returnsBadRequest_whenSizeExceedsLimit() throws Exception {
+        mockMvc.perform(get("/api/v1/rooms/{roomId}/speeches", 1L)
+                        .param("size", "101"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
+    }
+
+    @Test
+    void getSpeech_returnsOk() throws Exception {
+        given(speechService.getSpeech(10L)).willReturn(new SpeechDetailRes(
+                10L,
+                1L,
+                2L,
+                "상세 의견",
+                SpeechStance.CON,
+                "https://example.com/evidence",
+                "https://example.com/image.png",
+                SpeechStatus.COMPLETED,
+                LocalDateTime.of(2026, 6, 12, 11, 0),
+                LocalDateTime.of(2026, 6, 12, 11, 5),
+                LocalDateTime.of(2026, 6, 12, 10, 0),
+                LocalDateTime.of(2026, 6, 12, 11, 5)
+        ));
+
+        mockMvc.perform(get("/api/v1/speeches/{speechId}", 10L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.speechId").value(10))
+                .andExpect(jsonPath("$.data.linkUrl").value("https://example.com/evidence"))
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"));
+    }
+
+    @Test
+    void getSpeech_returnsBadRequest_whenSpeechIdIsNotPositive() throws Exception {
+        mockMvc.perform(get("/api/v1/speeches/{speechId}", 0L))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
     }
 }

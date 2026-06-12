@@ -7,6 +7,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -16,7 +17,13 @@ import java.time.LocalDateTime;
 
 @Getter
 @Entity
-@Table(name = "speeches")
+@Table(
+        name = "speeches",
+        indexes = @Index(
+                name = "idx_speeches_room_id_id",
+                columnList = "room_id, id"
+        )
+)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Speech {
 
