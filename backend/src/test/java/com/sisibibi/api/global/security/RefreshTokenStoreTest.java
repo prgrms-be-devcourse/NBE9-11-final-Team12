@@ -50,7 +50,11 @@ class RefreshTokenStoreTest {
         refreshTokenStore.verifyAndDelete(1L, "token-id", "refresh-token");
 
         verify(redisTemplate).delete("auth:refresh:1:token-id");
-        verify(valueOperations).set("auth:refresh-used:1:token-id", "1", Duration.ofDays(14));
+        verify(valueOperations).set(
+                "auth:refresh-used:1:token-id",
+                "1",
+                Duration.ofDays(14).plusMinutes(30)
+        );
     }
 
     @Test

@@ -51,7 +51,7 @@ public class RefreshTokenStore {
             redisTemplate.opsForValue().set(
                     usedKey(userId, tokenId),
                     "1",
-                    authProperties.jwt().refreshTokenExpiration()
+                    usedTokenRetention()
             );
             throw new CustomException(ErrorCode.REFRESH_TOKEN_REUSED);
         }
@@ -60,7 +60,7 @@ public class RefreshTokenStore {
         redisTemplate.opsForValue().set(
                 usedKey(userId, tokenId),
                 "1",
-                authProperties.jwt().refreshTokenExpiration()
+                usedTokenRetention()
         );
     }
 
@@ -74,6 +74,12 @@ public class RefreshTokenStore {
 
     String usedKey(Long userId, String tokenId) {
         return USED_KEY_PREFIX + userId + ":" + tokenId;
+    }
+
+    private Duration usedTokenRetention() {
+        return authProperties.jwt()
+                .refreshTokenExpiration()
+                .plus(authProperties.jwt().accessTokenExpiration());
     }
 
     private String hash(String token) {

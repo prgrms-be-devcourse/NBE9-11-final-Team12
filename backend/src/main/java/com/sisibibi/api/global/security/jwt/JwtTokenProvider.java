@@ -108,11 +108,10 @@ public class JwtTokenProvider {
     }
 
     private java.time.Duration expirationBy(TokenType tokenType) {
-        if (tokenType == TokenType.ACCESS) {
-            return authProperties.jwt().accessTokenExpiration();
-        }
-
-        return authProperties.jwt().refreshTokenExpiration();
+        return switch (tokenType) {
+            case ACCESS -> authProperties.jwt().accessTokenExpiration();
+            case REFRESH -> authProperties.jwt().refreshTokenExpiration();
+        };
     }
 
     public record TokenClaims(
