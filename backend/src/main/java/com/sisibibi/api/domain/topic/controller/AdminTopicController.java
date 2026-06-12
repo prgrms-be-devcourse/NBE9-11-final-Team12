@@ -20,14 +20,14 @@ public class AdminTopicController {
 
   private final TopicService topicService;
 
-  @PostMapping("/{topicId}/approve")
-  public ResponseEntity<ApiResponse<TopicCreateRes>> createPendingTopic(
+  @PostMapping
+  public ResponseEntity<ApiResponse<TopicCreateRes>> createApprovedTopic(
       @Valid @RequestBody CreateTopicReq request
   ) {
     TopicCreateRes result = topicService.createApprovedTopic(request);
 
     return ResponseEntity
         .status(HttpStatus.CREATED)
-        .body(ApiResponse.created("토픽 후보가 저장되었습니다.", result));
+        .body(ApiResponse.created("선택한 후보 토픽이 승인되어 저장되었습니다.", result));
   }
 }
