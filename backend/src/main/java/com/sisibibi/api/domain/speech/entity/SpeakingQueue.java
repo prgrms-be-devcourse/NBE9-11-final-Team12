@@ -24,6 +24,10 @@ import java.time.LocalDateTime;
                 @Index(
                         name = "idx_speaking_queue_room_status_order",
                         columnList = "room_id, status, queue_order"
+                ),
+                @Index(
+                        name = "idx_speaking_queue_status_assigned_room",
+                        columnList = "status, assigned_at, room_id"
                 )
         },
         uniqueConstraints = {

@@ -36,14 +36,14 @@ class StageControllerTest {
     void requestSpeakingTurn_returnsCreatedResponse() throws Exception {
         StageRequestRes response = new StageRequestRes(
                 1L,
-                SpeakingQueueStatus.WAITING,
+                SpeakingQueueStatus.ASSIGNED,
                 1L,
                 10L,
                 1,
                 LocalDateTime.of(2026, 6, 12, 10, 0),
                 null,
                 LocalDateTime.of(2026, 6, 12, 10, 0),
-                LocalDateTime.of(2026, 6, 12, 10, 5)
+                null
         );
 
         given(speakingQueueService.requestSpeakingTurn(1L, 10L))
@@ -57,7 +57,7 @@ class StageControllerTest {
                 .andExpect(jsonPath("$.data.roomId").value(1))
                 .andExpect(jsonPath("$.data.userId").value(10))
                 .andExpect(jsonPath("$.data.queueOrder").value(1))
-                .andExpect(jsonPath("$.data.status").value("WAITING"));
+                .andExpect(jsonPath("$.data.status").value("ASSIGNED"));
     }
 
     @Test

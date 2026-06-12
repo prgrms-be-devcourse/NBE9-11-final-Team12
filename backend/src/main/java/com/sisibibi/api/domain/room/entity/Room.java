@@ -40,6 +40,10 @@ public class Room {
         return new Room(RoomStatus.CLOSED);
     }
 
+    public void close() {
+        this.status = RoomStatus.CLOSED;
+    }
+
     public void validateOpen() {
         if (status != RoomStatus.OPEN) {
             throw new CustomException(ErrorCode.ROOM_NOT_OPEN);

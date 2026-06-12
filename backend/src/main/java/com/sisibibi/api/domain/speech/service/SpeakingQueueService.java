@@ -51,16 +51,26 @@ public class SpeakingQueueService {
             throw new CustomException(ErrorCode.SPEAKING_REQUEST_ALREADY_EXISTS);
         }
 
+        LocalDateTime now = LocalDateTime.now();
         int nextQueueOrder = speakingQueueRepository.findMaxQueueOrderByRoomId(roomId) + 1;
 
         SpeakingQueue speakingQueue = SpeakingQueue.create(
                 roomId,
                 userId,
                 nextQueueOrder,
-                LocalDateTime.now()
+                now
         );
 
-        return StageRequestRes.from(speakingQueueRepository.save(speakingQueue));
+        SpeakingQueue savedSpeakingQueue = speakingQueueRepository.save(speakingQueue);
+
+        if (!speakingQueueRepository.existsByRoomIdAndStatus(
+                roomId,
+                SpeakingQueueStatus.ASSIGNED
+        )) {
+            assignFirstWaitingSpeaker(roomId, now);
+        }
+
+        return StageRequestRes.from(savedSpeakingQueue);
     }
 
     @Transactional(readOnly = true)
@@ -107,22 +117,14 @@ public class SpeakingQueueService {
             throw new CustomException(ErrorCode.CURRENT_SPEAKER_ALREADY_EXISTS);
         }
 
-        SpeakingQueue nextSpeaker = speakingQueueRepository
-                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
-                        roomId,
-                        SpeakingQueueStatus.WAITING
-                )
-                .orElseThrow(() -> new CustomException(ErrorCode.SPEAKING_QUEUE_EMPTY));
-
-        nextSpeaker.assign(LocalDateTime.now());
+        SpeakingQueue nextSpeaker = assignFirstWaitingSpeaker(roomId, LocalDateTime.now());
 
         return CurrentSpeakerRes.from(nextSpeaker);
     }
 
     @Transactional
     public StageCompleteRes completeCurrentSpeaker(Long roomId, Long userId) {
-        Room room = lockRoom(roomId);
-        room.validateOpen();
+        lockRoom(roomId);
 
         SpeakingQueue currentSpeaker = speakingQueueRepository
                 .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
@@ -139,16 +141,7 @@ public class SpeakingQueueService {
 
         currentSpeaker.complete(now);
 
-        SpeakingQueue nextSpeaker = speakingQueueRepository
-                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
-                        roomId,
-                        SpeakingQueueStatus.WAITING
-                )
-                .orElse(null);
-
-        if (nextSpeaker != null) {
-            nextSpeaker.assign(now);
-        }
+        SpeakingQueue nextSpeaker = assignFirstWaitingSpeakerIfExists(roomId, now);
 
         return StageCompleteRes.of(roomId, currentSpeaker, nextSpeaker);
     }
@@ -159,8 +152,7 @@ public class SpeakingQueueService {
             LocalDateTime now,
             Duration speakingTimeLimit
     ) {
-        Room room = lockRoom(roomId);
-        room.validateOpen();
+        lockRoom(roomId);
 
         SpeakingQueue currentSpeaker = speakingQueueRepository
                 .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
@@ -169,22 +161,14 @@ public class SpeakingQueueService {
                 )
                 .orElseThrow(() -> new CustomException(ErrorCode.CURRENT_SPEAKER_NOT_FOUND));
 
-        if (currentSpeaker.getAssignedAt().plus(speakingTimeLimit).isAfter(now)) {
+        if (currentSpeaker.getAssignedAt() == null
+                || currentSpeaker.getAssignedAt().plus(speakingTimeLimit).isAfter(now)) {
             throw new CustomException(ErrorCode.SPEAKING_TIME_NOT_EXPIRED);
         }
 
         currentSpeaker.expire(now);
 
-        SpeakingQueue nextSpeaker = speakingQueueRepository
-                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
-                        roomId,
-                        SpeakingQueueStatus.WAITING
-                )
-                .orElse(null);
-
-        if (nextSpeaker != null) {
-            nextSpeaker.assign(now);
-        }
+        SpeakingQueue nextSpeaker = assignFirstWaitingSpeakerIfExists(roomId, now);
 
         return StageExpireRes.of(roomId, currentSpeaker, nextSpeaker);
     }
@@ -209,5 +193,36 @@ public class SpeakingQueueService {
     private User getUser(Long userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+    }
+
+    private SpeakingQueue assignFirstWaitingSpeaker(Long roomId, LocalDateTime assignedAt) {
+        SpeakingQueue nextSpeaker = speakingQueueRepository
+                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+                        roomId,
+                        SpeakingQueueStatus.WAITING
+                )
+                .orElseThrow(() -> new CustomException(ErrorCode.SPEAKING_QUEUE_EMPTY));
+
+        nextSpeaker.assign(assignedAt);
+
+        return nextSpeaker;
+    }
+
+    private SpeakingQueue assignFirstWaitingSpeakerIfExists(
+            Long roomId,
+            LocalDateTime assignedAt
+    ) {
+        SpeakingQueue nextSpeaker = speakingQueueRepository
+                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+                        roomId,
+                        SpeakingQueueStatus.WAITING
+                )
+                .orElse(null);
+
+        if (nextSpeaker != null) {
+            nextSpeaker.assign(assignedAt);
+        }
+
+        return nextSpeaker;
     }
 }

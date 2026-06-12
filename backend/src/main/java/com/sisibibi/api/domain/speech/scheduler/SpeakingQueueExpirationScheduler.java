@@ -21,7 +21,7 @@ import java.util.List;
 @ConditionalOnProperty(
         name = "app.speaking.expiration.enabled",
         havingValue = "true",
-        matchIfMissing = true
+        matchIfMissing = false
 )
 public class SpeakingQueueExpirationScheduler {
 
