@@ -1,7 +1,7 @@
 package com.sisibibi.api.domain.speech.controller;
 
 import com.sisibibi.api.ApiApplication;
-import com.sisibibi.api.domain.speech.dto.response.SpeechCreateResponse;
+import com.sisibibi.api.domain.speech.dto.response.SpeechCreateRes;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.service.SpeechService;
@@ -40,7 +40,7 @@ class SpeechControllerTest {
     @Test
     void createMainOpinion_returnsCreated() throws Exception {
         given(speechService.createMainOpinion(any(), any(), any()))
-                .willReturn(new SpeechCreateResponse(
+                .willReturn(new SpeechCreateRes(
                         10L,
                         1L,
                         2L,

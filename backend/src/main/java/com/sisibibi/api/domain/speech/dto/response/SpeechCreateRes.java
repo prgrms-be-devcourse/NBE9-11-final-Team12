@@ -4,7 +4,7 @@ import com.sisibibi.api.domain.speech.entity.Speech;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 
-public record SpeechCreateResponse(
+public record SpeechCreateRes(
         Long speechId,
         Long roomId,
         Long userId,
@@ -13,8 +13,8 @@ public record SpeechCreateResponse(
         SpeechStatus status
 ) {
 
-    public static SpeechCreateResponse from(Speech speech) {
-        return new SpeechCreateResponse(
+    public static SpeechCreateRes from(Speech speech) {
+        return new SpeechCreateRes(
                 speech.getId(),
                 speech.getRoomId(),
                 speech.getUserId(),

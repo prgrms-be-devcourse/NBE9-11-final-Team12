@@ -1,7 +1,7 @@
 package com.sisibibi.api.domain.speech.controller;
 
-import com.sisibibi.api.domain.speech.dto.request.SpeechCreateRequest;
-import com.sisibibi.api.domain.speech.dto.response.SpeechCreateResponse;
+import com.sisibibi.api.domain.speech.dto.request.SpeechCreateReq;
+import com.sisibibi.api.domain.speech.dto.response.SpeechCreateRes;
 import com.sisibibi.api.domain.speech.service.SpeechService;
 import com.sisibibi.api.global.response.ApiResponse;
 import jakarta.validation.Valid;
@@ -26,12 +26,12 @@ public class SpeechController {
     private final SpeechService speechService;
 
     @PostMapping
-    public ResponseEntity<ApiResponse<SpeechCreateResponse>> createMainOpinion(
+    public ResponseEntity<ApiResponse<SpeechCreateRes>> createMainOpinion(
             @PathVariable @Positive Long roomId,
             @RequestHeader("X-User-Id") @Positive Long userId,
-            @Valid @RequestBody SpeechCreateRequest request
+            @Valid @RequestBody SpeechCreateReq request
     ) {
-        SpeechCreateResponse response = speechService.createMainOpinion(
+        SpeechCreateRes response = speechService.createMainOpinion(
                 roomId,
                 userId,
                 request.toCommand()

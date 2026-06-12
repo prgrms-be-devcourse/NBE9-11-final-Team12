@@ -6,7 +6,7 @@ import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
 import com.sisibibi.api.domain.speech.dto.request.SpeechCreateCommand;
-import com.sisibibi.api.domain.speech.dto.response.SpeechCreateResponse;
+import com.sisibibi.api.domain.speech.dto.response.SpeechCreateRes;
 import com.sisibibi.api.domain.speech.entity.Speech;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.global.exception.CustomException;
@@ -24,7 +24,7 @@ public class SpeechService {
     private final SpeechRepository speechRepository;
 
     @Transactional
-    public SpeechCreateResponse createMainOpinion(
+    public SpeechCreateRes createMainOpinion(
             Long roomId,
             Long userId,
             SpeechCreateCommand command
@@ -53,6 +53,6 @@ public class SpeechService {
                 command.stance()
         );
 
-        return SpeechCreateResponse.from(speechRepository.save(speech));
+        return SpeechCreateRes.from(speechRepository.save(speech));
     }
 }

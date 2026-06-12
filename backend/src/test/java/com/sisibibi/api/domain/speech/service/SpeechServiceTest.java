@@ -6,7 +6,7 @@ import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
 import com.sisibibi.api.domain.speech.dto.request.SpeechCreateCommand;
-import com.sisibibi.api.domain.speech.dto.response.SpeechCreateResponse;
+import com.sisibibi.api.domain.speech.dto.response.SpeechCreateRes;
 import com.sisibibi.api.domain.speech.entity.Speech;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.entity.SpeechStatus;
@@ -57,7 +57,7 @@ class SpeechServiceTest {
         given(speechRepository.save(org.mockito.ArgumentMatchers.any(Speech.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
 
-        SpeechCreateResponse response = speechService.createMainOpinion(
+        SpeechCreateRes response = speechService.createMainOpinion(
                 roomId,
                 userId,
                 new SpeechCreateCommand("근거가 있는 찬성 의견입니다.", SpeechStance.PRO)
