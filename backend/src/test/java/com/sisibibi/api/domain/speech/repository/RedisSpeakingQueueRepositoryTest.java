@@ -25,7 +25,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 @DataRedisTest
-@Testcontainers(disabledWithoutDocker = true)
+@Testcontainers
 @Import(RedisSpeakingQueueRepository.class)
 class RedisSpeakingQueueRepositoryTest {
 
