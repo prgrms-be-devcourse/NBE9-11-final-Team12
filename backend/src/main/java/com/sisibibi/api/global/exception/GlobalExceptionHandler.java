@@ -7,6 +7,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
@@ -22,6 +23,8 @@ public class GlobalExceptionHandler {
     private static final String ROOMS_TOPIC_ID_UNIQUE_CONSTRAINT = "uk_rooms_topic_id";
     private static final String ROOM_PARTICIPANTS_ROOM_USER_UNIQUE_CONSTRAINT =
             "uk_room_participants_room_id_user_id";
+    private static final String SPEAKING_QUEUE_ROOM_ORDER_UNIQUE_CONSTRAINT =
+            "uk_speaking_queue_room_order";
     private static final String PAYMENTS_ORDER_ID_UNIQUE_CONSTRAINT = "uk_payments_order_id";
 
     @ExceptionHandler(CustomException.class)
@@ -81,6 +84,27 @@ public class GlobalExceptionHandler {
         ErrorCode errorCode = ErrorCode.INVALID_INPUT_VALUE;
 
         log.warn("Request parameter validation failed. errors={}", errors);
+
+        return ResponseEntity
+                .status(errorCode.getStatus())
+                .body(ApiResponse.error(
+                        errorCode.getStatus(),
+                        errorCode.name(),
+                        errorCode.getMessage(),
+                        errors
+                ));
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    protected ResponseEntity<ApiResponse<Map<String, String>>> handleMissingServletRequestParameterException(
+            MissingServletRequestParameterException e
+    ) {
+        Map<String, String> errors = new LinkedHashMap<>();
+        errors.put(e.getParameterName(), "필수 요청 파라미터입니다.");
+
+        ErrorCode errorCode = ErrorCode.INVALID_INPUT_VALUE;
+
+        log.warn("Required request parameter is missing. errors={}", errors);
 
         return ResponseEntity
                 .status(errorCode.getStatus())
@@ -156,6 +180,10 @@ public class GlobalExceptionHandler {
 
         if (isConstraintViolation(e, ROOM_PARTICIPANTS_ROOM_USER_UNIQUE_CONSTRAINT)) {
             return ErrorCode.ROOM_ALREADY_PARTICIPATED;
+        }
+
+        if (isConstraintViolation(e, SPEAKING_QUEUE_ROOM_ORDER_UNIQUE_CONSTRAINT)) {
+            return ErrorCode.SPEAKING_QUEUE_ORDER_CONFLICT;
         }
 
         if (isConstraintViolation(e, PAYMENTS_ORDER_ID_UNIQUE_CONSTRAINT)) {
