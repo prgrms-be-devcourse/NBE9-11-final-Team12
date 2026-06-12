@@ -1,7 +1,7 @@
 package com.sisibibi.api.domain.speech.controller;
 
 import com.sisibibi.api.ApiApplication;
-import com.sisibibi.api.domain.speech.dto.SpeechCreateResponse;
+import com.sisibibi.api.domain.speech.dto.response.SpeechCreateResponse;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.service.SpeechService;

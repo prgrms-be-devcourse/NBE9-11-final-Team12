@@ -1,7 +1,7 @@
 package com.sisibibi.api.domain.speech.controller;
 
-import com.sisibibi.api.domain.speech.dto.SpeechCreateRequest;
-import com.sisibibi.api.domain.speech.dto.SpeechCreateResponse;
+import com.sisibibi.api.domain.speech.dto.request.SpeechCreateRequest;
+import com.sisibibi.api.domain.speech.dto.response.SpeechCreateResponse;
 import com.sisibibi.api.domain.speech.service.SpeechService;
 import com.sisibibi.api.global.response.ApiResponse;
 import jakarta.validation.Valid;
