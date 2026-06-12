@@ -1,13 +1,15 @@
 package com.sisibibi.api.domain.topic.service;
 
+import com.sisibibi.api.domain.topic.dto.request.CreateTopicReq;
+import com.sisibibi.api.domain.topic.dto.response.topicRes.TopicCreateRes;
 import com.sisibibi.api.domain.topic.dto.response.topicRes.TopicDetailRes;
-import com.sisibibi.api.domain.topic.entity.TopicStatus;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
 import com.sisibibi.api.domain.topic.entity.Topic;
+import com.sisibibi.api.domain.topic.entity.TopicStatus;
 import com.sisibibi.api.domain.topic.repository.TopicRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -21,5 +23,19 @@ public class TopicService {
         .orElseThrow(() -> new CustomException(ErrorCode.TOPIC_NOT_FOUND));
 
     return TopicDetailRes.from(topic);
+  }
+
+  @Transactional
+  public TopicCreateRes createPendingTopic(CreateTopicReq request) {
+    Topic topic = Topic.pending(
+        request.title().trim(),
+        request.description(),
+        request.category().trim(),
+        request.sourceUrl()
+    );
+
+    Topic savedTopic = topicRepository.save(topic);
+
+    return TopicCreateRes.from(savedTopic);
   }
 }
