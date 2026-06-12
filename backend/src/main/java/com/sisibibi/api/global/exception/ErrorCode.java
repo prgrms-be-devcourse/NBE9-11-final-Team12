@@ -13,6 +13,10 @@ public enum ErrorCode {
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증이 필요합니다."),
     FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다."),
+    INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "유효하지 않은 인증 토큰입니다."),
+    EXPIRED_TOKEN(HttpStatus.UNAUTHORIZED, "만료된 인증 토큰입니다."),
+    REFRESH_TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "Refresh Token을 찾을 수 없습니다."),
+    REFRESH_TOKEN_REUSED(HttpStatus.UNAUTHORIZED, "이미 사용된 Refresh Token입니다."),
 
     // User
     DUPLICATE_EMAIL(HttpStatus.CONFLICT, "이미 사용 중인 이메일입니다."),
@@ -27,6 +31,7 @@ public enum ErrorCode {
     TOPIC_ALREADY_REJECTED(HttpStatus.BAD_REQUEST, "이미 반려된 토픽입니다."),
     TOPIC_NOT_APPROVED(HttpStatus.BAD_REQUEST, "승인되지 않은 토픽입니다."),
     DUPLICATE_TOPIC(HttpStatus.CONFLICT, "이미 존재하는 토픽입니다."),
+    TOPIC_HAS_ROOM(HttpStatus.CONFLICT, "토론방과 연결된 토픽은 삭제할 수 없습니다."),
     NAVER_SEARCH_CONFIG_MISSING(HttpStatus.INTERNAL_SERVER_ERROR, "네이버 검색 API 설정이 누락되었습니다."),
     NAVER_SEARCH_FAILED(HttpStatus.BAD_GATEWAY, "네이버 뉴스 검색에 실패했습니다."),
     SERPAPI_CONFIG_MISSING(HttpStatus.INTERNAL_SERVER_ERROR, "SerpApi 설정이 누락되었습니다."),

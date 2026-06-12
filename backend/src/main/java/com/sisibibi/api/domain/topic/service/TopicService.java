@@ -1,5 +1,6 @@
 package com.sisibibi.api.domain.topic.service;
 
+import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.topic.dto.request.CreateTopicReq;
 import com.sisibibi.api.domain.topic.dto.request.UpdateTopicReq;
 import com.sisibibi.api.domain.topic.dto.response.topicRes.TopicCreateRes;
@@ -18,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class TopicService {
   private final TopicRepository topicRepository;
+  private final RoomRepository roomRepository;
 
   public TopicDetailRes getTopicDetail(Long topicId) {
     Topic topic = topicRepository.findByIdAndStatus(topicId, TopicStatus.APPROVED)
@@ -53,5 +55,17 @@ public class TopicService {
     );
 
     return TopicDetailRes.from(topic);
+  }
+
+  @Transactional
+  public void deleteTopic(Long topicId) {
+    Topic topic = topicRepository.findById(topicId)
+        .orElseThrow(() -> new CustomException(ErrorCode.TOPIC_NOT_FOUND));
+
+    if (roomRepository.existsByTopicId(topicId)) {
+      throw new CustomException(ErrorCode.TOPIC_HAS_ROOM);
+    }
+
+    topicRepository.delete(topic);
   }
 }

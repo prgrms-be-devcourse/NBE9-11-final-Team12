@@ -2,8 +2,9 @@ package com.sisibibi.api.domain.topic.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
+import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.topic.dto.request.UpdateTopicReq;
 import com.sisibibi.api.domain.topic.dto.response.topicRes.TopicDetailRes;
 import com.sisibibi.api.domain.topic.entity.Topic;
@@ -25,6 +26,10 @@ class TopicServiceTest {
 
   @InjectMocks
   private TopicService topicService;
+
+  @Mock
+  private RoomRepository roomRepository;
+
 
   @Test
   void updateTopic_updatesTopicFields() {
@@ -56,5 +61,42 @@ class TopicServiceTest {
         .isInstanceOf(CustomException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.TOPIC_NOT_FOUND);
+  }
+
+  @Test
+  void deleteTopic_deletesTopic_whenTopicHasNoRoom() {
+    Topic topic = Topic.approved("제목", "설명", "IT", "https://example.com");
+
+    when(topicRepository.findById(1L)).thenReturn(Optional.of(topic));
+    when(roomRepository.existsByTopicId(1L)).thenReturn(false);
+
+    topicService.deleteTopic(1L);
+
+    verify(topicRepository).delete(topic);
+  }
+
+  @Test
+  void deleteTopic_throwsTopicNotFound_whenTopicDoesNotExist() {
+    when(topicRepository.findById(999L)).thenReturn(Optional.empty());
+
+    assertThatThrownBy(() -> topicService.deleteTopic(999L))
+        .isInstanceOf(CustomException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.TOPIC_NOT_FOUND);
+  }
+
+  @Test
+  void deleteTopic_throwsTopicHasRoom_whenTopicIsLinkedToRoom() {
+    Topic topic = Topic.approved("제목", "설명", "IT", "https://example.com");
+
+    when(topicRepository.findById(1L)).thenReturn(Optional.of(topic));
+    when(roomRepository.existsByTopicId(1L)).thenReturn(true);
+
+    assertThatThrownBy(() -> topicService.deleteTopic(1L))
+        .isInstanceOf(CustomException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.TOPIC_HAS_ROOM);
+
+    verify(topicRepository, never()).delete(topic);
   }
 }

@@ -39,4 +39,13 @@ public class AdminTopicController {
 
     return ResponseEntity.ok(ApiResponse.ok("토픽 수정이 완료되었습니다.", result));
   }
+
+  @DeleteMapping("/{topicId}")
+  public ResponseEntity<ApiResponse<Void>> deleteTopic(
+      @PathVariable Long topicId
+  ) {
+    topicService.deleteTopic(topicId);
+
+    return ResponseEntity.ok(ApiResponse.okMessage("토픽 삭제가 완료되었습니다."));
+  }
 }
