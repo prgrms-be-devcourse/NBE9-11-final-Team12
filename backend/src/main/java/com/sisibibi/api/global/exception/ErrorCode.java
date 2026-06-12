@@ -47,6 +47,7 @@ public enum ErrorCode {
     // Speaking Queue
     SPEAKING_REQUEST_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 발언권을 신청한 상태입니다."),
     SPEAKING_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "발언권 신청 내역이 존재하지 않습니다."),
+    SPEAKING_QUEUE_ORDER_CONFLICT(HttpStatus.CONFLICT, "발언권 대기 순번 충돌이 발생했습니다. 다시 시도해주세요."),
     SPEAKING_QUEUE_EMPTY(HttpStatus.BAD_REQUEST, "발언권 대기열이 비어 있습니다."),
     CURRENT_SPEAKER_ALREADY_EXISTS(HttpStatus.CONFLICT, "현재 발언자가 이미 존재합니다."),
     CURRENT_SPEAKER_NOT_FOUND(HttpStatus.NOT_FOUND, "현재 발언자가 존재하지 않습니다."),
