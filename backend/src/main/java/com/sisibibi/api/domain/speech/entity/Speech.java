@@ -98,6 +98,11 @@ public class Speech {
         this.updatedAt = LocalDateTime.now();
     }
 
+    public void updateLink(String linkUrl) {
+        this.linkUrl = linkUrl;
+        this.updatedAt = LocalDateTime.now();
+    }
+
     public void softDelete() {
         LocalDateTime now = LocalDateTime.now();
         this.deleted = true;

@@ -272,4 +272,80 @@ class SpeechControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
     }
+
+    @Test
+    void updateSpeechLink_returnsOk() throws Exception {
+        given(speechService.updateSpeechLink(10L, 2L, "https://example.com/evidence"))
+                .willReturn(new SpeechDetailRes(
+                        10L,
+                        1L,
+                        2L,
+                        "의견",
+                        SpeechStance.PRO,
+                        "https://example.com/evidence",
+                        null,
+                        SpeechStatus.READY,
+                        null,
+                        null,
+                        LocalDateTime.of(2026, 6, 12, 10, 0),
+                        LocalDateTime.of(2026, 6, 12, 12, 0)
+                ));
+
+        mockMvc.perform(patch("/api/v1/speeches/{speechId}/link", 10L)
+                        .header("X-User-Id", 2L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "linkUrl": "https://example.com/evidence"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("근거 링크 첨부가 완료되었습니다."))
+                .andExpect(jsonPath("$.data.linkUrl").value("https://example.com/evidence"));
+
+        verify(speechService).updateSpeechLink(10L, 2L, "https://example.com/evidence");
+    }
+
+    @Test
+    void updateSpeechLink_returnsBadRequest_whenLinkUrlIsBlank() throws Exception {
+        mockMvc.perform(patch("/api/v1/speeches/{speechId}/link", 10L)
+                        .header("X-User-Id", 2L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "linkUrl": " "
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"))
+                .andExpect(jsonPath("$.data.linkUrl").value("근거 링크는 비어 있을 수 없습니다."));
+    }
+
+    @Test
+    void updateSpeechLink_returnsBadRequest_whenLinkUrlIsInvalid() throws Exception {
+        mockMvc.perform(patch("/api/v1/speeches/{speechId}/link", 10L)
+                        .header("X-User-Id", 2L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "linkUrl": "example.com/evidence"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"))
+                .andExpect(jsonPath("$.data.linkUrl").value("올바른 링크 형식이어야 합니다."));
+    }
+
+    @Test
+    void updateSpeechLink_returnsUnauthorized_whenUserHeaderIsMissing() throws Exception {
+        mockMvc.perform(patch("/api/v1/speeches/{speechId}/link", 10L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "linkUrl": "https://example.com/evidence"
+                                }
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
 }

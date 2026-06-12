@@ -304,6 +304,68 @@ class SpeechServiceTest {
                 .isEqualTo(ErrorCode.SPEECH_NOT_EDITABLE);
     }
 
+    @Test
+    void updateSpeechLink_updatesOwnEditableSpeech() {
+        Speech speech = Speech.createMainOpinion(1L, 2L, "의견", SpeechStance.PRO);
+        given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
+
+        SpeechDetailRes response = speechService.updateSpeechLink(
+                3L,
+                2L,
+                "https://example.com/evidence"
+        );
+
+        assertThat(response.linkUrl()).isEqualTo("https://example.com/evidence");
+        assertThat(speech.getLinkUrl()).isEqualTo("https://example.com/evidence");
+    }
+
+    @Test
+    void updateSpeechLink_throwsSpeechNotFound_whenSpeechDoesNotExist() {
+        given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> speechService.updateSpeechLink(
+                3L,
+                2L,
+                "https://example.com/evidence"
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SPEECH_NOT_FOUND);
+    }
+
+    @Test
+    void updateSpeechLink_throwsAccessDenied_whenSpeechOwnerDoesNotMatch() {
+        Speech speech = org.mockito.Mockito.mock(Speech.class);
+        given(speech.getUserId()).willReturn(9L);
+        given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
+
+        assertThatThrownBy(() -> speechService.updateSpeechLink(
+                3L,
+                2L,
+                "https://example.com/evidence"
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SPEECH_ACCESS_DENIED);
+    }
+
+    @Test
+    void updateSpeechLink_throwsNotEditable_whenSpeechAlreadyCompleted() {
+        Speech speech = org.mockito.Mockito.mock(Speech.class);
+        given(speech.getUserId()).willReturn(2L);
+        given(speech.getStatus()).willReturn(SpeechStatus.COMPLETED);
+        given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
+
+        assertThatThrownBy(() -> speechService.updateSpeechLink(
+                3L,
+                2L,
+                "https://example.com/evidence"
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SPEECH_NOT_EDITABLE);
+    }
+
     private Speech mockSpeech(
             Long speechId,
             Long roomId,
