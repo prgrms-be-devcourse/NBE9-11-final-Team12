@@ -12,6 +12,7 @@ import com.sisibibi.api.domain.speech.dto.response.SpeechCursorPageRes;
 import com.sisibibi.api.domain.speech.dto.response.SpeechDetailRes;
 import com.sisibibi.api.domain.speech.dto.response.SpeechListRes;
 import com.sisibibi.api.domain.speech.entity.Speech;
+import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
@@ -86,7 +87,7 @@ public class SpeechService {
 
     @Transactional(readOnly = true)
     public SpeechDetailRes getSpeech(Long speechId) {
-        Speech speech = speechRepository.findById(speechId)
+        Speech speech = speechRepository.findByIdAndDeletedFalse(speechId)
                 .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_NOT_FOUND));
 
         return SpeechDetailRes.from(speech);
@@ -98,18 +99,34 @@ public class SpeechService {
             Long userId,
             SpeechUpdateCommand command
     ) {
-        Speech speech = speechRepository.findById(speechId)
+        Speech speech = speechRepository.findByIdAndDeletedFalse(speechId)
                 .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_NOT_FOUND));
 
         if (!speech.getUserId().equals(userId)) {
             throw new CustomException(ErrorCode.SPEECH_ACCESS_DENIED);
         }
 
-        if (speech.getStatus() == com.sisibibi.api.domain.speech.entity.SpeechStatus.COMPLETED) {
+        if (speech.getStatus() == SpeechStatus.COMPLETED) {
             throw new CustomException(ErrorCode.SPEECH_NOT_EDITABLE);
         }
 
         speech.updateMainOpinion(command.content(), command.stance());
         return SpeechDetailRes.from(speech);
+    }
+
+    @Transactional
+    public void deleteSpeech(Long speechId, Long userId) {
+        Speech speech = speechRepository.findByIdAndDeletedFalse(speechId)
+                .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_NOT_FOUND));
+
+        if (!speech.getUserId().equals(userId)) {
+            throw new CustomException(ErrorCode.SPEECH_ACCESS_DENIED);
+        }
+
+        if (speech.getStatus() == SpeechStatus.COMPLETED) {
+            throw new CustomException(ErrorCode.SPEECH_NOT_EDITABLE);
+        }
+
+        speech.softDelete();
     }
 }

@@ -65,6 +65,12 @@ public class Speech {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
+    @Column(name = "is_deleted", nullable = false)
+    private boolean deleted;
+
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
     private Speech(Long roomId, Long userId, String content, SpeechStance stance) {
         LocalDateTime now = LocalDateTime.now();
         this.roomId = roomId;
@@ -74,6 +80,7 @@ public class Speech {
         this.status = SpeechStatus.READY;
         this.createdAt = now;
         this.updatedAt = now;
+        this.deleted = false;
     }
 
     public static Speech createMainOpinion(
@@ -89,5 +96,12 @@ public class Speech {
         this.content = content;
         this.stance = stance;
         this.updatedAt = LocalDateTime.now();
+    }
+
+    public void softDelete() {
+        LocalDateTime now = LocalDateTime.now();
+        this.deleted = true;
+        this.deletedAt = now;
+        this.updatedAt = now;
     }
 }
