@@ -55,4 +55,16 @@ public class Topic {
     return topic;
   }
 
+  public void update(
+      String title,
+      String description,
+      String category,
+      String sourceUrl
+  ) {
+    this.title = title;
+    this.description = description;
+    this.category = category;
+    this.sourceUrl = sourceUrl;
+  }
+
 }

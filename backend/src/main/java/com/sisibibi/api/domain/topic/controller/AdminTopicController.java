@@ -1,17 +1,16 @@
 package com.sisibibi.api.domain.topic.controller;
 
 import com.sisibibi.api.domain.topic.dto.request.CreateTopicReq;
+import com.sisibibi.api.domain.topic.dto.request.UpdateTopicReq;
 import com.sisibibi.api.domain.topic.dto.response.topicRes.TopicCreateRes;
+import com.sisibibi.api.domain.topic.dto.response.topicRes.TopicDetailRes;
 import com.sisibibi.api.domain.topic.service.TopicService;
 import com.sisibibi.api.global.response.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequiredArgsConstructor
@@ -29,5 +28,15 @@ public class AdminTopicController {
     return ResponseEntity
         .status(HttpStatus.CREATED)
         .body(ApiResponse.created("선택한 후보 토픽이 승인되어 저장되었습니다.", result));
+  }
+
+  @PatchMapping("/{topicId}")
+  public ResponseEntity<ApiResponse<TopicDetailRes>> updateTopic(
+      @PathVariable Long topicId,
+      @Valid @RequestBody UpdateTopicReq request
+  ) {
+    TopicDetailRes result = topicService.updateTopic(topicId, request);
+
+    return ResponseEntity.ok(ApiResponse.ok("토픽 수정이 완료되었습니다.", result));
   }
 }
