@@ -12,6 +12,8 @@ import com.sisibibi.api.domain.topic.repository.TopicRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -72,11 +74,9 @@ public class TopicService {
     topicRepository.delete(topic);
   }
 
-  public List<TopicSummaryRes> getApprovedTopics() {
-    return topicRepository.findAllByStatusOrderByCreatedAtDesc(TopicStatus.APPROVED)
-        .stream()
-        .map(TopicSummaryRes::from)
-        .toList();
+  public Page<TopicSummaryRes> getApprovedTopics(Pageable pageable) {
+    return topicRepository.findAllByStatus(TopicStatus.APPROVED, pageable)
+        .map(TopicSummaryRes::from);
   }
 
 

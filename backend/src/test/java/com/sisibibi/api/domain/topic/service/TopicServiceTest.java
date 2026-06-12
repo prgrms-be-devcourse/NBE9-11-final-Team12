@@ -21,6 +21,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.*;
 
 @ExtendWith(MockitoExtension.class)
 class TopicServiceTest {
@@ -108,16 +109,18 @@ class TopicServiceTest {
   void getApprovedTopics_returnsApprovedTopicSummaries() {
     Topic firstTopic = Topic.approved("첫 번째 토픽", "설명1", "IT", "https://example.com/1");
     Topic secondTopic = Topic.approved("두 번째 토픽", "설명2", "경제", "https://example.com/2");
+    Pageable pageable = PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "createdAt"));
 
-    when(topicRepository.findAllByStatusOrderByCreatedAtDesc(TopicStatus.APPROVED))
-        .thenReturn(List.of(firstTopic, secondTopic));
+    when(topicRepository.findAllByStatus(TopicStatus.APPROVED, pageable))
+        .thenReturn(new PageImpl<>(List.of(firstTopic, secondTopic), pageable, 2));
 
-    List<TopicSummaryRes> result = topicService.getApprovedTopics();
+    Page<TopicSummaryRes> result = topicService.getApprovedTopics(pageable);
 
-    assertThat(result).hasSize(2);
-    assertThat(result.get(0).title()).isEqualTo("첫 번째 토픽");
-    assertThat(result.get(0).category()).isEqualTo("IT");
-    assertThat(result.get(1).title()).isEqualTo("두 번째 토픽");
-    assertThat(result.get(1).category()).isEqualTo("경제");
+    assertThat(result.getTotalElements()).isEqualTo(2);
+    assertThat(result.getContent()).hasSize(2);
+    assertThat(result.getContent().get(0).title()).isEqualTo("첫 번째 토픽");
+    assertThat(result.getContent().get(0).category()).isEqualTo("IT");
+    assertThat(result.getContent().get(1).title()).isEqualTo("두 번째 토픽");
+    assertThat(result.getContent().get(1).category()).isEqualTo("경제");
   }
 }
