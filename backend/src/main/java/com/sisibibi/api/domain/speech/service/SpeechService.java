@@ -129,4 +129,21 @@ public class SpeechService {
 
         speech.softDelete();
     }
+
+    @Transactional
+    public SpeechDetailRes updateSpeechLink(Long speechId, Long userId, String linkUrl) {
+        Speech speech = speechRepository.findByIdAndDeletedFalse(speechId)
+                .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_NOT_FOUND));
+
+        if (!speech.getUserId().equals(userId)) {
+            throw new CustomException(ErrorCode.SPEECH_ACCESS_DENIED);
+        }
+
+        if (speech.getStatus() == SpeechStatus.COMPLETED) {
+            throw new CustomException(ErrorCode.SPEECH_NOT_EDITABLE);
+        }
+
+        speech.updateLink(linkUrl);
+        return SpeechDetailRes.from(speech);
+    }
 }

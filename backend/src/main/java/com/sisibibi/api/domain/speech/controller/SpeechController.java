@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.speech.controller;
 
 import com.sisibibi.api.domain.speech.dto.request.SpeechCreateReq;
+import com.sisibibi.api.domain.speech.dto.request.SpeechLinkUpdateReq;
 import com.sisibibi.api.domain.speech.dto.request.SpeechUpdateReq;
 import com.sisibibi.api.domain.speech.dto.response.SpeechCreateRes;
 import com.sisibibi.api.domain.speech.dto.response.SpeechCursorPageRes;
@@ -93,5 +94,17 @@ public class SpeechController {
         speechService.deleteSpeech(speechId, userId);
 
         return ResponseEntity.ok(ApiResponse.okMessage("내 의견 삭제가 완료되었습니다."));
+    }
+
+    @PatchMapping("/speeches/{speechId}/link")
+    public ResponseEntity<ApiResponse<SpeechDetailRes>> updateSpeechLink(
+            @PathVariable @Positive Long speechId,
+            @RequestHeader("X-User-Id") @Positive Long userId,
+            @Valid @RequestBody SpeechLinkUpdateReq request
+    ) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                "근거 링크 첨부가 완료되었습니다.",
+                speechService.updateSpeechLink(speechId, userId, request.linkUrl())
+        ));
     }
 }
