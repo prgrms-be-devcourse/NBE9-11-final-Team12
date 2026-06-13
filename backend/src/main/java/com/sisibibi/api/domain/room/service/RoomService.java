@@ -36,7 +36,7 @@ public class RoomService {
     }
 
     Room room = Room.open(topic.getId(), topic.getTitle());
-    Room savedRoom = roomRepository.saveAndFlush(room);
+    Room savedRoom = roomRepository.save(room);
 
     return CreateRoomRes.from(savedRoom);
   }
