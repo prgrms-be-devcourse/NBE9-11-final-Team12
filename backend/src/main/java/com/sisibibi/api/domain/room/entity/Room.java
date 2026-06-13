@@ -11,6 +11,7 @@ import java.time.LocalDateTime;
 
 @Getter
 @Entity
+@EntityListeners(AuditingEntityListener.class)
 @Table(
     name = "rooms",
     uniqueConstraints = @UniqueConstraint(name = "uk_rooms_topic_id", columnNames = "topic_id")
