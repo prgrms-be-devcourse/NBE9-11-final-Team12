@@ -83,6 +83,20 @@ class KeywordProfanityDetectorTest {
                 .isTrue();
         assertThat(profanityDetector.containsProfanity("tlqkf"))
                 .isTrue();
+        assertThat(profanityDetector.containsProfanity("SsIbAl"))
+                .isTrue();
+        assertThat(profanityDetector.containsProfanity("qudtls"))
+                .isTrue();
+    }
+
+    @Test
+    void containsProfanity_returnsTrue_whenUnicodeOrRepeatedCharactersAreUsed() {
+        assertThat(profanityDetector.containsProfanity("시\u200B발"))
+                .isTrue();
+        assertThat(profanityDetector.containsProfanity("ㅅㅣㅂㅏㄹ"))
+                .isTrue();
+        assertThat(profanityDetector.containsProfanity("씨씨발"))
+                .isTrue();
     }
 
     @Test
@@ -106,6 +120,10 @@ class KeywordProfanityDetectorTest {
         assertThat(profanityDetector.containsProfanity("시123발점이라는 표현도 정상 문맥입니다."))
                 .isFalse();
         assertThat(profanityDetector.containsProfanity("2026년에는 123명이 참여했습니다."))
+                .isFalse();
+        assertThat(profanityDetector.containsProfanity("minimal design is important"))
+                .isFalse();
+        assertThat(profanityDetector.containsProfanity("ㅋㅋㅋㅋ 의견이 재미있네요"))
                 .isFalse();
     }
 
