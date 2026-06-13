@@ -2,10 +2,14 @@ package com.sisibibi.api.domain.speech.service;
 
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
+import com.sisibibi.api.domain.speech.dto.response.StageCompleteRes;
 import com.sisibibi.api.domain.speech.dto.response.CurrentSpeakerRes;
+import com.sisibibi.api.domain.speech.dto.response.StageExpireRes;
 import com.sisibibi.api.domain.speech.dto.response.StageQueueRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
+import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
+import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.domain.user.entity.User;
 import com.sisibibi.api.domain.user.repository.UserRepository;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -19,6 +23,8 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -43,11 +49,15 @@ class SpeakingQueueRdbLimitTest {
     private RoomRepository roomRepository;
 
     @Autowired
+    private SpeakingQueueRepository speakingQueueRepository;
+
+    @Autowired
     private UserRepository userRepository;
 
     @ParameterizedTest(name = "같은 방 동시 발언권 신청 한계 관찰: {0}건")
     @ValueSource(ints = {20, 50, 100})
     void hotRoomSpeakingRequests_observesRoomLockLimit(int requestCount) throws Exception {
+        clearSpeakingQueue();
         Long roomId = createOpenRoom();
         List<Long> userIds = createActiveUsers(requestCount);
 
@@ -76,6 +86,119 @@ class SpeakingQueueRdbLimitTest {
         assertThat(successes)
                 .extracting(StageRequestRes::queueOrder)
                 .containsExactlyInAnyOrderElementsOf(rangeClosed(1, requestCount));
+    }
+
+    @ParameterizedTest(name = "자동 부여 한계 관찰: 대기자 {0}명")
+    @ValueSource(ints = {10, 50, 100})
+    void autoGrantNextSpeaker_observesWaitingQueueLookupLimit(int waitingCount) {
+        clearSpeakingQueue();
+        Long roomId = createOpenRoom();
+        List<Long> userIds = createActiveUsers(waitingCount + 1);
+        Long currentSpeakerUserId = userIds.get(0);
+        Long expectedNextSpeakerUserId = userIds.get(1);
+
+        for (Long userId : userIds) {
+            speakingQueueService.requestSpeakingTurn(roomId, userId);
+        }
+
+        long startedAt = System.nanoTime();
+        StageCompleteRes result = speakingQueueService.completeCurrentSpeaker(
+                roomId,
+                currentSpeakerUserId
+        );
+        long elapsedNanos = System.nanoTime() - startedAt;
+
+        StageQueueRes waitingQueue = speakingQueueService.getWaitingQueue(roomId);
+        CurrentSpeakerRes currentSpeaker = speakingQueueService.getCurrentSpeaker(roomId);
+
+        printSingleOperationLimitSummary(
+                "자동 부여",
+                waitingCount,
+                elapsedNanos,
+                "completedUserId=" + result.completedSpeaker().userId()
+                        + ", nextSpeakerUserId=" + result.nextSpeaker().userId()
+                        + ", remainingWaitingCount=" + waitingQueue.items().size()
+        );
+
+        assertThat(result.completedSpeaker().status()).isEqualTo(SpeakingQueueStatus.COMPLETED);
+        assertThat(result.completedSpeaker().userId()).isEqualTo(currentSpeakerUserId);
+        assertThat(result.nextSpeaker()).isNotNull();
+        assertThat(result.nextSpeaker().status()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
+        assertThat(result.nextSpeaker().userId()).isEqualTo(expectedNextSpeakerUserId);
+        assertThat(currentSpeaker.userId()).isEqualTo(expectedNextSpeakerUserId);
+        assertThat(waitingQueue.items()).hasSize(waitingCount - 1);
+    }
+
+    @ParameterizedTest(name = "자동 만료 후보 조회 한계 관찰: 후보 room {0}개")
+    @ValueSource(ints = {10, 50, 100})
+    void expirationCandidatePolling_observesCandidateLookupLimit(int candidateRoomCount) {
+        clearSpeakingQueue();
+        LocalDateTime assignedAt = LocalDateTime.now().minusMinutes(10);
+        LocalDateTime expiresBefore = LocalDateTime.now().minusMinutes(5);
+        List<Long> roomIds = createExpiredAssignedQueues(candidateRoomCount, assignedAt);
+
+        long startedAt = System.nanoTime();
+        List<Long> candidateRoomIds = speakingQueueRepository
+                .findDistinctRoomIdsByStatusAndAssignedAtLessThanEqual(
+                        SpeakingQueueStatus.ASSIGNED,
+                        expiresBefore
+                );
+        long elapsedNanos = System.nanoTime() - startedAt;
+
+        printCandidateLookupLimitSummary(
+                "자동 만료 후보 조회",
+                candidateRoomCount,
+                candidateRoomIds.size(),
+                elapsedNanos
+        );
+
+        assertThat(candidateRoomIds).containsExactlyInAnyOrderElementsOf(roomIds);
+    }
+
+    @ParameterizedTest(name = "자동 만료 처리 한계 관찰: 후보 room {0}개")
+    @ValueSource(ints = {10, 50, 100})
+    void expireTimedOutSpeakers_observesExpirationProcessingLimit(int candidateRoomCount) {
+        clearSpeakingQueue();
+        List<ExpirationRoomFixture> fixtures = createExpirationRoomFixtures(candidateRoomCount);
+        LocalDateTime schedulerNow = LocalDateTime.now().plusMinutes(10);
+
+        long startedAt = System.nanoTime();
+        List<StageExpireRes> results = new ArrayList<>();
+
+        for (ExpirationRoomFixture fixture : fixtures) {
+            results.add(speakingQueueService.expireCurrentSpeakerIfTimedOut(
+                    fixture.roomId(),
+                    schedulerNow,
+                    Duration.ofMinutes(5)
+            ));
+        }
+
+        long elapsedNanos = System.nanoTime() - startedAt;
+
+        printBatchOperationLimitSummary(
+                "자동 만료 처리",
+                candidateRoomCount,
+                elapsedNanos,
+                "success=" + results.size() + ", failure=0"
+        );
+
+        assertThat(results).hasSize(candidateRoomCount);
+
+        for (int index = 0; index < candidateRoomCount; index++) {
+            StageExpireRes result = results.get(index);
+            ExpirationRoomFixture fixture = fixtures.get(index);
+            StageQueueRes waitingQueue = speakingQueueService.getWaitingQueue(fixture.roomId());
+            CurrentSpeakerRes currentSpeaker =
+                    speakingQueueService.getCurrentSpeaker(fixture.roomId());
+
+            assertThat(result.expiredSpeaker().userId()).isEqualTo(fixture.currentSpeakerUserId());
+            assertThat(result.expiredSpeaker().status()).isEqualTo(SpeakingQueueStatus.EXPIRED);
+            assertThat(result.nextSpeaker()).isNotNull();
+            assertThat(result.nextSpeaker().userId()).isEqualTo(fixture.nextSpeakerUserId());
+            assertThat(result.nextSpeaker().status()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
+            assertThat(currentSpeaker.userId()).isEqualTo(fixture.nextSpeakerUserId());
+            assertThat(waitingQueue.items()).isEmpty();
+        }
     }
 
     private <T> LimitRun<T> runConcurrently(
@@ -157,6 +280,64 @@ class SpeakingQueueRdbLimitTest {
         writeSummary(summary);
     }
 
+    private void printSingleOperationLimitSummary(
+            String scenario,
+            int waitingCount,
+            long elapsedNanos,
+            String extra
+    ) {
+        String summary = String.format(
+                "[RDB LIMIT TEST] scenario=%s, waitingCount=%d, elapsedMs=%d, %s%n",
+                scenario,
+                waitingCount,
+                TimeUnit.NANOSECONDS.toMillis(elapsedNanos),
+                extra
+        );
+
+        writeSummary(summary);
+    }
+
+    private void printCandidateLookupLimitSummary(
+            String scenario,
+            int candidateRoomCount,
+            int foundRoomCount,
+            long elapsedNanos
+    ) {
+        String summary = String.format(
+                "[RDB LIMIT TEST] scenario=%s, candidateRoomCount=%d, "
+                        + "foundRoomCount=%d, elapsedMs=%d%n",
+                scenario,
+                candidateRoomCount,
+                foundRoomCount,
+                TimeUnit.NANOSECONDS.toMillis(elapsedNanos)
+        );
+
+        writeSummary(summary);
+    }
+
+    private void printBatchOperationLimitSummary(
+            String scenario,
+            int candidateRoomCount,
+            long elapsedNanos,
+            String extra
+    ) {
+        long totalElapsedMillis = TimeUnit.NANOSECONDS.toMillis(elapsedNanos);
+        long averagePerRoomMillis = candidateRoomCount == 0
+                ? 0
+                : totalElapsedMillis / candidateRoomCount;
+        String summary = String.format(
+                "[RDB LIMIT TEST] scenario=%s, candidateRoomCount=%d, "
+                        + "totalElapsedMs=%d, avgPerRoomMs=%d, %s%n",
+                scenario,
+                candidateRoomCount,
+                totalElapsedMillis,
+                averagePerRoomMillis,
+                extra
+        );
+
+        writeSummary(summary);
+    }
+
     private void writeSummary(String summary) {
         String summaryFile = System.getProperty("concurrency.summary.file");
 
@@ -202,6 +383,10 @@ class SpeakingQueueRdbLimitTest {
         return roomRepository.save(Room.open()).getId();
     }
 
+    private Long createActiveUser() {
+        return userRepository.save(User.active()).getId();
+    }
+
     private List<Long> createActiveUsers(int count) {
         List<Long> userIds = new ArrayList<>();
 
@@ -210,6 +395,54 @@ class SpeakingQueueRdbLimitTest {
         }
 
         return userIds;
+    }
+
+    private List<Long> createExpiredAssignedQueues(
+            int candidateRoomCount,
+            LocalDateTime assignedAt
+    ) {
+        List<Long> roomIds = new ArrayList<>();
+
+        for (int index = 0; index < candidateRoomCount; index++) {
+            Long roomId = createOpenRoom();
+            Long userId = createActiveUser();
+            SpeakingQueue speakingQueue = SpeakingQueue.create(
+                    roomId,
+                    userId,
+                    1,
+                    assignedAt.minusMinutes(1)
+            );
+            speakingQueue.assign(assignedAt);
+            speakingQueueRepository.save(speakingQueue);
+            roomIds.add(roomId);
+        }
+
+        return roomIds;
+    }
+
+    private List<ExpirationRoomFixture> createExpirationRoomFixtures(int candidateRoomCount) {
+        List<ExpirationRoomFixture> fixtures = new ArrayList<>();
+
+        for (int index = 0; index < candidateRoomCount; index++) {
+            Long roomId = createOpenRoom();
+            Long currentSpeakerUserId = createActiveUser();
+            Long nextSpeakerUserId = createActiveUser();
+
+            speakingQueueService.requestSpeakingTurn(roomId, currentSpeakerUserId);
+            speakingQueueService.requestSpeakingTurn(roomId, nextSpeakerUserId);
+
+            fixtures.add(new ExpirationRoomFixture(
+                    roomId,
+                    currentSpeakerUserId,
+                    nextSpeakerUserId
+            ));
+        }
+
+        return fixtures;
+    }
+
+    private void clearSpeakingQueue() {
+        speakingQueueRepository.deleteAll();
     }
 
     @FunctionalInterface
@@ -292,5 +525,12 @@ class SpeakingQueueRdbLimitTest {
 
             return sortedValues.get(safeIndex);
         }
+    }
+
+    private record ExpirationRoomFixture(
+            Long roomId,
+            Long currentSpeakerUserId,
+            Long nextSpeakerUserId
+    ) {
     }
 }
