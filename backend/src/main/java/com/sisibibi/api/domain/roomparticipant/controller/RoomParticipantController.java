@@ -34,6 +34,7 @@ public class RoomParticipantController {
       throw new CustomException(ErrorCode.UNAUTHORIZED);
     }
 
+
     RoomParticipantRes response = roomParticipantService.joinRoom(roomId, principal.userId());
 
     return ResponseEntity
