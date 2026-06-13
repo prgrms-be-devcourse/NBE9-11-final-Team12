@@ -1,13 +1,6 @@
 package com.sisibibi.api.domain.room.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -16,7 +9,10 @@ import java.time.LocalDateTime;
 
 @Getter
 @Entity
-@Table(name = "rooms")
+@Table(
+    name = "rooms",
+    uniqueConstraints = @UniqueConstraint(name = "uk_rooms_topic_id", columnNames = "topic_id")
+)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Room {
 
@@ -24,7 +20,7 @@ public class Room {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "topic_id", nullable = false, unique = true)
+    @Column(name = "topic_id", nullable = false)
     private Long topicId;
 
     @Column(nullable = false)
@@ -42,4 +38,16 @@ public class Room {
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    public static Room open(Long topicId, String title) {
+        LocalDateTime now = LocalDateTime.now();
+
+        Room room = new Room();
+        room.topicId = topicId;
+        room.title = title;
+        room.status = RoomStatus.OPEN;
+        room.startedAt = now;
+        room.createdAt = now;
+        return room;
+    }
 }
