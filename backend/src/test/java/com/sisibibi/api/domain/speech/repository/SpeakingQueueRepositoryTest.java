@@ -22,16 +22,17 @@ class SpeakingQueueRepositoryTest {
 
     @Test
     void save_persistsWaitingRequest() {
-        SpeakingQueue saved = speakingQueueRepository.saveAndFlush(
-                SpeakingQueue.waiting(
-                        1L,
-                        7L,
-                        1,
-                        LocalDateTime.of(2026, 6, 12, 11, 30)
-                )
+        SpeakingQueue request = SpeakingQueue.waiting(
+                1L,
+                7L,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
         );
+        SpeakingQueue saved = speakingQueueRepository.saveAndFlush(request);
+        saved.assignQueueOrderFromId();
+        speakingQueueRepository.flush();
 
         assertThat(saved.getId()).isNotNull();
+        assertThat(saved.getQueueOrder()).isEqualTo(Math.toIntExact(saved.getId()));
         assertThat(speakingQueueRepository.existsByRoomIdAndUserIdAndStatusIn(
                 1L,
                 7L,
@@ -40,7 +41,7 @@ class SpeakingQueueRepositoryTest {
     }
 
     @Test
-    void save_rejectsDuplicateQueueOrderInSameRoom() {
+    void save_rejectsDuplicateActiveRequestInSameRoom() {
         speakingQueueRepository.saveAndFlush(
                 SpeakingQueue.waiting(
                         1L,
@@ -53,8 +54,8 @@ class SpeakingQueueRepositoryTest {
         assertThatThrownBy(() -> speakingQueueRepository.saveAndFlush(
                 SpeakingQueue.waiting(
                         1L,
-                        8L,
-                        1,
+                        7L,
+                        2,
                         LocalDateTime.of(2026, 6, 12, 11, 31)
                 )
         )).isInstanceOf(DataIntegrityViolationException.class);

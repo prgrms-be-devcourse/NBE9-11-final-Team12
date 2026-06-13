@@ -34,6 +34,10 @@ import lombok.NoArgsConstructor;
                 @UniqueConstraint(
                         name = "uk_speaking_queue_room_order",
                         columnNames = {"room_id", "queue_order"}
+                ),
+                @UniqueConstraint(
+                        name = "uk_speaking_queue_room_user_active",
+                        columnNames = {"room_id", "user_id", "active_request"}
                 )
         }
 )
@@ -49,8 +53,11 @@ public class SpeakingQueue {
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
-    @Column(name = "queue_order", nullable = false)
-    private int queueOrder;
+    @Column(name = "queue_order")
+    private Integer queueOrder;
+
+    @Column(name = "active_request")
+    private Boolean activeRequest;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -65,14 +72,21 @@ public class SpeakingQueue {
     private SpeakingQueue(
             Long roomId,
             Long userId,
-            int queueOrder,
             LocalDateTime requestedAt
     ) {
         this.roomId = roomId;
         this.userId = userId;
-        this.queueOrder = queueOrder;
+        this.activeRequest = true;
         this.status = SpeakingQueueStatus.WAITING;
         this.requestedAt = requestedAt;
+    }
+
+    public static SpeakingQueue waiting(
+            Long roomId,
+            Long userId,
+            LocalDateTime requestedAt
+    ) {
+        return new SpeakingQueue(roomId, userId, requestedAt);
     }
 
     public static SpeakingQueue waiting(
@@ -81,11 +95,22 @@ public class SpeakingQueue {
             int queueOrder,
             LocalDateTime requestedAt
     ) {
-        return new SpeakingQueue(roomId, userId, queueOrder, requestedAt);
+        SpeakingQueue speakingQueue = new SpeakingQueue(roomId, userId, requestedAt);
+        speakingQueue.queueOrder = queueOrder;
+        return speakingQueue;
+    }
+
+    public void assignQueueOrderFromId() {
+        if (id == null) {
+            throw new IllegalStateException("Speaking queue must be persisted first.");
+        }
+
+        this.queueOrder = Math.toIntExact(id);
     }
 
     public void cancel(LocalDateTime canceledAt) {
         this.status = SpeakingQueueStatus.CANCELED;
         this.canceledAt = canceledAt;
+        this.activeRequest = null;
     }
 }
