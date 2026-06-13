@@ -19,7 +19,8 @@ public class HttpUrlValidator implements ConstraintValidator<HttpUrl, String> {
             String scheme = uri.getScheme();
             String host = uri.getHost();
 
-            return ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))
+            return uri.isAbsolute()
+                    && ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))
                     && host != null
                     && !host.isBlank();
         } catch (IllegalArgumentException e) {
