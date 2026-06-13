@@ -1,0 +1,50 @@
+package com.sisibibi.api.domain.roomparticipant.service;
+
+
+import com.sisibibi.api.domain.roomparticipant.dto.response.RoomParticipantRes;
+import com.sisibibi.api.domain.room.entity.Room;
+import com.sisibibi.api.domain.room.entity.RoomStatus;
+import com.sisibibi.api.domain.room.repository.RoomRepository;
+import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipant;
+import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
+import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
+import com.sisibibi.api.global.exception.CustomException;
+import com.sisibibi.api.global.exception.ErrorCode;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class RoomParticipantService {
+
+  private final RoomRepository roomRepository;
+  private final RoomParticipantRepository roomParticipantRepository;
+
+  @Transactional
+  public RoomParticipantRes joinRoom(Long roomId, Long userId) {
+    Room room = roomRepository.findById(roomId)
+        .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+    if (room.getStatus() != RoomStatus.OPEN) {
+      throw new CustomException(ErrorCode.ROOM_CLOSED);
+    }
+
+    RoomParticipant participant = roomParticipantRepository
+        .findByRoomIdAndUserId(roomId, userId)
+        .map(existingParticipant -> {
+          if (existingParticipant.getStatus() == RoomParticipantStatus.JOINED) {
+            throw new CustomException(ErrorCode.ROOM_ALREADY_PARTICIPATED);
+          }
+
+          existingParticipant.rejoin();
+          return existingParticipant;
+        })
+        .orElseGet(() -> roomParticipantRepository.save(
+            RoomParticipant.join(roomId, userId)
+        ));
+
+    return RoomParticipantRes.from(participant);
+  }
+}
