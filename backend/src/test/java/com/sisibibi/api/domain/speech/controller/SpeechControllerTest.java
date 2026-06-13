@@ -8,6 +8,8 @@ import com.sisibibi.api.domain.speech.dto.response.SpeechListRes;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.service.SpeechService;
+import com.sisibibi.api.global.exception.CustomException;
+import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.exception.GlobalExceptionHandler;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -120,6 +122,26 @@ class SpeechControllerTest {
                                 """))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    void createMainOpinion_returnsBadRequest_whenContentContainsProfanity() throws Exception {
+        given(speechService.createMainOpinion(any(), any(), any()))
+                .willThrow(new CustomException(ErrorCode.SPEECH_CONTENT_CONTAINS_PROFANITY));
+
+        mockMvc.perform(post("/api/v1/rooms/{roomId}/speeches", 1L)
+                        .header("X-User-Id", 2L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "content": "욕설이 포함된 의견",
+                                  "stance": "PRO"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SPEECH_CONTENT_CONTAINS_PROFANITY"))
+                .andExpect(jsonPath("$.message")
+                        .value("욕설 또는 비속어가 포함된 의견은 등록할 수 없습니다."));
     }
 
     @Test
