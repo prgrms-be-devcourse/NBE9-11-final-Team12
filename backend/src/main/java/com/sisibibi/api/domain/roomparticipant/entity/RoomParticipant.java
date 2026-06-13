@@ -1,20 +1,21 @@
 package com.sisibibi.api.domain.roomparticipant.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.AccessLevel;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
+@Getter
 @Entity
-@Table(name = "room_participants")
+@Table(
+    name = "room_participants",
+    uniqueConstraints = @UniqueConstraint(
+        name = "uk_room_participants_room_id_user_id",
+        columnNames = {"room_id", "user_id"}
+    )
+)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class RoomParticipant {
 
@@ -37,4 +38,20 @@ public class RoomParticipant {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private RoomParticipantStatus status;
+
+    public static RoomParticipant join(Long roomId, Long userId) {
+        RoomParticipant participant = new RoomParticipant();
+        participant.roomId = roomId;
+        participant.userId = userId;
+        participant.joinedAt = LocalDateTime.now();
+        participant.leftAt = null;
+        participant.status = RoomParticipantStatus.JOINED;
+        return participant;
+    }
+
+    public void rejoin() {
+        this.joinedAt = LocalDateTime.now();
+        this.leftAt = null;
+        this.status = RoomParticipantStatus.JOINED;
+    }
 }
