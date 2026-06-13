@@ -36,8 +36,38 @@ public class KeywordProfanityDetector implements ProfanityDetector {
             return false;
         }
 
-        String normalizedContent = removeAllowedPhrases(normalize(content));
-        return blockedTerms.stream().anyMatch(normalizedContent::contains);
+        return createNormalizedCandidates(content).stream()
+                .map(this::removeAllowedPhrases)
+                .anyMatch(this::containsBlockedTerm);
+    }
+
+    private Set<String> createNormalizedCandidates(String content) {
+        String normalizedContent = normalize(content);
+        String contentWithoutDigits = normalizedContent.replaceAll("\\p{N}", "");
+
+        Set<String> candidates = new LinkedHashSet<>();
+        candidates.add(normalizedContent);
+        candidates.add(contentWithoutDigits);
+        candidates.add(normalizeCommonEvasions(contentWithoutDigits));
+        return candidates;
+    }
+
+    private String normalizeCommonEvasions(String content) {
+        return content
+                .replace("tlqkf", "시발")
+                .replace("sibal", "시발")
+                .replace("sipal", "시팔")
+                .replace("niㅇh", "니애")
+                .replace("niᄋh", "니애")
+                .replace("ni애", "니애")
+                .replace("ㅇh", "애")
+                .replace("ᄋh", "애")
+                .replace("ni", "니")
+                .replace("mi", "미");
+    }
+
+    private boolean containsBlockedTerm(String content) {
+        return blockedTerms.stream().anyMatch(content::contains);
     }
 
     private String removeAllowedPhrases(String content) {

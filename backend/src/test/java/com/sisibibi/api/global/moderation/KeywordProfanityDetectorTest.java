@@ -68,6 +68,24 @@ class KeywordProfanityDetectorTest {
     }
 
     @Test
+    void containsProfanity_returnsTrue_whenDigitsAreInsertedInsideProfanity() {
+        assertThat(profanityDetector.containsProfanity("시123발"))
+                .isTrue();
+        assertThat(profanityDetector.containsProfanity("ㅅ1ㅂ"))
+                .isTrue();
+    }
+
+    @Test
+    void containsProfanity_returnsTrue_whenKoreanAndRomanizedEvasionAreMixed() {
+        assertThat(profanityDetector.containsProfanity("niㅇh미"))
+                .isTrue();
+        assertThat(profanityDetector.containsProfanity("sibal"))
+                .isTrue();
+        assertThat(profanityDetector.containsProfanity("tlqkf"))
+                .isTrue();
+    }
+
+    @Test
     void containsProfanity_returnsTrue_forSexualHarassmentPhrases() {
         assertThat(profanityDetector.containsProfanity("너 가슴 빨아"))
                 .isTrue();
@@ -84,6 +102,10 @@ class KeywordProfanityDetectorTest {
         assertThat(profanityDetector.containsProfanity("상대 의견의 근거가 부족합니다."))
                 .isFalse();
         assertThat(profanityDetector.containsProfanity("프로젝트의 시발점입니다."))
+                .isFalse();
+        assertThat(profanityDetector.containsProfanity("시123발점이라는 표현도 정상 문맥입니다."))
+                .isFalse();
+        assertThat(profanityDetector.containsProfanity("2026년에는 123명이 참여했습니다."))
                 .isFalse();
     }
 
