@@ -6,16 +6,22 @@ import com.sisibibi.api.domain.speech.report.entity.SpeechReportReason;
 import com.sisibibi.api.domain.speech.report.entity.SpeechReportStatus;
 import com.sisibibi.api.domain.speech.report.service.SpeechReportService;
 import com.sisibibi.api.global.exception.GlobalExceptionHandler;
+import com.sisibibi.api.global.security.AuthPrincipal;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
@@ -39,6 +45,11 @@ class SpeechReportControllerTest {
     @MockitoBean
     private SpeechReportService speechReportService;
 
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
     @Test
     void createReport_returnsCreated() throws Exception {
         given(speechReportService.createReport(any(), any(), any()))
@@ -51,7 +62,7 @@ class SpeechReportControllerTest {
                 ));
 
         mockMvc.perform(post("/api/v1/speeches/{speechId}/reports", 10L)
-                        .header("X-User-Id", 20L)
+                        .with(authPrincipal(20L))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -72,7 +83,7 @@ class SpeechReportControllerTest {
     @Test
     void createReport_returnsBadRequest_whenReasonIsMissing() throws Exception {
         mockMvc.perform(post("/api/v1/speeches/{speechId}/reports", 10L)
-                        .header("X-User-Id", 20L)
+                        .with(authPrincipal(20L))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -87,7 +98,7 @@ class SpeechReportControllerTest {
     @Test
     void createReport_returnsBadRequest_whenReasonIsInvalid() throws Exception {
         mockMvc.perform(post("/api/v1/speeches/{speechId}/reports", 10L)
-                        .header("X-User-Id", 20L)
+                        .with(authPrincipal(20L))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -103,7 +114,7 @@ class SpeechReportControllerTest {
         String description = "a".repeat(501);
 
         mockMvc.perform(post("/api/v1/speeches/{speechId}/reports", 10L)
-                        .header("X-User-Id", 20L)
+                        .with(authPrincipal(20L))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -118,7 +129,7 @@ class SpeechReportControllerTest {
     }
 
     @Test
-    void createReport_returnsUnauthorized_whenUserHeaderIsMissing() throws Exception {
+    void createReport_returnsUnauthorized_whenPrincipalIsMissing() throws Exception {
         mockMvc.perform(post("/api/v1/speeches/{speechId}/reports", 10L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -128,5 +139,20 @@ class SpeechReportControllerTest {
                                 """))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    private UsernamePasswordAuthenticationToken authToken(Long userId) {
+        return new UsernamePasswordAuthenticationToken(
+                new AuthPrincipal(userId, "user@example.com", "USER"),
+                null,
+                List.of()
+        );
+    }
+
+    private RequestPostProcessor authPrincipal(Long userId) {
+        return request -> {
+            SecurityContextHolder.getContext().setAuthentication(authToken(userId));
+            return request;
+        };
     }
 }
