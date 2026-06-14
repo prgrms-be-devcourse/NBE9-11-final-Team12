@@ -1,0 +1,439 @@
+name: deploy
+env:
+  IMAGE_NAME: sisibibi-api
+  CONTAINER_1_NAME: app1_1
+  CONTAINER_2_NAME: app1_2
+  CONTAINER_PORT: 8080
+  EC2_INSTANCE_TAG_NAME: team12-ec2-1
+  DOCKER_NETWORK: common
+  NPM_BASE_URL: http://127.0.0.1:81
+
+on:
+  push:
+    paths:
+      - ".github/workflows/**"
+      - "backend/src/**"
+      - "backend/build.gradle.kts"
+      - "backend/Dockerfile"
+    branches:
+      - main
+
+# 권한 최소화/명시화
+permissions:
+  contents: write # 태그/릴리즈
+  packages: write # GHCR 푸시
+
+jobs:
+  makeTagAndRelease:
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.create_tag.outputs.new_tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create Tag
+        id: create_tag
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.create_tag.outputs.new_tag }}
+          release_name: Release ${{ steps.create_tag.outputs.new_tag }}
+          body: ${{ steps.create_tag.outputs.changelog }}
+          draft: false
+          prerelease: false
+
+
+  buildImageAndPush:
+    name: 도커 이미지 빌드와 푸시
+    needs: makeTagAndRelease
+    runs-on: ubuntu-latest
+    outputs:
+      owner_lc: ${{ steps.export_owner.outputs.owner_lc }}
+      image_name: ${{ steps.export_image.outputs.image_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Docker Buildx 설치
+        uses: docker/setup-buildx-action@v2
+
+      - name: 레지스트리 로그인
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: set lower case owner name
+        id: export_owner
+        run: |
+          OWNER_LC="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "owner_lc=$OWNER_LC" >> $GITHUB_OUTPUT
+
+      - name: export image name
+        id: export_image
+        run: echo "image_name=${{ env.IMAGE_NAME }}" >> $GITHUB_OUTPUT
+
+      - name: 빌드 앤 푸시
+        uses: docker/build-push-action@v3
+        with:
+          context: backend
+          push: true
+          cache-from: type=registry,ref=ghcr.io/${{ steps.export_owner.outputs.owner_lc }}/${{ steps.export_image.outputs.image_name }}:cache
+          cache-to: type=registry,ref=ghcr.io/${{ steps.export_owner.outputs.owner_lc }}/${{ steps.export_image.outputs.image_name }}:cache,mode=max
+          tags: |
+            ghcr.io/${{ steps.export_owner.outputs.owner_lc }}/${{ steps.export_image.outputs.image_name }}:${{ needs.makeTagAndRelease.outputs.tag_name }}
+            ghcr.io/${{ steps.export_owner.outputs.owner_lc }}/${{ steps.export_image.outputs.image_name }}:latest
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [ buildImageAndPush ]
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ secrets.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: 인스턴스 ID 가져오기
+        id: get_instance_id
+        run: |
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=${{ env.EC2_INSTANCE_TAG_NAME }}" "Name=instance-state-name,Values=running" \
+            --query "Reservations[].Instances[].InstanceId" \
+            --output text)
+          
+          [[ -n "$INSTANCE_ID" && "$INSTANCE_ID" != "None" ]] || {
+            echo "No running instance found"
+            exit 1
+          }
+          
+          echo "INSTANCE_ID=$INSTANCE_ID" >> "$GITHUB_ENV"
+          echo "$INSTANCE_ID"
+
+      - name: .env base64 인코딩
+        env:
+          DOT_ENV: ${{ secrets.DOT_ENV }}
+        run: |
+          echo "DOT_ENV_B64=$(printf '%s' "$DOT_ENV" | base64 -w0)" >> "$GITHUB_ENV"
+
+      - name: AWS SSM Blue/Green 배포
+        run: |
+          DEPLOY_SCRIPT=$(cat << 'SCRIPT_EOF'
+            set -Eeuo pipefail
+          
+            SCRIPT_TS="$(date +%Y%m%d_%H%M%S)"
+            LOG="/tmp/ssm-blue-green-${SCRIPT_TS}.log"
+          
+            exec > >(awk '{ fflush(); print strftime("[%Y-%m-%d %H:%M:%S]"), $0 }' | tee -a "$LOG")
+            exec 2> >(awk '{ fflush(); print strftime("[%Y-%m-%d %H:%M:%S]"), $0 }' | tee -a "$LOG" >&2)
+          
+            echo "===== Blue/Green Deploy Start ====="
+          
+            # EC2 /etc/environment 로드
+            # PASSWORD_1, APP_1_DOMAIN 등이 여기 있어야 함
+            set -a
+            if [[ -f /etc/environment ]]; then
+              while IFS='=' read -r key value; do
+                [[ -z "$key" || "$key" =~ ^# ]] && continue
+                printf -v "$key" '%s' "$value"
+              done < /etc/environment
+            fi
+            set +a
+          
+            IMAGE="ghcr.io/${{ needs.buildImageAndPush.outputs.owner_lc }}/${{ needs.buildImageAndPush.outputs.image_name }}:latest"
+          
+            SLOT1="${{ env.CONTAINER_1_NAME }}"
+            SLOT2="${{ env.CONTAINER_2_NAME }}"
+            PORT_IN="${{ env.CONTAINER_PORT }}"
+            NET="${{ env.DOCKER_NETWORK }}"
+            NPM_BASE_URL="${{ env.NPM_BASE_URL }}"
+            HEALTH_ENDPOINT="/actuator/health"
+          
+            echo "IMAGE=$IMAGE"
+            echo "SLOT1=$SLOT1"
+            echo "SLOT2=$SLOT2"
+            echo "PORT_IN=$PORT_IN"
+            echo "NET=$NET"
+            echo "NPM_BASE_URL=$NPM_BASE_URL"
+          
+            [[ -n "${PASSWORD_1:-}" ]] || {
+              echo "PASSWORD_1 is empty. Check EC2 /etc/environment"
+              exit 1
+            }
+          
+            [[ -n "${APP_1_DOMAIN:-}" ]] || {
+              echo "APP_1_DOMAIN is empty. Check EC2 /etc/environment"
+              exit 1
+            }
+          
+            [[ -n "${NPM_EMAIL:-}" ]] || {
+              echo "NPM_EMAIL is empty. Check EC2 /etc/environment"
+              exit 1
+            }
+            [[ -n "${NPM_PASSWORD:-}" ]] || {
+              echo "NPM_PASSWORD is empty. Check EC2 /etc/environment" 
+              exit 1 
+            }
+          
+          
+            docker network inspect "$NET" >/dev/null 2>&1 || {
+              echo "Docker network '$NET' not found"
+              exit 1
+            }
+          
+            docker pull "$IMAGE"
+          
+            # GitHub Secret DOT_ENV를 EC2의 /tmp/.env로 생성
+            printf '%s' "${{ env.DOT_ENV_B64 }}" | base64 -d > /tmp/.env
+            chmod 600 /tmp/.env
+            cp /tmp/.env "/tmp/.env.${SCRIPT_TS}"
+          
+            # NPMplus 로그인
+            COOKIE_JAR="/tmp/npm_cookies.txt"
+          
+           # NPMplus 로그인
+              TOKEN=$(curl -sk \
+              -X POST "$NPM_BASE_URL/api/tokens" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -nc --arg id "${NPM_EMAIL:-}" --arg pw "${NPM_PASSWORD:-}" '{identity:$id, secret:$pw}')" \
+              | jq -r '.token')
+          
+              [[ -n "$TOKEN" && "$TOKEN" != "null" ]] || {
+              echo "NPMplus login failed. token is empty"
+              exit 1
+            }
+          
+              echo "NPMplus login success"
+          
+            # APP_1_DOMAIN에 해당하는 proxy host 찾기
+            PROXY_ID=$(curl -sk -H "Authorization: Bearer $TOKEN" \
+              "$NPM_BASE_URL/api/nginx/proxy-hosts" \
+              | jq ".[] | select(.domain_names[]==\"${APP_1_DOMAIN}\") | .id" \
+              | head -n 1)
+          
+            # 없으면 proxy host 생성
+            if [[ -z "$PROXY_ID" || "$PROXY_ID" == "null" ]]; then
+              echo "Proxy host not found for $APP_1_DOMAIN. Creating..."
+          
+              PROXY_ID=$(curl -sk -H "Authorization: Bearer $TOKEN" \
+                -X POST "$NPM_BASE_URL/api/nginx/proxy-hosts" \
+                -H "Content-Type: application/json" \
+                -d "$(jq -nc \
+                  --arg domain "$APP_1_DOMAIN" \
+                  --arg host "$SLOT1" \
+                  --argjson port "$PORT_IN" \
+                  '{
+                    domain_names: [$domain],
+                    forward_scheme: "http",
+                    forward_host: $host,
+                    forward_port: $port,
+                    access_list_id: 0,
+                    certificate_id: 0,
+                    ssl_forced: false,
+                    http2_support: true,
+                    hsts_enabled: false,
+                    hsts_subdomains: false,
+                    block_exploits: false,
+                    caching_enabled: false,
+                    allow_websocket_upgrade: true,
+                    advanced_config: "",
+                    locations: [
+                      {
+                        path: "/sse/",
+                        forward_scheme: "http",
+                        forward_host: $host,
+                        forward_port: $port,
+                        npmplus_proxy_response_buffering: true
+                      }
+                    ],
+                    meta: {
+                      letsencrypt_agree: false,
+                      dns_challenge: false
+                    }
+                  }')" | jq '.id')
+          
+              [[ -n "$PROXY_ID" && "$PROXY_ID" != "null" ]] || {
+                echo "Failed to create proxy host"
+                exit 1
+              }
+          
+              echo "Created proxy host. PROXY_ID=$PROXY_ID"
+            fi
+          
+            # 현재 NPMplus가 바라보는 컨테이너 확인
+            CURRENT_HOST=$(curl -sk -H "Authorization: Bearer $TOKEN" \
+              "$NPM_BASE_URL/api/nginx/proxy-hosts/$PROXY_ID" \
+              | jq -r '.forward_host')
+          
+            echo "CURRENT_HOST=${CURRENT_HOST:-none}"
+          
+            # blue/green 결정
+            if [[ "${CURRENT_HOST:-}" == "$SLOT1" ]]; then
+              BLUE="$SLOT1"
+              GREEN="$SLOT2"
+            elif [[ "${CURRENT_HOST:-}" == "$SLOT2" ]]; then
+              BLUE="$SLOT2"
+              GREEN="$SLOT1"
+            else
+              BLUE="none"
+              GREEN="$SLOT1"
+            fi
+          
+            echo "BLUE=$BLUE"
+            echo "GREEN=$GREEN"
+          
+            # 새 컨테이너 실행
+            docker rm -f "$GREEN" >/dev/null 2>&1 || true
+          
+            echo "Starting new container: $GREEN"
+          
+            docker run -d \
+            --name "$GREEN" \
+            --restart unless-stopped \
+            --network "$NET" \
+            --env-file /tmp/.env \
+            -e TZ=Asia/Seoul \
+            -e SPRING_PROFILES_ACTIVE=prod \
+            -v /gen:/gen \
+            "$IMAGE"
+          
+            # 헬스체크
+            echo "Health check: $GREEN"
+          
+            TIMEOUT=120
+            INTERVAL=3
+            ELAPSED=0
+          
+            sleep 8
+            ELAPSED=$((ELAPSED + 8))
+          
+            CONTAINER_IP=$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$GREEN")
+          
+            while (( ELAPSED < TIMEOUT )); do
+              CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+                "http://${CONTAINER_IP}:${PORT_IN}${HEALTH_ENDPOINT}" || echo 000)
+          
+              if [[ "$CODE" == "200" ]]; then
+                echo "$GREEN is healthy"
+                break
+              fi
+          
+              echo "Waiting for health... HTTP=$CODE"
+              sleep "$INTERVAL"
+              ELAPSED=$((ELAPSED + INTERVAL))
+            done
+          
+            if [[ "${CODE:-000}" != "200" ]]; then
+              echo "$GREEN health check failed"
+              docker logs --tail=200 "$GREEN" || true
+              docker rm -f "$GREEN" || true
+              exit 1
+            fi
+          
+            # NPMplus 프록시 전환
+            echo "Switching NPMplus upstream to $GREEN:$PORT_IN"
+          
+            CURRENT_CFG=$(curl -sk -H "Authorization: Bearer $TOKEN" \
+              "$NPM_BASE_URL/api/nginx/proxy-hosts/$PROXY_ID")
+          
+            NEW_CFG=$(echo "$CURRENT_CFG" | jq \
+            --arg host "$GREEN" \
+            --argjson port "$PORT_IN" \
+            '{
+              domain_names,
+              forward_scheme,
+              forward_host: $host,
+              forward_port: $port,
+              access_list_id,
+              certificate_id,
+              ssl_forced,
+              caching_enabled,
+              block_exploits,
+              advanced_config,
+              allow_websocket_upgrade,
+              http2_support,
+              hsts_enabled,
+              hsts_subdomains,
+              meta,
+              locations
+            }')
+          
+            SWITCH_CODE=$(curl -sk -H "Authorization: Bearer $TOKEN" \
+              -o /dev/null \
+              -w "%{http_code}" \
+              -X PUT "$NPM_BASE_URL/api/nginx/proxy-hosts/$PROXY_ID" \
+              -H "Content-Type: application/json" \
+              -d "$NEW_CFG")
+          
+            [[ "$SWITCH_CODE" == "200" ]] || {
+              echo "NPMplus switch failed. HTTP=$SWITCH_CODE"
+              exit 1
+            }
+          
+            echo "NPMplus switched to $GREEN"
+          
+            # 이전 컨테이너 제거
+            if [[ "$BLUE" != "none" ]]; then
+              echo "Removing old container: $BLUE"
+              docker stop "$BLUE" >/dev/null 2>&1 || true
+              docker rm "$BLUE" >/dev/null 2>&1 || true
+            fi
+          
+            docker image prune -f || true
+          
+            echo "Deployment complete. Current container: $GREEN"
+          SCRIPT_EOF
+          )
+          
+          PARAMS=$(jq -nc --arg s "$DEPLOY_SCRIPT" '{"commands":[$s]}')
+          
+          COMMAND_ID=$(aws ssm send-command \
+            --region "${{ secrets.AWS_REGION }}" \
+            --instance-ids "${{ env.INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --parameters "$PARAMS" \
+            --query "Command.CommandId" \
+            --output text)
+          
+          echo "SSM Command ID: $COMMAND_ID"
+          
+          WAIT_MAX=900
+          WAIT_INTERVAL=10
+          WAIT_ELAPSED=0
+          
+          while (( WAIT_ELAPSED < WAIT_MAX )); do
+            CMD_STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "${{ env.INSTANCE_ID }}" \
+              --query 'Status' \
+              --output text 2>/dev/null || echo "Unknown")
+          
+            echo "Current status: $CMD_STATUS"
+          
+            if [[ "$CMD_STATUS" != "InProgress" && "$CMD_STATUS" != "Pending" ]]; then
+              break
+            fi
+          
+            sleep "$WAIT_INTERVAL"
+            WAIT_ELAPSED=$((WAIT_ELAPSED + WAIT_INTERVAL))
+          done
+          
+          INVOCATION=$(aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${{ env.INSTANCE_ID }}")
+          
+          STATUS=$(echo "$INVOCATION" | jq -r '.Status')
+          
+          echo "===== stdout ====="
+          echo "$INVOCATION" | jq -r '.StandardOutputContent'
+          echo "===== stderr ====="
+          echo "$INVOCATION" | jq -r '.StandardErrorContent'
+          echo "=================="
+          echo "Status: $STATUS"
+          
+          [[ "$STATUS" == "Success" ]] || exit 1
