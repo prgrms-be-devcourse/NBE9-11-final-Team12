@@ -64,6 +64,8 @@ public enum ErrorCode {
     SPEECH_ACCESS_DENIED(HttpStatus.FORBIDDEN, "해당 발언에 접근할 권한이 없습니다."),
     SPEECH_NOT_EDITABLE(HttpStatus.BAD_REQUEST, "수정할 수 없는 발언 상태입니다."),
     SPEECH_CONTENT_CONTAINS_PROFANITY(HttpStatus.BAD_REQUEST, "욕설 또는 비속어가 포함된 의견은 등록할 수 없습니다."),
+    SPEECH_REPORT_SELF_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "본인의 의견은 신고할 수 없습니다."),
+    SPEECH_REPORT_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 신고한 의견입니다."),
     INVALID_STANCE(HttpStatus.BAD_REQUEST, "올바르지 않은 입장 값입니다."),
     IMAGE_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "이미지 업로드에 실패했습니다."),
 
