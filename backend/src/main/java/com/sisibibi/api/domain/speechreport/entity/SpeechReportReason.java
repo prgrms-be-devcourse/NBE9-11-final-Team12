@@ -6,5 +6,8 @@ public enum SpeechReportReason {
     SEXUAL_CONTENT,
     THREAT_VIOLENCE,
     SPAM,
+    MISINFORMATION,
+    PRIVACY_VIOLATION,
+    OFF_TOPIC,
     OTHER
 }

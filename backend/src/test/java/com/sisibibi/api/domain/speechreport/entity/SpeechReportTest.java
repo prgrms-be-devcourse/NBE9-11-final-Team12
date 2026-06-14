@@ -25,4 +25,13 @@ class SpeechReportTest {
         assertThat(report.getDescription()).isNull();
         assertThat(report.getStatus()).isEqualTo(SpeechReportStatus.PENDING);
     }
+
+    @Test
+    void reportReasons_includeFrontendModerationCategories() {
+        assertThat(SpeechReportReason.values()).contains(
+                SpeechReportReason.MISINFORMATION,
+                SpeechReportReason.PRIVACY_VIOLATION,
+                SpeechReportReason.OFF_TOPIC
+        );
+    }
 }

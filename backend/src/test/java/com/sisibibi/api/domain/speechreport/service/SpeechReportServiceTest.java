@@ -126,4 +126,20 @@ class SpeechReportServiceTest {
         verify(speechReportRepository, never())
                 .save(org.mockito.ArgumentMatchers.any(SpeechReport.class));
     }
+
+    @Test
+    void createReport_throwsDescriptionRequired_whenReasonIsOtherAndDescriptionIsBlank() {
+        assertThatThrownBy(() -> speechReportService.createReport(
+                10L,
+                20L,
+                new SpeechReportCreateCommand(SpeechReportReason.OTHER, " ")
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SPEECH_REPORT_DESCRIPTION_REQUIRED);
+
+        verify(speechRepository, never()).findByIdAndDeletedFalse(10L);
+        verify(speechReportRepository, never())
+                .save(org.mockito.ArgumentMatchers.any(SpeechReport.class));
+    }
 }

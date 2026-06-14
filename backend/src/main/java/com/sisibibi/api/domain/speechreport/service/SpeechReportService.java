@@ -5,6 +5,7 @@ import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speechreport.dto.command.SpeechReportCreateCommand;
 import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportCreateRes;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReport;
+import com.sisibibi.api.domain.speechreport.entity.SpeechReportReason;
 import com.sisibibi.api.domain.speechreport.repository.SpeechReportRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
@@ -25,6 +26,11 @@ public class SpeechReportService {
             Long reporterUserId,
             SpeechReportCreateCommand command
     ) {
+        if (command.reason() == SpeechReportReason.OTHER
+                && (command.description() == null || command.description().isBlank())) {
+            throw new CustomException(ErrorCode.SPEECH_REPORT_DESCRIPTION_REQUIRED);
+        }
+
         Speech speech = speechRepository.findByIdAndDeletedFalse(speechId)
                 .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_NOT_FOUND));
 
