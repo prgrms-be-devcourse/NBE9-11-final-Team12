@@ -51,9 +51,10 @@ abstract class SpeakingQueueRdbLimitTestSupport {
     @Autowired
     private UserRepository userRepository;
 
-    @ParameterizedTest(name = "같은 방 동시 발언권 신청 한계 관찰: {0}건")
+    @ParameterizedTest(name = "토픽 오픈 직후 신청 스파이크 관찰: {0}건")
     @ValueSource(ints = {20, 50, 100})
-    void hotRoomSpeakingRequests_observesRoomLockLimit(int requestCount) throws Exception {
+    void initialSpeakingRequestSpike_observesQueueOrderIssuanceLimit(int requestCount)
+            throws Exception {
         clearSpeakingQueue();
         Long roomId = createOpenRoom();
         List<Long> userIds = createActiveUsers(requestCount);
@@ -69,7 +70,7 @@ abstract class SpeakingQueueRdbLimitTestSupport {
         CurrentSpeakerRes currentSpeaker = speakingQueueService.getCurrentSpeaker(roomId);
 
         printLimitSummary(
-                "같은 방 동시 발언권 신청",
+                "토픽 오픈 직후 신청 스파이크",
                 requestCount,
                 run,
                 "assignedCount=1, waitingCount=" + waitingQueue.items().size()
