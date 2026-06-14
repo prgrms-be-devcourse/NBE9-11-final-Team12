@@ -1,7 +1,7 @@
-package com.sisibibi.api.domain.speechreport.repository;
+package com.sisibibi.api.domain.speech.report.repository;
 
-import com.sisibibi.api.domain.speechreport.entity.SpeechReport;
-import com.sisibibi.api.domain.speechreport.entity.SpeechReportReason;
+import com.sisibibi.api.domain.speech.report.entity.SpeechReport;
+import com.sisibibi.api.domain.speech.report.entity.SpeechReportReason;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;

@@ -1,4 +1,4 @@
-package com.sisibibi.api.domain.speechreport.entity;
+package com.sisibibi.api.domain.speech.report.entity;
 
 public enum SpeechReportReason {
     ABUSE_HARASSMENT,

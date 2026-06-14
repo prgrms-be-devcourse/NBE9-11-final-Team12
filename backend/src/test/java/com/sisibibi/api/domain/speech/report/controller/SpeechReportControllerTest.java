@@ -1,10 +1,10 @@
-package com.sisibibi.api.domain.speechreport.controller;
+package com.sisibibi.api.domain.speech.report.controller;
 
 import com.sisibibi.api.ApiApplication;
-import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportCreateRes;
-import com.sisibibi.api.domain.speechreport.entity.SpeechReportReason;
-import com.sisibibi.api.domain.speechreport.entity.SpeechReportStatus;
-import com.sisibibi.api.domain.speechreport.service.SpeechReportService;
+import com.sisibibi.api.domain.speech.report.dto.response.SpeechReportCreateRes;
+import com.sisibibi.api.domain.speech.report.entity.SpeechReportReason;
+import com.sisibibi.api.domain.speech.report.entity.SpeechReportStatus;
+import com.sisibibi.api.domain.speech.report.service.SpeechReportService;
 import com.sisibibi.api.global.exception.GlobalExceptionHandler;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

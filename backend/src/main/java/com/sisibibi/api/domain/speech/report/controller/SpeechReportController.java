@@ -1,8 +1,8 @@
-package com.sisibibi.api.domain.speechreport.controller;
+package com.sisibibi.api.domain.speech.report.controller;
 
-import com.sisibibi.api.domain.speechreport.dto.request.SpeechReportCreateReq;
-import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportCreateRes;
-import com.sisibibi.api.domain.speechreport.service.SpeechReportService;
+import com.sisibibi.api.domain.speech.report.dto.request.SpeechReportCreateReq;
+import com.sisibibi.api.domain.speech.report.dto.response.SpeechReportCreateRes;
+import com.sisibibi.api.domain.speech.report.service.SpeechReportService;
 import com.sisibibi.api.global.response.ApiResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;

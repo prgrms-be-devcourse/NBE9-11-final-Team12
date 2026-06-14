@@ -1,8 +1,8 @@
-package com.sisibibi.api.domain.speechreport.dto.response;
+package com.sisibibi.api.domain.speech.report.dto.response;
 
-import com.sisibibi.api.domain.speechreport.entity.SpeechReport;
-import com.sisibibi.api.domain.speechreport.entity.SpeechReportReason;
-import com.sisibibi.api.domain.speechreport.entity.SpeechReportStatus;
+import com.sisibibi.api.domain.speech.report.entity.SpeechReport;
+import com.sisibibi.api.domain.speech.report.entity.SpeechReportReason;
+import com.sisibibi.api.domain.speech.report.entity.SpeechReportStatus;
 
 import java.time.LocalDateTime;
 
