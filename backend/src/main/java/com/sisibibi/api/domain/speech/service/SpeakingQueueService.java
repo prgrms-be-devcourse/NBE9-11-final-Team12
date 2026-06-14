@@ -16,6 +16,7 @@ import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
@@ -35,7 +36,7 @@ public class SpeakingQueueService {
     private final RoomRepository roomRepository;
     private final UserRepository userRepository;
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public StageRequestRes requestSpeakingTurn(Long roomId, Long userId) {
         User user = getUser(userId);
         user.validateCanRequestSpeakingTurn();

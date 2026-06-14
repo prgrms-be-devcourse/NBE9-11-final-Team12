@@ -106,3 +106,21 @@ tasks.withType<Test> {
 		}
 	})
 }
+
+tasks.named<Test>("test") {
+	exclude("**/*IT.class")
+}
+
+tasks.register<Test>("rdbLimitMysqlTest") {
+	description = "Runs opt-in RDB limit tests against local MySQL."
+	group = "verification"
+
+	testClassesDirs = sourceSets.test.get().output.classesDirs
+	classpath = sourceSets.test.get().runtimeClasspath
+
+	useJUnitPlatform()
+	include("**/*IT.class")
+	systemProperty("rdb.limit.mysql.enabled", "true")
+
+	shouldRunAfter(tasks.named("test"))
+}
