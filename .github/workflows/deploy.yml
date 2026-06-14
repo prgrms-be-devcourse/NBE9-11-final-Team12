@@ -9,6 +9,15 @@ env:
   NPM_BASE_URL: http://127.0.0.1:81
 
 on:
+  pull_request:
+    branches:
+      - dev
+    paths:
+      - ".github/workflows/**"
+      - "backend/src/**"
+      - "backend/build.gradle.kts"
+      - "backend/Dockerfile"
+
   push:
     paths:
       - ".github/workflows/**"
