@@ -17,6 +17,7 @@ import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
+import com.sisibibi.api.global.moderation.ProfanityDetector;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -46,6 +47,9 @@ class SpeechServiceTest {
 
     @Mock
     private SpeechRepository speechRepository;
+
+    @Mock
+    private ProfanityDetector profanityDetector;
 
     @InjectMocks
     private SpeechService speechService;
@@ -132,6 +136,31 @@ class SpeechServiceTest {
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.ROOM_PARTICIPATION_REQUIRED);
+    }
+
+    @Test
+    void createMainOpinion_throwsProfanityDetected_whenContentContainsProfanity() {
+        Room room = org.mockito.Mockito.mock(Room.class);
+        given(room.getStatus()).willReturn(RoomStatus.OPEN);
+        given(roomRepository.findById(1L)).willReturn(Optional.of(room));
+        given(roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
+                1L,
+                2L,
+                RoomParticipantStatus.JOINED
+        )).willReturn(true);
+        given(profanityDetector.containsProfanity("욕설이 포함된 의견"))
+                .willReturn(true);
+
+        assertThatThrownBy(() -> speechService.createMainOpinion(
+                1L,
+                2L,
+                new SpeechCreateCommand("욕설이 포함된 의견", SpeechStance.PRO)
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SPEECH_CONTENT_CONTAINS_PROFANITY);
+
+        verify(speechRepository, never()).save(org.mockito.ArgumentMatchers.any(Speech.class));
     }
 
     @Test
@@ -256,6 +285,26 @@ class SpeechServiceTest {
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.SPEECH_NOT_EDITABLE);
+    }
+
+    @Test
+    void updateSpeech_throwsProfanityDetected_whenContentContainsProfanity() {
+        Speech speech = Speech.createMainOpinion(1L, 2L, "기존 의견", SpeechStance.CON);
+        given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
+        given(profanityDetector.containsProfanity("욕설이 포함된 수정 의견"))
+                .willReturn(true);
+
+        assertThatThrownBy(() -> speechService.updateSpeech(
+                3L,
+                2L,
+                new SpeechUpdateCommand("욕설이 포함된 수정 의견", SpeechStance.PRO)
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SPEECH_CONTENT_CONTAINS_PROFANITY);
+
+        assertThat(speech.getContent()).isEqualTo("기존 의견");
+        assertThat(speech.getStance()).isEqualTo(SpeechStance.CON);
     }
 
     @Test
