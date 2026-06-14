@@ -1,5 +1,6 @@
 import http from 'k6/http';
 import { check, group, sleep } from 'k6';
+import exec from 'k6/execution';
 import { Counter, Rate, Trend } from 'k6/metrics';
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
@@ -193,7 +194,7 @@ function requestParams() {
 }
 
 function userIdForIteration() {
-  const offset = (__ITER + (__VU - 1)) % USER_COUNT;
+  const offset = exec.scenario.iterationInTest % USER_COUNT;
   return USER_ID_START + offset;
 }
 

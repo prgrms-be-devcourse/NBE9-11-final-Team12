@@ -1,0 +1,8 @@
+app:
+  load-test:
+    seed:
+      enabled: true
+      room-id: 1
+      user-id-start: 1
+      user-count: 1000
+      reset-speaking-queue: true
