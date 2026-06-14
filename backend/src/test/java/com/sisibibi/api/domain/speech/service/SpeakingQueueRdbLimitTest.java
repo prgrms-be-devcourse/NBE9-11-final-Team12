@@ -12,6 +12,7 @@ import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.domain.user.entity.User;
 import com.sisibibi.api.domain.user.repository.UserRepository;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -201,6 +202,35 @@ class SpeakingQueueRdbLimitTest {
         }
     }
 
+    @Test
+    void completeAndExpireRaceRepeated_observesTerminalTransitionCost() throws Exception {
+        clearSpeakingQueue();
+        int repetitionCount = 100;
+        List<RaceIterationResult> iterationResults = new ArrayList<>();
+
+        for (int index = 0; index < repetitionCount; index++) {
+            iterationResults.add(runCompleteAndExpireRaceOnce());
+        }
+
+        printRaceLimitSummary(
+                "종료 vs 자동 만료 경합 반복",
+                repetitionCount,
+                iterationResults
+        );
+
+        assertThat(iterationResults).hasSize(repetitionCount);
+        assertThat(iterationResults)
+                .extracting(RaceIterationResult::successTransitionCount)
+                .containsOnly(1);
+        assertThat(iterationResults)
+                .extracting(RaceIterationResult::failedRequestCount)
+                .containsOnly(1);
+        assertThat(iterationResults)
+                .extracting(RaceIterationResult::terminalStatus)
+                .allSatisfy(status -> assertThat(status)
+                        .isIn(SpeakingQueueStatus.COMPLETED, SpeakingQueueStatus.EXPIRED));
+    }
+
     private <T> LimitRun<T> runConcurrently(
             int taskCount,
             LimitTask<T> task
@@ -338,6 +368,36 @@ class SpeakingQueueRdbLimitTest {
         writeSummary(summary);
     }
 
+    private void printRaceLimitSummary(
+            String scenario,
+            int repetitionCount,
+            List<RaceIterationResult> results
+    ) {
+        RaceStats stats = RaceStats.from(results);
+        String summary = String.format(
+                "[RDB LIMIT TEST] scenario=%s, repetitions=%d, "
+                        + "successTransitions=%d, failedRequests=%d, "
+                        + "completedTransitions=%d, expiredTransitions=%d, "
+                        + "failureTypes=%s, totalElapsedMs=%d, avgIterationMs=%d, "
+                        + "maxIterationMs=%d, p95IterationMs=%d%n",
+                scenario,
+                repetitionCount,
+                results.stream().mapToInt(RaceIterationResult::successTransitionCount).sum(),
+                results.stream().mapToInt(RaceIterationResult::failedRequestCount).sum(),
+                countTerminalStatus(results, SpeakingQueueStatus.COMPLETED),
+                countTerminalStatus(results, SpeakingQueueStatus.EXPIRED),
+                failureTypes(results.stream()
+                        .flatMap(result -> result.failures().stream())
+                        .toList()),
+                stats.totalElapsedMillis(),
+                stats.averageIterationMillis(),
+                stats.maxIterationMillis(),
+                stats.p95IterationMillis()
+        );
+
+        writeSummary(summary);
+    }
+
     private void writeSummary(String summary) {
         String summaryFile = System.getProperty("concurrency.summary.file");
 
@@ -367,6 +427,15 @@ class SpeakingQueueRdbLimitTest {
         }
 
         return failureTypes;
+    }
+
+    private long countTerminalStatus(
+            List<RaceIterationResult> results,
+            SpeakingQueueStatus status
+    ) {
+        return results.stream()
+                .filter(result -> result.terminalStatus() == status)
+                .count();
     }
 
     private List<Integer> rangeClosed(int startInclusive, int endInclusive) {
@@ -439,6 +508,60 @@ class SpeakingQueueRdbLimitTest {
         }
 
         return fixtures;
+    }
+
+    private RaceIterationResult runCompleteAndExpireRaceOnce() throws Exception {
+        Long roomId = createOpenRoom();
+        Long currentSpeakerUserId = createActiveUser();
+        Long nextSpeakerUserId = createActiveUser();
+
+        speakingQueueService.requestSpeakingTurn(roomId, currentSpeakerUserId);
+        speakingQueueService.requestSpeakingTurn(roomId, nextSpeakerUserId);
+
+        LocalDateTime schedulerNow = LocalDateTime.now();
+        long startedAt = System.nanoTime();
+
+        LimitRun<Object> run = runConcurrently(
+                2,
+                index -> {
+                    if (index == 0) {
+                        return speakingQueueService.completeCurrentSpeaker(
+                                roomId,
+                                currentSpeakerUserId
+                        );
+                    }
+
+                    return speakingQueueService.expireCurrentSpeakerIfTimedOut(
+                            roomId,
+                            schedulerNow,
+                            Duration.ZERO
+                    );
+                }
+        );
+
+        long elapsedNanos = System.nanoTime() - startedAt;
+        StageRequestRes terminalRequest =
+                speakingQueueService.getMyRequest(roomId, currentSpeakerUserId);
+        StageRequestRes nextSpeakerRequest =
+                speakingQueueService.getMyRequest(roomId, nextSpeakerUserId);
+        CurrentSpeakerRes currentSpeaker = speakingQueueService.getCurrentSpeaker(roomId);
+        StageQueueRes waitingQueue = speakingQueueService.getWaitingQueue(roomId);
+
+        assertThat(run.successes()).hasSize(1);
+        assertThat(run.failures()).hasSize(1);
+        assertThat(terminalRequest.status())
+                .isIn(SpeakingQueueStatus.COMPLETED, SpeakingQueueStatus.EXPIRED);
+        assertThat(nextSpeakerRequest.status()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
+        assertThat(currentSpeaker.userId()).isEqualTo(nextSpeakerUserId);
+        assertThat(waitingQueue.items()).isEmpty();
+
+        return new RaceIterationResult(
+                terminalRequest.status(),
+                run.successes().size(),
+                run.failures().size(),
+                run.failures(),
+                elapsedNanos
+        );
     }
 
     private void clearSpeakingQueue() {
@@ -532,5 +655,49 @@ class SpeakingQueueRdbLimitTest {
             Long currentSpeakerUserId,
             Long nextSpeakerUserId
     ) {
+    }
+
+    private record RaceIterationResult(
+            SpeakingQueueStatus terminalStatus,
+            int successTransitionCount,
+            int failedRequestCount,
+            List<Throwable> failures,
+            long elapsedNanos
+    ) {
+    }
+
+    private record RaceStats(
+            long totalElapsedMillis,
+            long averageIterationMillis,
+            long maxIterationMillis,
+            long p95IterationMillis
+    ) {
+
+        static RaceStats from(List<RaceIterationResult> results) {
+            List<Long> durations = results.stream()
+                    .map(RaceIterationResult::elapsedNanos)
+                    .sorted()
+                    .toList();
+
+            if (durations.isEmpty()) {
+                return new RaceStats(0, 0, 0, 0);
+            }
+
+            long sum = durations.stream().mapToLong(Long::longValue).sum();
+
+            return new RaceStats(
+                    TimeUnit.NANOSECONDS.toMillis(sum),
+                    TimeUnit.NANOSECONDS.toMillis(sum / durations.size()),
+                    TimeUnit.NANOSECONDS.toMillis(durations.get(durations.size() - 1)),
+                    TimeUnit.NANOSECONDS.toMillis(percentile(durations, 95))
+            );
+        }
+
+        private static long percentile(List<Long> sortedValues, int percentile) {
+            int index = (int) Math.ceil(sortedValues.size() * (percentile / 100.0)) - 1;
+            int safeIndex = Math.max(0, Math.min(index, sortedValues.size() - 1));
+
+            return sortedValues.get(safeIndex);
+        }
     }
 }
