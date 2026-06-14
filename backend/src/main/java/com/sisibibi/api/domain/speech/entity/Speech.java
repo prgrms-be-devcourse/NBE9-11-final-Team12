@@ -79,14 +79,11 @@ public class Speech {
     private LocalDateTime deletedAt;
 
     private Speech(Long roomId, Long userId, String content, SpeechStance stance) {
-        LocalDateTime now = LocalDateTime.now();
         this.roomId = roomId;
         this.userId = userId;
         this.content = content;
         this.stance = stance;
         this.status = SpeechStatus.READY;
-        this.createdAt = now;
-        this.updatedAt = now;
         this.deleted = false;
     }
 
@@ -102,18 +99,15 @@ public class Speech {
     public void updateMainOpinion(String content, SpeechStance stance) {
         this.content = content;
         this.stance = stance;
-        this.updatedAt = LocalDateTime.now();
     }
 
     public void updateLink(String linkUrl) {
         this.linkUrl = linkUrl;
-        this.updatedAt = LocalDateTime.now();
     }
 
     public void softDelete() {
         LocalDateTime now = LocalDateTime.now();
         this.deleted = true;
         this.deletedAt = now;
-        this.updatedAt = now;
     }
 }

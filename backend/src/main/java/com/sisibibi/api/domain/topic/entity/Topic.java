@@ -54,7 +54,6 @@ public class Topic {
     topic.category = category;
     topic.sourceUrl = sourceUrl;
     topic.status = TopicStatus.APPROVED;
-    topic.createdAt = now;
     topic.approvedAt = now;
     return topic;
   }

@@ -2,10 +2,12 @@ package com.sisibibi.api.domain.speech.repository;
 
 import com.sisibibi.api.domain.speech.entity.Speech;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
+import com.sisibibi.api.global.config.JpaAuditingConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -16,10 +18,31 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
 @ActiveProfiles("test")
+@Import(JpaAuditingConfig.class)
 class SpeechRepositoryTest {
 
     @Autowired
     private SpeechRepository speechRepository;
+
+    @Test
+    void saveAndUpdate_applyJpaAuditingTimestamps() {
+        Speech speech = Speech.createMainOpinion(1L, 10L, "의견", SpeechStance.PRO);
+
+        assertThat(speech.getCreatedAt()).isNull();
+        assertThat(speech.getUpdatedAt()).isNull();
+
+        Speech saved = speechRepository.saveAndFlush(speech);
+
+        assertThat(saved.getCreatedAt()).isNotNull();
+        assertThat(saved.getUpdatedAt()).isNotNull();
+
+        LocalDateTime createdAt = saved.getCreatedAt();
+        saved.updateMainOpinion("수정된 의견", SpeechStance.CON);
+        Speech updated = speechRepository.saveAndFlush(saved);
+
+        assertThat(updated.getCreatedAt()).isEqualTo(createdAt);
+        assertThat(updated.getUpdatedAt()).isAfterOrEqualTo(createdAt);
+    }
 
     @Test
     void findByRoomIdBeforeCursor_returnsIdsBeforeCursorInDescendingOrder() {

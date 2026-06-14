@@ -237,7 +237,7 @@ class SpeechServiceTest {
 
         assertThat(response.content()).isEqualTo("수정된 의견");
         assertThat(response.stance()).isEqualTo(SpeechStance.PRO);
-        assertThat(response.updatedAt()).isAfterOrEqualTo(response.createdAt());
+        assertThat(response.updatedAt()).isNull();
     }
 
     @Test
