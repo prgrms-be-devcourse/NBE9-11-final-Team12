@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -32,5 +33,17 @@ public class StageController {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(ApiResponse.created("발언권 신청이 완료되었습니다.", response));
+    }
+
+    @DeleteMapping("/requests/me")
+    public ResponseEntity<ApiResponse<Void>> cancelSpeakingRequest(
+            @Positive @PathVariable Long roomId,
+            @Positive @RequestParam Long userId
+    ) {
+        speakingQueueService.cancelSpeakingRequest(roomId, userId);
+
+        return ResponseEntity.ok(
+                ApiResponse.okMessage("발언권 신청이 취소되었습니다.")
+        );
     }
 }

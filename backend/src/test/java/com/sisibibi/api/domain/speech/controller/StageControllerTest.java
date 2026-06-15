@@ -14,6 +14,9 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -78,6 +81,39 @@ class StageControllerTest {
     void requestSpeakingTurn_returnsBadRequestWhenUserIdIsNotPositive() throws Exception {
         mockMvc.perform(post("/api/v1/rooms/1/stage/requests")
                         .param("userId", "-1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
+    }
+
+    @Test
+    void cancelSpeakingRequest_returnsOkResponse() throws Exception {
+        mockMvc.perform(delete("/api/v1/rooms/1/stage/requests/me")
+                        .param("userId", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.message").value("발언권 신청이 취소되었습니다."));
+
+        verify(speakingQueueService).cancelSpeakingRequest(1L, 10L);
+    }
+
+    @Test
+    void cancelSpeakingRequest_returnsConflictWhenRequestIsAssigned() throws Exception {
+        willThrow(new CustomException(ErrorCode.SPEAKING_REQUEST_NOT_CANCELABLE))
+                .given(speakingQueueService)
+                .cancelSpeakingRequest(1L, 10L);
+
+        mockMvc.perform(delete("/api/v1/rooms/1/stage/requests/me")
+                        .param("userId", "10"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code")
+                        .value("SPEAKING_REQUEST_NOT_CANCELABLE"))
+                .andExpect(jsonPath("$.message")
+                        .value("대기 중인 발언권 신청만 취소할 수 있습니다."));
+    }
+
+    @Test
+    void cancelSpeakingRequest_returnsBadRequestWhenUserIdIsMissing() throws Exception {
+        mockMvc.perform(delete("/api/v1/rooms/1/stage/requests/me"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
     }
