@@ -255,4 +255,76 @@ class SpeakingQueuePersistenceServiceTest {
                         SpeakingQueueStatus.WAITING
                 );
     }
+
+    @Test
+    void completeCurrentSpeaker_completesAssignedRequestAfterLockingRoom() {
+        SpeakingQueue assigned = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        assigned.assign();
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(Room.open(1L, "토론방")));
+        given(speakingQueueRepository.findByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        )).willReturn(Optional.of(assigned));
+
+        SpeakingQueue completed =
+                speakingQueuePersistenceService.completeCurrentSpeaker(1L, 7L);
+
+        assertThat(completed).isSameAs(assigned);
+        assertThat(completed.getStatus()).isEqualTo(SpeakingQueueStatus.COMPLETED);
+        assertThat(completed.getActiveRequest()).isNull();
+
+        InOrder order = inOrder(roomRepository, speakingQueueRepository);
+        order.verify(roomRepository).findByIdForUpdate(1L);
+        order.verify(speakingQueueRepository).findByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        );
+    }
+
+    @Test
+    void completeCurrentSpeaker_rejectsWhenCurrentSpeakerDoesNotExist() {
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(Room.open(1L, "토론방")));
+        given(speakingQueueRepository.findByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        )).willReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                speakingQueuePersistenceService.completeCurrentSpeaker(1L, 7L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CURRENT_SPEAKER_NOT_FOUND);
+    }
+
+    @Test
+    void completeCurrentSpeaker_rejectsDifferentUser() {
+        SpeakingQueue assigned = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        assigned.assign();
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(Room.open(1L, "토론방")));
+        given(speakingQueueRepository.findByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        )).willReturn(Optional.of(assigned));
+
+        assertThatThrownBy(() ->
+                speakingQueuePersistenceService.completeCurrentSpeaker(1L, 8L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FORBIDDEN);
+
+        assertThat(assigned.getStatus()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
+    }
 }

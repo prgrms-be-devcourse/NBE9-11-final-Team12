@@ -28,6 +28,11 @@ public interface SpeakingQueueRepository extends JpaRepository<SpeakingQueue, Lo
             SpeakingQueueStatus status
     );
 
+    Optional<SpeakingQueue> findByRoomIdAndStatus(
+            Long roomId,
+            SpeakingQueueStatus status
+    );
+
     boolean existsByRoomIdAndStatus(
             Long roomId,
             SpeakingQueueStatus status
