@@ -35,15 +35,15 @@ public interface SpeakingQueueRepository extends JpaRepository<SpeakingQueue, Lo
     }
 
     @Query("""
-            select distinct waiting.roomId
-            from SpeakingQueue waiting
-            where waiting.status = :waitingStatus
-              and not exists (
-                  select assigned.id
-                  from SpeakingQueue assigned
-                  where assigned.roomId = waiting.roomId
-                    and assigned.status = :assignedStatus
-              )
+            select queue.roomId
+            from SpeakingQueue queue
+            group by queue.roomId
+            having sum(
+                case when queue.status = :waitingStatus then 1 else 0 end
+            ) > 0
+            and sum(
+                case when queue.status = :assignedStatus then 1 else 0 end
+            ) = 0
             """)
     List<Long> findRoomIdsRequiringAssignment(
             @Param("waitingStatus") SpeakingQueueStatus waitingStatus,
