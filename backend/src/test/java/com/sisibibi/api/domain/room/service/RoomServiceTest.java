@@ -106,33 +106,28 @@ class RoomServiceTest {
   }
 
   @Test
-  void closeExpiredRooms_closesOpenRooms_whenEndedAtIsBeforeOrEqualNow() {
+  void closeExpiredRooms_returnsClosedCount_whenExpiredRoomsExist() {
     LocalDateTime now = LocalDateTime.of(2026, 6, 15, 12, 0);
-    Room expiredRoom = Room.open(1L, "종료 대상 토론방");
 
-    given(roomRepository.findByStatusAndEndedAtLessThanEqual(RoomStatus.OPEN, now))
-        .willReturn(List.of(expiredRoom));
+    given(roomRepository.closeExpiredRooms(now)).willReturn(3);
 
     int closedCount = roomService.closeExpiredRooms(now);
 
-    assertThat(closedCount).isEqualTo(1);
-    assertThat(expiredRoom.getStatus()).isEqualTo(RoomStatus.CLOSED);
-    assertThat(expiredRoom.getEndedAt()).isEqualTo(now);
+    assertThat(closedCount).isEqualTo(3);
 
-    verify(roomRepository).findByStatusAndEndedAtLessThanEqual(RoomStatus.OPEN, now);
+    verify(roomRepository).closeExpiredRooms(now);
   }
 
   @Test
   void closeExpiredRooms_returnsZero_whenExpiredRoomDoesNotExist() {
     LocalDateTime now = LocalDateTime.of(2026, 6, 15, 12, 0);
 
-    given(roomRepository.findByStatusAndEndedAtLessThanEqual(RoomStatus.OPEN, now))
-        .willReturn(List.of());
+    given(roomRepository.closeExpiredRooms(now)).willReturn(0);
 
     int closedCount = roomService.closeExpiredRooms(now);
 
     assertThat(closedCount).isZero();
 
-    verify(roomRepository).findByStatusAndEndedAtLessThanEqual(RoomStatus.OPEN, now);
+    verify(roomRepository).closeExpiredRooms(now);
   }
 }
