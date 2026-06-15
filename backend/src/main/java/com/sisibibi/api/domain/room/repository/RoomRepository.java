@@ -31,4 +31,6 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select room from Room room where room.id = :roomId")
     Optional<Room> findByIdForUpdate(@Param("roomId") Long roomId);
+
+  List<Room> findAllByOrderByCreatedAtDesc();
 }

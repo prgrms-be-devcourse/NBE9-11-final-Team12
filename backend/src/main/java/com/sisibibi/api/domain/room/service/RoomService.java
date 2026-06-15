@@ -2,6 +2,7 @@ package com.sisibibi.api.domain.room.service;
 
 import com.sisibibi.api.domain.room.dto.request.CreateRoomReq;
 import com.sisibibi.api.domain.room.dto.response.CreateRoomRes;
+import com.sisibibi.api.domain.room.dto.response.RoomDetailRes;
 import com.sisibibi.api.domain.room.dto.response.RoomSummaryRes;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
@@ -56,5 +57,12 @@ public class RoomService {
   @Transactional
   public int closeExpiredRooms(LocalDateTime now) {
     return roomRepository.closeExpiredRooms(now);
+  }
+
+  public RoomDetailRes getRoom(Long roomId) {
+    Room room = roomRepository.findById(roomId)
+        .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+    return RoomDetailRes.from(room);
   }
 }
