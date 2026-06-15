@@ -203,6 +203,18 @@ data "aws_iam_instance_profile" "instance_profile_1" {
   name = "team12-instance-profile-1"
 }
 
+# EC2 역할에 AmazonEC2RoleforSSM 정책을 부착
+resource "aws_iam_role_policy_attachment" "ssm_core" {
+  role       = data.aws_iam_role.ec2_role_1.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+# EC2 역할에 AmazonS3FullAccess 정책을 부착
+resource "aws_iam_role_policy_attachment" "s3_full_access" {
+  role       = data.aws_iam_role.ec2_role_1.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+}
+
 locals {
   ec2_user_data_base = <<-END_OF_FILE
 #!/bin/bash
@@ -282,8 +294,6 @@ CREATE DATABASE sisibibi;
 FLUSH PRIVILEGES;
 "
 
-echo "${var.github_access_token_1}" | docker login ghcr.io -u ${var.github_access_token_1_owner} --password-stdin
-
 END_OF_FILE
 }
 
@@ -297,7 +307,7 @@ resource "aws_instance" "ec2_1" {
   # 사용할 AMI ID
   ami = data.aws_ssm_parameter.amazon_linux_ami.value
   # EC2 인스턴스 유형
-  instance_type = "t3.micro"
+  instance_type = "t3.small"
   # 사용할 서브넷 ID
   subnet_id = aws_subnet.subnet_2.id
   # 적용할 보안 그룹 ID
@@ -316,7 +326,7 @@ resource "aws_instance" "ec2_1" {
   # 루트 볼륨 설정
   root_block_device {
     volume_type = "gp3"
-    volume_size = 12 # 볼륨 크기를 12GB로 설정
+    volume_size = 30 # 볼륨 크기를 12GB로 설정
   }
 
   user_data = <<-EOF

@@ -192,7 +192,8 @@ jobs:
               echo "Docker network '$NET' not found"
               exit 1
             }
-          
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
+
             docker pull "$IMAGE"
           
             # GitHub Secret DOT_ENV를 EC2의 /tmp/.env로 생성
