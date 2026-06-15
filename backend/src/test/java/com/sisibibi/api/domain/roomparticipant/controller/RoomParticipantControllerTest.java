@@ -16,6 +16,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -23,6 +24,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 @WebMvcTest(RoomParticipantController.class)
 @AutoConfigureMockMvc(addFilters = false)
@@ -135,5 +137,70 @@ class RoomParticipantControllerTest {
     mockMvc.perform(post("/api/v1/rooms/{roomId}/participants/out", 1L))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+  }
+
+  @Test
+  void getRoomParticipants_returnsOk() throws Exception {
+    given(roomParticipantService.getRoomParticipants(1L))
+        .willReturn(List.of(
+            new RoomParticipantRes(
+                10L,
+                1L,
+                2L,
+                RoomParticipantStatus.JOINED,
+                LocalDateTime.of(2026, 6, 15, 12, 0)
+            ),
+            new RoomParticipantRes(
+                11L,
+                1L,
+                3L,
+                RoomParticipantStatus.JOINED,
+                LocalDateTime.of(2026, 6, 15, 12, 1)
+            )
+        ));
+
+    mockMvc.perform(get("/api/v1/rooms/{roomId}/participants", 1L))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value(200))
+        .andExpect(jsonPath("$.code").value("SUCCESS"))
+        .andExpect(jsonPath("$.data[0].roomParticipantId").value(10))
+        .andExpect(jsonPath("$.data[0].roomId").value(1))
+        .andExpect(jsonPath("$.data[0].userId").value(2))
+        .andExpect(jsonPath("$.data[0].status").value("JOINED"))
+        .andExpect(jsonPath("$.data[1].roomParticipantId").value(11))
+        .andExpect(jsonPath("$.data[1].userId").value(3));
+
+    verify(roomParticipantService).getRoomParticipants(1L);
+  }
+
+  @Test
+  void getRoomParticipants_returnsEmptyList_whenJoinedParticipantDoesNotExist() throws Exception {
+    given(roomParticipantService.getRoomParticipants(1L)).willReturn(List.of());
+
+    mockMvc.perform(get("/api/v1/rooms/{roomId}/participants", 1L))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value(200))
+        .andExpect(jsonPath("$.code").value("SUCCESS"))
+        .andExpect(jsonPath("$.data").isArray())
+        .andExpect(jsonPath("$.data").isEmpty());
+
+    verify(roomParticipantService).getRoomParticipants(1L);
+  }
+
+  @Test
+  void getRoomParticipants_returnsNotFound_whenRoomDoesNotExist() throws Exception {
+    given(roomParticipantService.getRoomParticipants(999L))
+        .willThrow(new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+    mockMvc.perform(get("/api/v1/rooms/{roomId}/participants", 999L))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("ROOM_NOT_FOUND"));
+  }
+
+  @Test
+  void getRoomParticipants_returnsBadRequest_whenRoomIdIsNotPositive() throws Exception {
+    mockMvc.perform(get("/api/v1/rooms/{roomId}/participants", 0L))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
   }
 }
