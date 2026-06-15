@@ -119,6 +119,12 @@ public class SpeakingQueue {
     }
 
     public void cancel(LocalDateTime canceledAt) {
+        if (status != SpeakingQueueStatus.WAITING) {
+            throw new IllegalStateException(
+                    "Only waiting speaking requests can be canceled."
+            );
+        }
+
         this.status = SpeakingQueueStatus.CANCELED;
         this.canceledAt = canceledAt;
         this.activeRequest = null;

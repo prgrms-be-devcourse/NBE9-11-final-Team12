@@ -44,6 +44,28 @@ public class SpeakingQueuePersistenceService {
     }
 
     @Transactional
+    public SpeakingQueue cancelWaitingRequest(Long roomId, Long userId) {
+        roomRepository.findByIdForUpdate(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+        SpeakingQueue speakingQueue = speakingQueueRepository
+                .findByRoomIdAndUserIdAndStatusIn(
+                        roomId,
+                        userId,
+                        ACTIVE_STATUSES
+                )
+                .orElseThrow(() ->
+                        new CustomException(ErrorCode.SPEAKING_REQUEST_NOT_FOUND));
+
+        if (speakingQueue.getStatus() != SpeakingQueueStatus.WAITING) {
+            throw new CustomException(ErrorCode.SPEAKING_REQUEST_NOT_CANCELABLE);
+        }
+
+        speakingQueue.cancel(LocalDateTime.now());
+        return speakingQueue;
+    }
+
+    @Transactional
     public Optional<SpeakingQueue> assignNextSpeaker(Long roomId) {
         roomRepository.findByIdForUpdate(roomId)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
