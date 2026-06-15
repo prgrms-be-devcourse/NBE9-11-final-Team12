@@ -114,4 +114,31 @@ public class SpeakingQueuePersistenceService {
         currentSpeaker.complete();
         return currentSpeaker;
     }
+
+    @Transactional
+    public Optional<SpeakingQueue> expireCurrentSpeaker(
+            Long roomId,
+            LocalDateTime now
+    ) {
+        roomRepository.findByIdForUpdate(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+        Optional<SpeakingQueue> currentSpeaker =
+                speakingQueueRepository.findByRoomIdAndStatus(
+                        roomId,
+                        SpeakingQueueStatus.ASSIGNED
+                );
+
+        if (currentSpeaker.isEmpty()) {
+            return Optional.empty();
+        }
+
+        SpeakingQueue assigned = currentSpeaker.get();
+        if (assigned.getExpiresAt() == null || assigned.getExpiresAt().isAfter(now)) {
+            return Optional.empty();
+        }
+
+        assigned.complete();
+        return Optional.of(assigned);
+    }
 }

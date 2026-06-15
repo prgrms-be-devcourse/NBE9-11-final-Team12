@@ -51,6 +51,16 @@ public class SpeakingQueueService {
         synchronizeCompletedRedisProjection(completed);
     }
 
+    public Optional<SpeakingQueue> expireCurrentSpeaker(
+            Long roomId,
+            LocalDateTime now
+    ) {
+        Optional<SpeakingQueue> expired =
+                speakingQueuePersistenceService.expireCurrentSpeaker(roomId, now);
+        expired.ifPresent(this::synchronizeCompletedRedisProjection);
+        return expired;
+    }
+
     private void synchronizeWaitingRedisProjection(SpeakingQueue speakingQueue) {
         try {
             redisSpeakingQueueRepository.upsert(

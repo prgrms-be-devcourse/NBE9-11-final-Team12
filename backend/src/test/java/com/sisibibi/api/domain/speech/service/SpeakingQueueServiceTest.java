@@ -179,6 +179,37 @@ class SpeakingQueueServiceTest {
         verify(redisSpeakingQueueRepository).removeCurrentSpeaker(1L, 7L);
     }
 
+    @Test
+    void expireCurrentSpeaker_removesExpiredSpeakerFromRedis() {
+        SpeakingQueue completed = completedRequest(1L, 7L, 15);
+        LocalDateTime now = LocalDateTime.of(2026, 6, 12, 11, 34);
+        given(speakingQueuePersistenceService.expireCurrentSpeaker(1L, now))
+                .willReturn(Optional.of(completed));
+
+        Optional<SpeakingQueue> expired =
+                speakingQueueService.expireCurrentSpeaker(1L, now);
+
+        assertThat(expired).contains(completed);
+        verify(redisSpeakingQueueRepository).removeCurrentSpeaker(1L, 7L);
+    }
+
+    @Test
+    void expireCurrentSpeaker_doesNotTouchRedisWhenSpeakerIsNotExpired() {
+        LocalDateTime now = LocalDateTime.of(2026, 6, 12, 11, 32);
+        given(speakingQueuePersistenceService.expireCurrentSpeaker(1L, now))
+                .willReturn(Optional.empty());
+
+        Optional<SpeakingQueue> expired =
+                speakingQueueService.expireCurrentSpeaker(1L, now);
+
+        assertThat(expired).isEmpty();
+        verify(redisSpeakingQueueRepository, never())
+                .removeCurrentSpeaker(
+                        org.mockito.ArgumentMatchers.anyLong(),
+                        org.mockito.ArgumentMatchers.anyLong()
+                );
+    }
+
     private SpeakingQueue persistedWaitingRequest(Long roomId, Long userId, int queueOrder) {
         return SpeakingQueue.waiting(
                 roomId,

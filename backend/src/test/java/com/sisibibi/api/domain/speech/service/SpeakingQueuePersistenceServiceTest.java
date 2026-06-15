@@ -351,6 +351,84 @@ class SpeakingQueuePersistenceServiceTest {
         assertThat(assigned.getStatus()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
     }
 
+    @Test
+    void expireCurrentSpeaker_completesExpiredAssignedRequestAfterLockingRoom() {
+        SpeakingQueue assigned = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        assign(assigned);
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(Room.open(1L, "토론방")));
+        given(speakingQueueRepository.findByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        )).willReturn(Optional.of(assigned));
+
+        Optional<SpeakingQueue> expired =
+                speakingQueuePersistenceService.expireCurrentSpeaker(
+                        1L,
+                        java.time.LocalDateTime.of(2026, 6, 12, 11, 34)
+                );
+
+        assertThat(expired).contains(assigned);
+        assertThat(assigned.getStatus()).isEqualTo(SpeakingQueueStatus.COMPLETED);
+        assertThat(assigned.getActiveRequest()).isNull();
+
+        InOrder order = inOrder(roomRepository, speakingQueueRepository);
+        order.verify(roomRepository).findByIdForUpdate(1L);
+        order.verify(speakingQueueRepository).findByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        );
+    }
+
+    @Test
+    void expireCurrentSpeaker_returnsEmptyWhenAssignmentIsNotExpired() {
+        SpeakingQueue assigned = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        assign(assigned);
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(Room.open(1L, "토론방")));
+        given(speakingQueueRepository.findByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        )).willReturn(Optional.of(assigned));
+
+        Optional<SpeakingQueue> expired =
+                speakingQueuePersistenceService.expireCurrentSpeaker(
+                        1L,
+                        java.time.LocalDateTime.of(2026, 6, 12, 11, 32)
+                );
+
+        assertThat(expired).isEmpty();
+        assertThat(assigned.getStatus()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
+    }
+
+    @Test
+    void expireCurrentSpeaker_returnsEmptyWhenSpeakerWasAlreadyCompleted() {
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(Room.open(1L, "토론방")));
+        given(speakingQueueRepository.findByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        )).willReturn(Optional.empty());
+
+        Optional<SpeakingQueue> expired =
+                speakingQueuePersistenceService.expireCurrentSpeaker(
+                        1L,
+                        java.time.LocalDateTime.of(2026, 6, 12, 11, 34)
+                );
+
+        assertThat(expired).isEmpty();
+    }
+
     private void assign(SpeakingQueue speakingQueue) {
         speakingQueue.assign(
                 java.time.LocalDateTime.of(2026, 6, 12, 11, 31),
