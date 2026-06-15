@@ -12,5 +12,7 @@ import java.util.Optional;
 public interface TopicRepository extends JpaRepository<Topic, Long> {
   Optional<Topic> findByIdAndStatus(Long id, TopicStatus status);
 
+  Optional<Topic> findByTitle(String title);
+
   Page<Topic> findAllByStatus(TopicStatus status, Pageable pageable);
 }
