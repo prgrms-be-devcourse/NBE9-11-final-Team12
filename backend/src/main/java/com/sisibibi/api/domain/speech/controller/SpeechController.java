@@ -8,8 +8,6 @@ import com.sisibibi.api.domain.speech.dto.response.SpeechCursorPageRes;
 import com.sisibibi.api.domain.speech.dto.response.SpeechDetailRes;
 import com.sisibibi.api.domain.speech.service.SpeechService;
 import com.sisibibi.api.global.response.ApiResponse;
-import com.sisibibi.api.global.exception.CustomException;
-import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.security.AuthPrincipal;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
@@ -46,7 +44,7 @@ public class SpeechController {
     ) {
         SpeechCreateRes response = speechService.createMainOpinion(
                 roomId,
-                authenticatedUserId(principal),
+                principal.userId(),
                 request.toCommand()
         );
 
@@ -85,7 +83,7 @@ public class SpeechController {
     ) {
         return ResponseEntity.ok(ApiResponse.ok(
                 "내 의견 수정이 완료되었습니다.",
-                speechService.updateSpeech(speechId, authenticatedUserId(principal), request.toCommand())
+                speechService.updateSpeech(speechId, principal.userId(), request.toCommand())
         ));
     }
 
@@ -94,7 +92,7 @@ public class SpeechController {
             @PathVariable @Positive Long speechId,
             @AuthenticationPrincipal AuthPrincipal principal
     ) {
-        speechService.deleteSpeech(speechId, authenticatedUserId(principal));
+        speechService.deleteSpeech(speechId, principal.userId());
 
         return ResponseEntity.ok(ApiResponse.okMessage("내 의견 삭제가 완료되었습니다."));
     }
@@ -107,14 +105,7 @@ public class SpeechController {
     ) {
         return ResponseEntity.ok(ApiResponse.ok(
                 "근거 링크 첨부가 완료되었습니다.",
-                speechService.updateSpeechLink(speechId, authenticatedUserId(principal), request.linkUrl())
+                speechService.updateSpeechLink(speechId, principal.userId(), request.linkUrl())
         ));
-    }
-
-    private Long authenticatedUserId(AuthPrincipal principal) {
-        if (principal == null) {
-            throw new CustomException(ErrorCode.UNAUTHORIZED);
-        }
-        return principal.userId();
     }
 }

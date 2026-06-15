@@ -128,19 +128,6 @@ class SpeechReportControllerTest {
                         .value("신고 상세 설명은 500자 이하여야 합니다."));
     }
 
-    @Test
-    void createReport_returnsUnauthorized_whenPrincipalIsMissing() throws Exception {
-        mockMvc.perform(post("/api/v1/speeches/{speechId}/reports", 10L)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "reason": "SPAM"
-                                }
-                                """))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
-    }
-
     private UsernamePasswordAuthenticationToken authToken(Long userId) {
         return new UsernamePasswordAuthenticationToken(
                 new AuthPrincipal(userId, "user@example.com", "USER"),

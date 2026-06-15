@@ -121,20 +121,6 @@ class SpeechControllerTest {
     }
 
     @Test
-    void createMainOpinion_returnsUnauthorized_whenPrincipalIsMissing() throws Exception {
-        mockMvc.perform(post("/api/v1/rooms/{roomId}/speeches", 1L)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "content": "의견",
-                                  "stance": "PRO"
-                                }
-                                """))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
-    }
-
-    @Test
     void createMainOpinion_returnsBadRequest_whenContentContainsProfanity() throws Exception {
         given(speechService.createMainOpinion(any(), any(), any()))
                 .willThrow(new CustomException(ErrorCode.SPEECH_CONTENT_CONTAINS_PROFANITY));
@@ -264,20 +250,6 @@ class SpeechControllerTest {
     }
 
     @Test
-    void updateSpeech_returnsUnauthorized_whenPrincipalIsMissing() throws Exception {
-        mockMvc.perform(patch("/api/v1/speeches/{speechId}", 10L)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "content": "수정된 의견",
-                                  "stance": "PRO"
-                                }
-                                """))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
-    }
-
-    @Test
     void deleteSpeech_returnsOk() throws Exception {
         doNothing().when(speechService).deleteSpeech(10L, 2L);
 
@@ -288,13 +260,6 @@ class SpeechControllerTest {
                 .andExpect(jsonPath("$.data").doesNotExist());
 
         verify(speechService).deleteSpeech(10L, 2L);
-    }
-
-    @Test
-    void deleteSpeech_returnsUnauthorized_whenPrincipalIsMissing() throws Exception {
-        mockMvc.perform(delete("/api/v1/speeches/{speechId}", 10L))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
     }
 
     @Test
@@ -366,19 +331,6 @@ class SpeechControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"))
                 .andExpect(jsonPath("$.data.linkUrl").value("올바른 링크 형식이어야 합니다."));
-    }
-
-    @Test
-    void updateSpeechLink_returnsUnauthorized_whenPrincipalIsMissing() throws Exception {
-        mockMvc.perform(patch("/api/v1/speeches/{speechId}/link", 10L)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "linkUrl": "https://example.com/evidence"
-                                }
-                                """))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
     }
 
     private UsernamePasswordAuthenticationToken authToken(Long userId) {

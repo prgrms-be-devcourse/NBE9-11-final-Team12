@@ -4,8 +4,6 @@ import com.sisibibi.api.domain.speech.report.dto.request.SpeechReportCreateReq;
 import com.sisibibi.api.domain.speech.report.dto.response.SpeechReportCreateRes;
 import com.sisibibi.api.domain.speech.report.service.SpeechReportService;
 import com.sisibibi.api.global.response.ApiResponse;
-import com.sisibibi.api.global.exception.CustomException;
-import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.security.AuthPrincipal;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
@@ -36,19 +34,12 @@ public class SpeechReportController {
     ) {
         SpeechReportCreateRes response = speechReportService.createReport(
                 speechId,
-                authenticatedUserId(principal),
+                principal.userId(),
                 request.toCommand()
         );
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(ApiResponse.created("의견 신고가 접수되었습니다.", response));
-    }
-
-    private Long authenticatedUserId(AuthPrincipal principal) {
-        if (principal == null) {
-            throw new CustomException(ErrorCode.UNAUTHORIZED);
-        }
-        return principal.userId();
     }
 }
