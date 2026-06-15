@@ -18,6 +18,17 @@ public class RedisSpeakingQueueRepository {
                     Long.class
             );
 
+    private static final DefaultRedisScript<Long> REMOVE_CURRENT_SPEAKER_SCRIPT =
+            new DefaultRedisScript<>(
+                    """
+                    if redis.call('GET', KEYS[1]) == ARGV[1] then
+                        return redis.call('DEL', KEYS[1])
+                    end
+                    return 0
+                    """,
+                    Long.class
+            );
+
     private final StringRedisTemplate redisTemplate;
 
     public RedisSpeakingQueueRepository(StringRedisTemplate redisTemplate) {
@@ -40,6 +51,14 @@ public class RedisSpeakingQueueRepository {
         redisTemplate.execute(
                 ASSIGN_SCRIPT,
                 List.of(queueKey(roomId), currentSpeakerKey(roomId)),
+                userId.toString()
+        );
+    }
+
+    public void removeCurrentSpeaker(Long roomId, Long userId) {
+        redisTemplate.execute(
+                REMOVE_CURRENT_SPEAKER_SCRIPT,
+                List.of(currentSpeakerKey(roomId)),
                 userId.toString()
         );
     }

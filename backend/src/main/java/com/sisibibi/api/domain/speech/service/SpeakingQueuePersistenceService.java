@@ -92,4 +92,22 @@ public class SpeakingQueuePersistenceService {
         nextSpeaker.assign();
         return Optional.of(nextSpeaker);
     }
+
+    @Transactional
+    public SpeakingQueue completeCurrentSpeaker(Long roomId, Long userId) {
+        roomRepository.findByIdForUpdate(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+        SpeakingQueue currentSpeaker = speakingQueueRepository
+                .findByRoomIdAndStatus(roomId, SpeakingQueueStatus.ASSIGNED)
+                .orElseThrow(() ->
+                        new CustomException(ErrorCode.CURRENT_SPEAKER_NOT_FOUND));
+
+        if (!currentSpeaker.getUserId().equals(userId)) {
+            throw new CustomException(ErrorCode.FORBIDDEN);
+        }
+
+        currentSpeaker.complete();
+        return currentSpeaker;
+    }
 }

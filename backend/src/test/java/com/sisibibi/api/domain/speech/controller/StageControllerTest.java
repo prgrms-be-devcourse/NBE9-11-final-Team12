@@ -82,13 +82,6 @@ class StageControllerTest {
     }
 
     @Test
-    void requestSpeakingTurn_returnsUnauthorizedWhenPrincipalIsMissing() throws Exception {
-        mockMvc.perform(post("/api/v1/rooms/1/stage/requests"))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
-    }
-
-    @Test
     void requestSpeakingTurn_returnsBadRequestWhenRoomIdIsNotPositive() throws Exception {
         mockMvc.perform(post("/api/v1/rooms/0/stage/requests")
                         .with(authPrincipal(10L)))
@@ -123,10 +116,41 @@ class StageControllerTest {
     }
 
     @Test
-    void cancelSpeakingRequest_returnsUnauthorizedWhenPrincipalIsMissing() throws Exception {
-        mockMvc.perform(delete("/api/v1/rooms/1/stage/requests/me"))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    void completeSpeakingTurn_returnsOkResponse() throws Exception {
+        mockMvc.perform(post("/api/v1/rooms/1/stage/complete")
+                        .with(authPrincipal(10L)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.message").value("발언이 종료되었습니다."));
+
+        verify(speakingQueueService).completeSpeakingTurn(1L, 10L);
+    }
+
+    @Test
+    void completeSpeakingTurn_returnsNotFoundWhenCurrentSpeakerDoesNotExist()
+            throws Exception {
+        willThrow(new CustomException(ErrorCode.CURRENT_SPEAKER_NOT_FOUND))
+                .given(speakingQueueService)
+                .completeSpeakingTurn(1L, 10L);
+
+        mockMvc.perform(post("/api/v1/rooms/1/stage/complete")
+                        .with(authPrincipal(10L)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CURRENT_SPEAKER_NOT_FOUND"))
+                .andExpect(jsonPath("$.message")
+                        .value("현재 발언자가 존재하지 않습니다."));
+    }
+
+    @Test
+    void completeSpeakingTurn_returnsForbiddenForDifferentUser() throws Exception {
+        willThrow(new CustomException(ErrorCode.FORBIDDEN))
+                .given(speakingQueueService)
+                .completeSpeakingTurn(1L, 10L);
+
+        mockMvc.perform(post("/api/v1/rooms/1/stage/complete")
+                        .with(authPrincipal(10L)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
     }
 
     private RequestPostProcessor authPrincipal(Long userId) {
