@@ -108,6 +108,16 @@ public class SpeakingQueue {
         this.queueOrder = Math.toIntExact(id);
     }
 
+    public void assign() {
+        if (status != SpeakingQueueStatus.WAITING) {
+            throw new IllegalStateException(
+                    "Only waiting speaking requests can be assigned."
+            );
+        }
+
+        this.status = SpeakingQueueStatus.ASSIGNED;
+    }
+
     public void cancel(LocalDateTime canceledAt) {
         this.status = SpeakingQueueStatus.CANCELED;
         this.canceledAt = canceledAt;

@@ -7,3 +7,13 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
+
+management:
+  health:
+    redis:
+      enabled: false
+
+app:
+  speaking:
+    assignment:
+      enabled: false

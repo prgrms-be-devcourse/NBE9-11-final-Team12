@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.speech.entity;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
@@ -51,5 +52,35 @@ class SpeakingQueueTest {
         assertThat(speakingQueue.getStatus()).isEqualTo(SpeakingQueueStatus.CANCELED);
         assertThat(speakingQueue.getCanceledAt()).isEqualTo(canceledAt);
         assertThat(speakingQueue.getActiveRequest()).isNull();
+    }
+
+    @Test
+    void assign_changesWaitingRequestToAssigned() {
+        SpeakingQueue speakingQueue = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+
+        speakingQueue.assign();
+
+        assertThat(speakingQueue.getStatus()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
+        assertThat(speakingQueue.getActiveRequest()).isTrue();
+    }
+
+    @Test
+    void assign_rejectsNonWaitingRequest() {
+        SpeakingQueue speakingQueue = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        speakingQueue.cancel(LocalDateTime.of(2026, 6, 12, 11, 35));
+
+        assertThatThrownBy(speakingQueue::assign)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Only waiting speaking requests can be assigned.");
     }
 }
