@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.room.service;
 
 import com.sisibibi.api.domain.room.dto.request.CreateRoomReq;
+import com.sisibibi.api.domain.room.dto.request.UpdateRoomReq;
 import com.sisibibi.api.domain.room.dto.response.CreateRoomRes;
 import com.sisibibi.api.domain.room.dto.response.RoomDetailRes;
 import com.sisibibi.api.domain.room.dto.response.RoomSummaryRes;
@@ -47,6 +48,23 @@ public class RoomService {
     return CreateRoomRes.from(savedRoom);
   }
 
+  // 관리자 방 수정
+  @Transactional
+  public RoomDetailRes updateRoom(Long roomId, UpdateRoomReq request) {
+    Room room = roomRepository.findById(roomId)
+        .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+    validateUpdateRoomRequest(room, request);
+
+    room.update(
+        request.title(),
+        request.startedAt(),
+        request.endedAt()
+    );
+
+    return RoomDetailRes.from(room);
+  }
+
   public List<RoomSummaryRes> getOpenRooms() {
     return roomRepository.findByStatusOrderByCreatedAtDesc(RoomStatus.OPEN)
         .stream()
@@ -73,5 +91,26 @@ public class RoomService {
         .stream()
         .map(RoomSummaryRes::from)
         .toList();
+  }
+
+  // 시간 검증 로직
+  private void validateUpdateRoomRequest(Room room, UpdateRoomReq request) {
+    // 빈칸인 제목 예외처리
+    if (request.title() != null && request.title().isBlank()) {
+      throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+    }
+
+    LocalDateTime nextStartedAt = request.startedAt() != null
+        ? request.startedAt()
+        : room.getStartedAt();
+
+    LocalDateTime nextEndedAt = request.endedAt() != null
+        ? request.endedAt()
+        : room.getEndedAt();
+
+    // 시작시간이 끝시간보다 앞서는 로직 예외처리
+    if (nextStartedAt != null && nextEndedAt != null && nextEndedAt.isBefore(nextStartedAt)) {
+      throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+    }
   }
 }

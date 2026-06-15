@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.room.service;
 
 import com.sisibibi.api.domain.room.dto.request.CreateRoomReq;
+import com.sisibibi.api.domain.room.dto.request.UpdateRoomReq;
 import com.sisibibi.api.domain.room.dto.response.CreateRoomRes;
 import com.sisibibi.api.domain.room.dto.response.RoomDetailRes;
 import com.sisibibi.api.domain.room.dto.response.RoomSummaryRes;
@@ -171,5 +172,72 @@ class RoomServiceTest {
         .isInstanceOf(CustomException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
+  }
+
+  @Test
+  void updateRoom_updatesRoom_whenRoomExists() {
+    Room room = Room.open(1L, "수정 전 제목");
+    LocalDateTime startedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
+    LocalDateTime endedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
+
+    given(roomRepository.findById(10L)).willReturn(Optional.of(room));
+
+    RoomDetailRes result = roomService.updateRoom(
+        10L,
+        new UpdateRoomReq("수정 후 제목", startedAt, endedAt)
+    );
+
+    assertThat(result.title()).isEqualTo("수정 후 제목");
+    assertThat(result.startedAt()).isEqualTo(startedAt);
+    assertThat(result.endedAt()).isEqualTo(endedAt);
+
+    verify(roomRepository).findById(10L);
+  }
+
+  @Test
+  void updateRoom_throwsRoomNotFound_whenRoomDoesNotExist() {
+    given(roomRepository.findById(999L)).willReturn(Optional.empty());
+
+    assertThatThrownBy(() -> roomService.updateRoom(
+        999L,
+        new UpdateRoomReq("수정 후 제목", null, null)
+    ))
+        .isInstanceOf(CustomException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
+  }
+
+  @Test
+  void updateRoom_throwsInvalidInput_whenTitleIsBlank() {
+    Room room = Room.open(1L, "수정 전 제목");
+
+    given(roomRepository.findById(10L)).willReturn(Optional.of(room));
+
+    assertThatThrownBy(() -> roomService.updateRoom(
+        10L,
+        new UpdateRoomReq("   ", null, null)
+    ))
+        .isInstanceOf(CustomException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+  }
+
+  @Test
+  void updateRoom_throwsInvalidInput_whenEndedAtIsBeforeStartedAt() {
+    Room room = Room.open(1L, "수정 전 제목");
+
+    given(roomRepository.findById(10L)).willReturn(Optional.of(room));
+
+    assertThatThrownBy(() -> roomService.updateRoom(
+        10L,
+        new UpdateRoomReq(
+            "수정 후 제목",
+            LocalDateTime.of(2026, 6, 15, 12, 0),
+            LocalDateTime.of(2026, 6, 15, 10, 0)
+        )
+    ))
+        .isInstanceOf(CustomException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
   }
 }
