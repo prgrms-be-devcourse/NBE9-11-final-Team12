@@ -37,6 +37,12 @@ public class SpeakingQueueService {
         synchronizeCanceledRedisProjection(canceled);
     }
 
+    public void completeSpeakingTurn(Long roomId, Long userId) {
+        SpeakingQueue completed =
+                speakingQueuePersistenceService.completeCurrentSpeaker(roomId, userId);
+        synchronizeCompletedRedisProjection(completed);
+    }
+
     private void synchronizeWaitingRedisProjection(SpeakingQueue speakingQueue) {
         try {
             redisSpeakingQueueRepository.upsert(
@@ -83,6 +89,24 @@ public class SpeakingQueueService {
         } catch (RuntimeException synchronizationException) {
             log.error(
                     "Failed to remove canceled speaking request from Redis. "
+                            + "roomId={}, userId={}, queueOrder={}",
+                    speakingQueue.getRoomId(),
+                    speakingQueue.getUserId(),
+                    speakingQueue.getQueueOrder(),
+                    synchronizationException
+            );
+        }
+    }
+
+    private void synchronizeCompletedRedisProjection(SpeakingQueue speakingQueue) {
+        try {
+            redisSpeakingQueueRepository.removeCurrentSpeaker(
+                    speakingQueue.getRoomId(),
+                    speakingQueue.getUserId()
+            );
+        } catch (RuntimeException synchronizationException) {
+            log.error(
+                    "Failed to remove completed current speaker from Redis. "
                             + "roomId={}, userId={}, queueOrder={}",
                     speakingQueue.getRoomId(),
                     speakingQueue.getUserId(),

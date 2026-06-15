@@ -108,6 +108,33 @@ class SpeakingQueueServiceTest {
         verify(redisSpeakingQueueRepository).remove(1L, 7L);
     }
 
+    @Test
+    void completeSpeakingTurn_completesDurableRequestAndRemovesCurrentSpeaker() {
+        SpeakingQueue completed = completedRequest(1L, 7L, 15);
+        given(speakingQueuePersistenceService.completeCurrentSpeaker(1L, 7L))
+                .willReturn(completed);
+
+        speakingQueueService.completeSpeakingTurn(1L, 7L);
+
+        verify(speakingQueuePersistenceService).completeCurrentSpeaker(1L, 7L);
+        verify(redisSpeakingQueueRepository).removeCurrentSpeaker(1L, 7L);
+    }
+
+    @Test
+    void completeSpeakingTurn_keepsCompletedRdbStateWhenRedisRemovalFails() {
+        SpeakingQueue completed = completedRequest(1L, 7L, 15);
+        given(speakingQueuePersistenceService.completeCurrentSpeaker(1L, 7L))
+                .willReturn(completed);
+        doThrow(new IllegalStateException("redis unavailable"))
+                .when(redisSpeakingQueueRepository)
+                .removeCurrentSpeaker(1L, 7L);
+
+        speakingQueueService.completeSpeakingTurn(1L, 7L);
+
+        verify(speakingQueuePersistenceService).completeCurrentSpeaker(1L, 7L);
+        verify(redisSpeakingQueueRepository).removeCurrentSpeaker(1L, 7L);
+    }
+
     private SpeakingQueue persistedWaitingRequest(Long roomId, Long userId, int queueOrder) {
         return SpeakingQueue.waiting(
                 roomId,
@@ -115,6 +142,14 @@ class SpeakingQueueServiceTest {
                 queueOrder,
                 LocalDateTime.of(2026, 6, 12, 11, 30)
         );
+    }
+
+    private SpeakingQueue completedRequest(Long roomId, Long userId, int queueOrder) {
+        SpeakingQueue speakingQueue =
+                persistedWaitingRequest(roomId, userId, queueOrder);
+        speakingQueue.assign();
+        speakingQueue.complete();
+        return speakingQueue;
     }
 
 }

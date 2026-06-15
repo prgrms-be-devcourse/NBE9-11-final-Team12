@@ -117,6 +117,23 @@ class SpeakingQueueRepositoryTest {
     }
 
     @Test
+    void findByRoomIdAndStatus_returnsCurrentAssignedSpeaker() {
+        SpeakingQueue assigned = SpeakingQueue.waiting(
+                1L,
+                10L,
+                15,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        assigned.assign();
+        SpeakingQueue saved = speakingQueueRepository.saveAndFlush(assigned);
+
+        Optional<SpeakingQueue> found = speakingQueueRepository
+                .findByRoomIdAndStatus(1L, SpeakingQueueStatus.ASSIGNED);
+
+        assertThat(found).contains(saved);
+    }
+
+    @Test
     void findRoomIdsRequiringAssignment_returnsOnlyRoomsWithoutAssignedSpeaker() {
         speakingQueueRepository.saveAndFlush(
                 SpeakingQueue.waiting(

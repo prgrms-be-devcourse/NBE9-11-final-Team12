@@ -59,11 +59,19 @@ public class User {
     private LocalDateTime updatedAt;
 
     public static User signup(String email, String encodedPassword, String nickname) {
+        return create(email, encodedPassword, nickname, UserRole.USER);
+    }
+
+    public static User admin(String email, String encodedPassword, String nickname) {
+        return create(email, encodedPassword, nickname, UserRole.ADMIN);
+    }
+
+    private static User create(String email, String encodedPassword, String nickname, UserRole role) {
         User user = new User();
         user.email = email;
         user.password = encodedPassword;
         user.nickname = nickname;
-        user.role = UserRole.USER;
+        user.role = role;
         user.status = UserStatus.ACTIVE;
         return user;
     }

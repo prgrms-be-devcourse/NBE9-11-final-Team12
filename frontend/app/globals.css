@@ -1,0 +1,239 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-heading: system-ui, sans-serif;
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+
+  /* Arena custom tokens */
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-live: var(--live);
+  --color-live-foreground: var(--live-foreground);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+}
+
+/* ─── LIGHT MODE (default) ─────────────────────────────────── */
+:root {
+  --background:        oklch(0.99 0.002 247);   /* #f8fafc — very light blue-grey */
+  --foreground:        oklch(0.15 0.015 255);   /* near-black navy */
+
+  --card:              oklch(1 0 0);            /* pure white */
+  --card-foreground:   oklch(0.15 0.015 255);
+
+  --popover:           oklch(1 0 0);
+  --popover-foreground: oklch(0.15 0.015 255);
+
+  /* Indigo-blue primary — vibrant, trustworthy */
+  --primary:           oklch(0.52 0.22 264);    /* #4F46E5 indigo */
+  --primary-foreground: oklch(1 0 0);
+
+  --secondary:         oklch(0.94 0.006 247);   /* light grey */
+  --secondary-foreground: oklch(0.3 0.012 255);
+
+  --muted:             oklch(0.95 0.005 247);
+  --muted-foreground:  oklch(0.52 0.015 255);   /* slate-500 */
+
+  --accent:            oklch(0.62 0.19 264);    /* slightly lighter indigo */
+  --accent-foreground: oklch(1 0 0);
+
+  --destructive:       oklch(0.59 0.22 27);     /* red-500 */
+  --destructive-foreground: oklch(1 0 0);
+
+  --border:            oklch(0.9 0.006 247);    /* slate-200 */
+  --input:             oklch(0.9 0.006 247);
+  --ring:              oklch(0.52 0.22 264);
+
+  /* Charts */
+  --chart-1:           oklch(0.52 0.22 264);    /* indigo */
+  --chart-2:           oklch(0.62 0.19 160);    /* teal */
+  --chart-3:           oklch(0.7  0.18  50);    /* amber */
+  --chart-4:           oklch(0.59 0.22 27);     /* red */
+  --chart-5:           oklch(0.65 0.2  290);    /* purple */
+
+  --radius: 0.625rem;
+
+  --sidebar:           oklch(1 0 0);
+  --sidebar-foreground: oklch(0.15 0.015 255);
+  --sidebar-primary:   oklch(0.52 0.22 264);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent:    oklch(0.95 0.005 247);
+  --sidebar-accent-foreground: oklch(0.3 0.012 255);
+  --sidebar-border:    oklch(0.9 0.006 247);
+  --sidebar-ring:      oklch(0.52 0.22 264);
+
+  /* Arena custom */
+  --surface:           oklch(0.97 0.004 247);   /* off-white surface */
+  --surface-raised:    oklch(0.96 0.005 247);
+  --live:              oklch(0.59 0.22 27);     /* red for LIVE badge */
+  --live-foreground:   oklch(1 0 0);
+}
+
+/* ─── DARK MODE ─────────────────────────────────────────────── */
+/*
+ * Reference palette: GitHub Dark Dimmed / Linear / Vercel Dashboard
+ * Key principles:
+ *  - background: very dark blue-grey (not pure black) for eye comfort
+ *  - card:        one clear step lighter than background (visible depth)
+ *  - surface/surface-raised: additional elevation stops
+ *  - foreground: warm off-white (#e6edf3 ref) — not harsh pure white
+ *  - muted-foreground: 63% lightness (readable grey, not washed-out 55%)
+ *  - primary: slightly desaturated indigo so it doesn't glow too harshly
+ *  - border: slightly more visible (13% opacity) for clear card edges
+ */
+.dark {
+  --background:        oklch(0.13 0.013 255);   /* #0d1117-ish — GitHub dark base */
+  --foreground:        oklch(0.92 0.008 240);   /* warm off-white, not 96 pure white */
+
+  --card:              oklch(0.18 0.015 255);   /* #161b22 — GitHub card surface */
+  --card-foreground:   oklch(0.92 0.008 240);
+
+  --popover:           oklch(0.2 0.016 255);    /* slightly lighter than card */
+  --popover-foreground: oklch(0.92 0.008 240);
+
+  --primary:           oklch(0.63 0.2 264);     /* indigo-400 — less harsh than 0.66 */
+  --primary-foreground: oklch(0.98 0 0);
+
+  --secondary:         oklch(0.22 0.016 255);
+  --secondary-foreground: oklch(0.82 0.01 240);
+
+  --muted:             oklch(0.21 0.014 255);   /* subtle panel fill */
+  --muted-foreground:  oklch(0.63 0.012 248);   /* #8b949e GitHub — legible mid-grey */
+
+  --accent:            oklch(0.58 0.18 264);
+  --accent-foreground: oklch(0.98 0 0);
+
+  --destructive:       oklch(0.62 0.2 27);      /* slightly muted red, not glaring */
+  --destructive-foreground: oklch(0.98 0 0);
+
+  --border:            oklch(1 0 0 / 13%);      /* clearer card edges than 9% */
+  --input:             oklch(1 0 0 / 10%);
+  --ring:              oklch(0.63 0.2 264);
+
+  --chart-1:           oklch(0.63 0.2 264);     /* indigo */
+  --chart-2:           oklch(0.68 0.17 160);    /* teal */
+  --chart-3:           oklch(0.72 0.14  50);    /* amber */
+  --chart-4:           oklch(0.62 0.2 27);      /* red */
+  --chart-5:           oklch(0.62 0.18 290);    /* purple */
+
+  --sidebar:           oklch(0.15 0.014 255);   /* slightly lighter than bg */
+  --sidebar-foreground: oklch(0.92 0.008 240);
+  --sidebar-primary:   oklch(0.63 0.2 264);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-accent:    oklch(0.22 0.016 255);
+  --sidebar-accent-foreground: oklch(0.82 0.01 240);
+  --sidebar-border:    oklch(1 0 0 / 13%);
+  --sidebar-ring:      oklch(0.63 0.2 264);
+
+  --surface:           oklch(0.2 0.015 255);    /* elevated surface (input bg, hover) */
+  --surface-raised:    oklch(0.23 0.016 255);   /* tooltip, dropdown */
+  --live:              oklch(0.62 0.2 27);
+  --live-foreground:   oklch(0.98 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* ─── Scrollbar ─────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+
+:root ::-webkit-scrollbar-track { background: oklch(0.95 0.005 247); }
+:root ::-webkit-scrollbar-thumb { background: oklch(0.8 0.008 250); border-radius: 3px; }
+:root ::-webkit-scrollbar-thumb:hover { background: oklch(0.52 0.22 264 / 60%); }
+
+.dark ::-webkit-scrollbar-track { background: oklch(0.15 0.013 255); }
+.dark ::-webkit-scrollbar-thumb { background: oklch(0.3 0.015 255); border-radius: 3px; }
+.dark ::-webkit-scrollbar-thumb:hover { background: oklch(0.63 0.2 264 / 60%); }
+
+/* ─── Animations ────────────────────────────────────────────── */
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+.animate-live-pulse { animation: live-pulse 1.4s ease-in-out infinite; }
+
+/* ─── Utility shadows ��──────────────────────────────────────── */
+/* Light mode */
+:root .shadow-card {
+  box-shadow: 0 1px 3px oklch(0 0 0 / 8%), 0 1px 2px oklch(0 0 0 / 6%);
+}
+:root .shadow-card-hover {
+  box-shadow: 0 4px 12px oklch(0 0 0 / 10%), 0 2px 4px oklch(0 0 0 / 6%);
+}
+/* Dark mode */
+.dark .shadow-card {
+  box-shadow: 0 1px 3px oklch(0 0 0 / 55%), 0 0 0 1px oklch(1 0 0 / 5%);
+}
+.dark .shadow-card-hover {
+  box-shadow: 0 4px 16px oklch(0 0 0 / 65%), 0 0 0 1px oklch(1 0 0 / 8%);
+}
+
+/* Primary glow (used sparingly for LIVE indicators) */
+.glow-primary {
+  box-shadow: 0 0 0 1px var(--primary), 0 0 12px oklch(from var(--primary) l c h / 20%);
+}
+
+/* ─── Room layout: prevent content clipping on Safari / Chrome mobile ── */
+/*
+ * h-screen uses 100vh which includes the browser chrome on mobile Safari.
+ * We use 100dvh (dynamic viewport height) instead so content is never clipped.
+ * The inline style "height: 100dvh" on the room page is the primary fix;
+ * this fallback ensures it still works where dvh is unsupported.
+ */
+.h-dvh {
+  height: 100vh;
+  height: 100dvh;
+}
