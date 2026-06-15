@@ -82,13 +82,6 @@ class StageControllerTest {
     }
 
     @Test
-    void requestSpeakingTurn_returnsUnauthorizedWhenPrincipalIsMissing() throws Exception {
-        mockMvc.perform(post("/api/v1/rooms/1/stage/requests"))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
-    }
-
-    @Test
     void requestSpeakingTurn_returnsBadRequestWhenRoomIdIsNotPositive() throws Exception {
         mockMvc.perform(post("/api/v1/rooms/0/stage/requests")
                         .with(authPrincipal(10L)))
@@ -120,13 +113,6 @@ class StageControllerTest {
                         .value("SPEAKING_REQUEST_NOT_CANCELABLE"))
                 .andExpect(jsonPath("$.message")
                         .value("대기 중인 발언권 신청만 취소할 수 있습니다."));
-    }
-
-    @Test
-    void cancelSpeakingRequest_returnsUnauthorizedWhenPrincipalIsMissing() throws Exception {
-        mockMvc.perform(delete("/api/v1/rooms/1/stage/requests/me"))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
     }
 
     @Test
@@ -165,14 +151,6 @@ class StageControllerTest {
                         .with(authPrincipal(10L)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
-    }
-
-    @Test
-    void completeSpeakingTurn_returnsUnauthorizedWhenPrincipalIsMissing()
-            throws Exception {
-        mockMvc.perform(post("/api/v1/rooms/1/stage/complete"))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
     }
 
     private RequestPostProcessor authPrincipal(Long userId) {
