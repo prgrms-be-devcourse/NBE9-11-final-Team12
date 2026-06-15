@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 
@@ -50,5 +51,17 @@ public class RoomService {
         .stream()
         .map(RoomSummaryRes::from)
         .toList();
+  }
+
+  @Transactional
+  public int closeExpiredRooms(LocalDateTime now) {
+    List<Room> expiredRooms = roomRepository.findByStatusAndEndedAtLessThanEqual(
+        RoomStatus.OPEN,
+        now
+    );
+
+    expiredRooms.forEach(room -> room.close(now));
+
+    return expiredRooms.size();
   }
 }

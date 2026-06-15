@@ -53,4 +53,13 @@ public class Room {
         room.startedAt = now;
         return room;
     }
+
+    public void close(LocalDateTime closedAt) {
+        if (this.status == RoomStatus.CLOSED) {
+            return;
+        }
+
+        this.status = RoomStatus.CLOSED;
+        this.endedAt = closedAt;
+    }
 }
