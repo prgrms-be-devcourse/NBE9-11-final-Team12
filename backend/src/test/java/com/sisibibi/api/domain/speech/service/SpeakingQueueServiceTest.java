@@ -31,7 +31,7 @@ class SpeakingQueueServiceTest {
     private SpeakingQueueService speakingQueueService;
 
     @Test
-    void requestSpeakingTurn_persistsInRdbBeforeSynchronizingRedis() {
+    void requestSpeakingTurn_persistsWaitingRequestWithoutSynchronousAssignment() {
         SpeakingQueue saved = persistedWaitingRequest(1L, 7L, 15);
         given(speakingQueuePersistenceService.createWaitingRequest(1L, 7L))
                 .willReturn(saved);
@@ -43,6 +43,8 @@ class SpeakingQueueServiceTest {
         assertThat(response.status()).isEqualTo(SpeakingQueueStatus.WAITING);
         assertThat(response.queueOrder()).isEqualTo(15);
         verify(redisSpeakingQueueRepository).upsert(1L, 7L, 15);
+        verify(redisSpeakingQueueRepository, never()).assign(1L, 7L);
+        verify(speakingQueuePersistenceService, never()).assignNextSpeaker(1L);
     }
 
     @Test
@@ -72,7 +74,9 @@ class SpeakingQueueServiceTest {
         StageRequestRes response = speakingQueueService.requestSpeakingTurn(1L, 7L);
 
         assertThat(response.queueOrder()).isEqualTo(15);
+        assertThat(response.status()).isEqualTo(SpeakingQueueStatus.WAITING);
         verify(speakingQueuePersistenceService).createWaitingRequest(1L, 7L);
+        verify(speakingQueuePersistenceService, never()).assignNextSpeaker(1L);
     }
 
     private SpeakingQueue persistedWaitingRequest(Long roomId, Long userId, int queueOrder) {
@@ -83,4 +87,5 @@ class SpeakingQueueServiceTest {
                 LocalDateTime.of(2026, 6, 12, 11, 30)
         );
     }
+
 }

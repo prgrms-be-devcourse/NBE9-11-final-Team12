@@ -3,10 +3,10 @@ package com.sisibibi.api.domain.speech.service;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.repository.RedisSpeakingQueueRepository;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-
 
 @Slf4j
 @Service
@@ -19,11 +19,19 @@ public class SpeakingQueueService {
     public StageRequestRes requestSpeakingTurn(Long roomId, Long userId) {
         SpeakingQueue saved =
                 speakingQueuePersistenceService.createWaitingRequest(roomId, userId);
-        synchronizeRedisProjection(saved);
+
+        synchronizeWaitingRedisProjection(saved);
         return StageRequestRes.from(saved);
     }
 
-    private void synchronizeRedisProjection(SpeakingQueue speakingQueue) {
+    public Optional<SpeakingQueue> assignNextSpeaker(Long roomId) {
+        Optional<SpeakingQueue> assigned =
+                speakingQueuePersistenceService.assignNextSpeaker(roomId);
+        assigned.ifPresent(this::synchronizeAssignedRedisProjection);
+        return assigned;
+    }
+
+    private void synchronizeWaitingRedisProjection(SpeakingQueue speakingQueue) {
         try {
             redisSpeakingQueueRepository.upsert(
                     speakingQueue.getRoomId(),
@@ -41,4 +49,23 @@ public class SpeakingQueueService {
             );
         }
     }
+
+    private void synchronizeAssignedRedisProjection(SpeakingQueue speakingQueue) {
+        try {
+            redisSpeakingQueueRepository.assign(
+                    speakingQueue.getRoomId(),
+                    speakingQueue.getUserId()
+            );
+        } catch (RuntimeException synchronizationException) {
+            log.error(
+                    "Failed to synchronize assigned speaker to Redis. "
+                            + "roomId={}, userId={}, queueOrder={}",
+                    speakingQueue.getRoomId(),
+                    speakingQueue.getUserId(),
+                    speakingQueue.getQueueOrder(),
+                    synchronizationException
+            );
+        }
+    }
+
 }

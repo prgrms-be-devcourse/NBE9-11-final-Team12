@@ -1,5 +1,6 @@
 package com.sisibibi.api.domain.speech.service;
 
+import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
@@ -7,6 +8,7 @@ import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +21,7 @@ public class SpeakingQueuePersistenceService {
             List.of(SpeakingQueueStatus.WAITING, SpeakingQueueStatus.ASSIGNED);
 
     private final SpeakingQueueRepository speakingQueueRepository;
+    private final RoomRepository roomRepository;
 
     @Transactional
     public SpeakingQueue createWaitingRequest(Long roomId, Long userId) {
@@ -38,5 +41,33 @@ public class SpeakingQueuePersistenceService {
         SpeakingQueue saved = speakingQueueRepository.saveAndFlush(speakingQueue);
         saved.assignQueueOrderFromId();
         return saved;
+    }
+
+    @Transactional
+    public Optional<SpeakingQueue> assignNextSpeaker(Long roomId) {
+        roomRepository.findByIdForUpdate(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+        if (speakingQueueRepository.existsByRoomIdAndStatus(
+                roomId,
+                SpeakingQueueStatus.ASSIGNED
+        )) {
+            return Optional.empty();
+        }
+
+        Optional<SpeakingQueue> waitingRequest =
+                speakingQueueRepository
+                        .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+                                roomId,
+                                SpeakingQueueStatus.WAITING
+                        );
+
+        if (waitingRequest.isEmpty()) {
+            return Optional.empty();
+        }
+
+        SpeakingQueue nextSpeaker = waitingRequest.get();
+        nextSpeaker.assign();
+        return Optional.of(nextSpeaker);
     }
 }
