@@ -55,6 +55,22 @@ class SpeakingQueueTest {
     }
 
     @Test
+    void cancel_rejectsAssignedRequest() {
+        SpeakingQueue speakingQueue = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        speakingQueue.assign();
+
+        assertThatThrownBy(() ->
+                speakingQueue.cancel(LocalDateTime.of(2026, 6, 12, 11, 35)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Only waiting speaking requests can be canceled.");
+    }
+
+    @Test
     void assign_changesWaitingRequestToAssigned() {
         SpeakingQueue speakingQueue = SpeakingQueue.waiting(
                 1L,
