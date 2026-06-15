@@ -48,4 +48,17 @@ public class RoomParticipantService {
 
     return RoomParticipantRes.from(participant);
   }
+
+  @Transactional
+  public void leaveRoom(Long roomId, Long userId) {
+    if (!roomRepository.existsById(roomId)) {
+      throw new CustomException(ErrorCode.ROOM_NOT_FOUND);
+    }
+
+    RoomParticipant participant = roomParticipantRepository
+        .findByRoomIdAndUserId(roomId, userId)
+        .orElseThrow(() -> new CustomException(ErrorCode.ROOM_PARTICIPANT_NOT_FOUND));
+
+    participant.leave();
+  }
 }
