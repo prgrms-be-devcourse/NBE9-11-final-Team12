@@ -17,6 +17,7 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+
 import java.time.LocalDateTime;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -25,6 +26,8 @@ import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.mockito.BDDMockito.willThrow;
 
 @WebMvcTest(AdminRoomController.class)
 @AutoConfigureMockMvc(addFilters = false)
@@ -141,6 +144,35 @@ class AdminRoomControllerTest {
                     "title": "수정 후 제목"
                   }
                   """))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
+  }
+
+  @Test
+  void deleteRoom_returnsOk() throws Exception {
+    mockMvc.perform(delete("/api/v1/admin/rooms/{roomId}", 10L))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value(200))
+        .andExpect(jsonPath("$.code").value("SUCCESS"))
+        .andExpect(jsonPath("$.message").value("토론방 삭제가 완료되었습니다."));
+
+    verify(roomService).deleteRoom(10L);
+  }
+
+  @Test
+  void deleteRoom_returnsNotFound_whenRoomDoesNotExist() throws Exception {
+    willThrow(new CustomException(ErrorCode.ROOM_NOT_FOUND))
+        .given(roomService)
+        .deleteRoom(any());
+
+    mockMvc.perform(delete("/api/v1/admin/rooms/{roomId}", 999L))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("ROOM_NOT_FOUND"));
+  }
+
+  @Test
+  void deleteRoom_returnsBadRequest_whenRoomIdIsNotPositive() throws Exception {
+    mockMvc.perform(delete("/api/v1/admin/rooms/{roomId}", 0L))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
   }

@@ -240,4 +240,30 @@ class RoomServiceTest {
         .extracting("errorCode")
         .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
   }
+
+  @Test
+  void deleteRoom_closesRoom_whenRoomExists() {
+    Room room = Room.open(1L, "삭제 대상 토론방");
+
+    given(roomRepository.findById(10L)).willReturn(Optional.of(room));
+
+    roomService.deleteRoom(10L);
+
+    assertThat(room.getStatus()).isEqualTo(RoomStatus.CLOSED);
+    assertThat(room.getEndedAt()).isNotNull();
+
+    verify(roomRepository).findById(10L);
+  }
+
+  @Test
+  void deleteRoom_throwsRoomNotFound_whenRoomDoesNotExist() {
+    given(roomRepository.findById(999L)).willReturn(Optional.empty());
+
+    assertThatThrownBy(() -> roomService.deleteRoom(999L))
+        .isInstanceOf(CustomException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
+
+    verify(roomRepository).findById(999L);
+  }
 }

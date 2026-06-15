@@ -42,4 +42,13 @@ public class AdminRoomController {
 
     return ResponseEntity.ok(ApiResponse.ok("토론방 수정이 완료되었습니다.", response));
   }
+
+  @DeleteMapping("/{roomId}")
+  public ResponseEntity<ApiResponse<Void>> deleteRoom(
+      @PathVariable @Positive Long roomId
+  ) {
+    roomService.deleteRoom(roomId);
+
+    return ResponseEntity.ok(ApiResponse.okMessage("토론방 삭제가 완료되었습니다."));
+  }
 }

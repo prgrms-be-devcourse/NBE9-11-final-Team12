@@ -113,4 +113,12 @@ public class RoomService {
       throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
     }
   }
+
+  @Transactional
+  public void deleteRoom(Long roomId) {
+    Room room = roomRepository.findById(roomId)
+        .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+    room.close(LocalDateTime.now());
+  }
 }
