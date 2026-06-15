@@ -2,6 +2,7 @@ package com.sisibibi.api.domain.room.service;
 
 import com.sisibibi.api.domain.room.dto.request.CreateRoomReq;
 import com.sisibibi.api.domain.room.dto.response.CreateRoomRes;
+import com.sisibibi.api.domain.room.dto.response.RoomDetailRes;
 import com.sisibibi.api.domain.room.dto.response.RoomSummaryRes;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
@@ -15,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 
@@ -47,6 +49,27 @@ public class RoomService {
 
   public List<RoomSummaryRes> getOpenRooms() {
     return roomRepository.findByStatusOrderByCreatedAtDesc(RoomStatus.OPEN)
+        .stream()
+        .map(RoomSummaryRes::from)
+        .toList();
+  }
+
+  @Transactional
+  public int closeExpiredRooms(LocalDateTime now) {
+    return roomRepository.closeExpiredRooms(now);
+  }
+
+  // 하나의 토론방 상세 조회
+  public RoomDetailRes getRoom(Long roomId) {
+    Room room = roomRepository.findById(roomId)
+        .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+    return RoomDetailRes.from(room);
+  }
+
+  // 전체 토론방 조회
+  public List<RoomSummaryRes> getRooms() {
+    return roomRepository.findAllByOrderByCreatedAtDesc()
         .stream()
         .map(RoomSummaryRes::from)
         .toList();

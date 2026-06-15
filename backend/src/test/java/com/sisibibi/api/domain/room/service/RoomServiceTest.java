@@ -2,6 +2,7 @@ package com.sisibibi.api.domain.room.service;
 
 import com.sisibibi.api.domain.room.dto.request.CreateRoomReq;
 import com.sisibibi.api.domain.room.dto.response.CreateRoomRes;
+import com.sisibibi.api.domain.room.dto.response.RoomDetailRes;
 import com.sisibibi.api.domain.room.dto.response.RoomSummaryRes;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
@@ -17,6 +18,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -102,5 +104,72 @@ class RoomServiceTest {
     assertThat(result.get(1).title()).isEqualTo("첫 번째 토론방");
 
     verify(roomRepository).findByStatusOrderByCreatedAtDesc(RoomStatus.OPEN);
+  }
+
+  @Test
+  void closeExpiredRooms_returnsClosedCount_whenExpiredRoomsExist() {
+    LocalDateTime now = LocalDateTime.of(2026, 6, 15, 12, 0);
+
+    given(roomRepository.closeExpiredRooms(now)).willReturn(3);
+
+    int closedCount = roomService.closeExpiredRooms(now);
+
+    assertThat(closedCount).isEqualTo(3);
+
+    verify(roomRepository).closeExpiredRooms(now);
+  }
+
+  @Test
+  void closeExpiredRooms_returnsZero_whenExpiredRoomDoesNotExist() {
+    LocalDateTime now = LocalDateTime.of(2026, 6, 15, 12, 0);
+
+    given(roomRepository.closeExpiredRooms(now)).willReturn(0);
+
+    int closedCount = roomService.closeExpiredRooms(now);
+
+    assertThat(closedCount).isZero();
+
+    verify(roomRepository).closeExpiredRooms(now);
+  }
+  @Test
+  void getRooms_returnsRoomsOrderedByCreatedAtDesc() {
+    Room firstRoom = Room.open(1L, "첫 번째 토론방");
+    Room secondRoom = Room.open(2L, "두 번째 토론방");
+
+    given(roomRepository.findAllByOrderByCreatedAtDesc())
+        .willReturn(List.of(secondRoom, firstRoom));
+
+    List<RoomSummaryRes> result = roomService.getRooms();
+
+    assertThat(result).hasSize(2);
+    assertThat(result.get(0).title()).isEqualTo("두 번째 토론방");
+    assertThat(result.get(1).title()).isEqualTo("첫 번째 토론방");
+
+    verify(roomRepository).findAllByOrderByCreatedAtDesc();
+  }
+
+  @Test
+  void getRoom_returnsRoomDetail_whenRoomExists() {
+    Room room = Room.open(1L, "상세 조회 토론방");
+
+    given(roomRepository.findById(10L)).willReturn(Optional.of(room));
+
+    RoomDetailRes result = roomService.getRoom(10L);
+
+    assertThat(result.topicId()).isEqualTo(1L);
+    assertThat(result.title()).isEqualTo("상세 조회 토론방");
+    assertThat(result.status()).isEqualTo(RoomStatus.OPEN);
+
+    verify(roomRepository).findById(10L);
+  }
+
+  @Test
+  void getRoom_throwsRoomNotFound_whenRoomDoesNotExist() {
+    given(roomRepository.findById(999L)).willReturn(Optional.empty());
+
+    assertThatThrownBy(() -> roomService.getRoom(999L))
+        .isInstanceOf(CustomException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
   }
 }
