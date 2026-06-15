@@ -166,6 +166,48 @@ class SpeakingQueueRepositoryTest {
         assertThat(candidateRoomIds).containsExactly(1L);
     }
 
+    @Test
+    void findRoomIdsWithExpiredSpeaker_returnsOnlyExpiredAssignedRooms() {
+        LocalDateTime now = LocalDateTime.of(2026, 6, 12, 11, 35);
+        SpeakingQueue expired = SpeakingQueue.waiting(
+                1L,
+                10L,
+                1,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        expired.assign(
+                LocalDateTime.of(2026, 6, 12, 11, 31),
+                LocalDateTime.of(2026, 6, 12, 11, 33)
+        );
+        speakingQueueRepository.saveAndFlush(expired);
+
+        SpeakingQueue notExpired = SpeakingQueue.waiting(
+                2L,
+                20L,
+                2,
+                LocalDateTime.of(2026, 6, 12, 11, 32)
+        );
+        notExpired.assign(
+                LocalDateTime.of(2026, 6, 12, 11, 34),
+                LocalDateTime.of(2026, 6, 12, 11, 36)
+        );
+        speakingQueueRepository.saveAndFlush(notExpired);
+
+        speakingQueueRepository.saveAndFlush(
+                SpeakingQueue.waiting(
+                        3L,
+                        30L,
+                        3,
+                        LocalDateTime.of(2026, 6, 12, 11, 30)
+                )
+        );
+
+        List<Long> expiredRoomIds =
+                speakingQueueRepository.findRoomIdsWithExpiredSpeaker(now);
+
+        assertThat(expiredRoomIds).containsExactly(1L);
+    }
+
     private void assign(SpeakingQueue speakingQueue) {
         speakingQueue.assign(
                 LocalDateTime.of(2026, 6, 12, 11, 31),

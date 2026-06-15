@@ -2,6 +2,7 @@ package com.sisibibi.api.domain.speech.repository;
 
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -59,5 +60,23 @@ public interface SpeakingQueueRepository extends JpaRepository<SpeakingQueue, Lo
     List<Long> findRoomIdsRequiringAssignment(
             @Param("waitingStatus") SpeakingQueueStatus waitingStatus,
             @Param("assignedStatus") SpeakingQueueStatus assignedStatus
+    );
+
+    default List<Long> findRoomIdsWithExpiredSpeaker(LocalDateTime now) {
+        return findRoomIdsWithExpiredSpeaker(
+                SpeakingQueueStatus.ASSIGNED,
+                now
+        );
+    }
+
+    @Query("""
+            select distinct queue.roomId
+            from SpeakingQueue queue
+            where queue.status = :assignedStatus
+              and queue.expiresAt <= :now
+            """)
+    List<Long> findRoomIdsWithExpiredSpeaker(
+            @Param("assignedStatus") SpeakingQueueStatus assignedStatus,
+            @Param("now") LocalDateTime now
     );
 }
