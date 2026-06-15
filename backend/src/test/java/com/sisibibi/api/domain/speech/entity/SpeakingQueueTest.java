@@ -99,4 +99,34 @@ class SpeakingQueueTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Only waiting speaking requests can be assigned.");
     }
+
+    @Test
+    void complete_changesAssignedRequestToCompleted() {
+        SpeakingQueue speakingQueue = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        speakingQueue.assign();
+
+        speakingQueue.complete();
+
+        assertThat(speakingQueue.getStatus()).isEqualTo(SpeakingQueueStatus.COMPLETED);
+        assertThat(speakingQueue.getActiveRequest()).isNull();
+    }
+
+    @Test
+    void complete_rejectsWaitingRequest() {
+        SpeakingQueue speakingQueue = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+
+        assertThatThrownBy(speakingQueue::complete)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Only assigned speaking requests can be completed.");
+    }
 }

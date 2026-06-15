@@ -129,4 +129,15 @@ public class SpeakingQueue {
         this.canceledAt = canceledAt;
         this.activeRequest = null;
     }
+
+    public void complete() {
+        if (status != SpeakingQueueStatus.ASSIGNED) {
+            throw new IllegalStateException(
+                    "Only assigned speaking requests can be completed."
+            );
+        }
+
+        this.status = SpeakingQueueStatus.COMPLETED;
+        this.activeRequest = null;
+    }
 }
