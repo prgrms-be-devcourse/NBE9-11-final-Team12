@@ -2,6 +2,7 @@ package com.sisibibi.api.domain.room.service;
 
 import com.sisibibi.api.domain.room.dto.request.CreateRoomReq;
 import com.sisibibi.api.domain.room.dto.response.CreateRoomRes;
+import com.sisibibi.api.domain.room.dto.response.RoomSummaryRes;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
@@ -16,6 +17,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
@@ -54,7 +56,7 @@ class RoomServiceTest {
     assertThat(savedRoom.getTitle()).isEqualTo("토론 주제");
     assertThat(savedRoom.getStatus()).isEqualTo(RoomStatus.OPEN);
     assertThat(savedRoom.getStartedAt()).isNotNull();
-    assertThat(savedRoom.getCreatedAt()).isNotNull();
+    assertThat(savedRoom.getCreatedAt()).isNull();
     assertThat(result.status()).isEqualTo(RoomStatus.OPEN);
   }
 
@@ -83,5 +85,22 @@ class RoomServiceTest {
         .isEqualTo(ErrorCode.ROOM_ALREADY_EXISTS);
 
     verify(roomRepository, never()).save(any());
+  }
+
+  @Test
+  void getOpenRooms_returnsOnlyOpenRoomsOrderedByCreatedAtDesc() {
+    Room firstRoom = Room.open(1L, "첫 번째 토론방");
+    Room secondRoom = Room.open(2L, "두 번째 토론방");
+
+    given(roomRepository.findByStatusOrderByCreatedAtDesc(RoomStatus.OPEN))
+        .willReturn(List.of(secondRoom, firstRoom));
+
+    List<RoomSummaryRes> result = roomService.getOpenRooms();
+
+    assertThat(result).hasSize(2);
+    assertThat(result.get(0).title()).isEqualTo("두 번째 토론방");
+    assertThat(result.get(1).title()).isEqualTo("첫 번째 토론방");
+
+    verify(roomRepository).findByStatusOrderByCreatedAtDesc(RoomStatus.OPEN);
   }
 }

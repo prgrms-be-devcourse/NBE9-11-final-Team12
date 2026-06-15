@@ -1,0 +1,16 @@
+# source => canonical form
+# 운영 중 확인된 음차·두벌식·한영 혼합 우회만 추가한다.
+niㅇh미 => 니애미
+niㅇhmi => 니애미
+ni애미 => 니애미
+motherfucker => motherfucker
+gaesaekki => 개새끼
+byungsin => 병신
+qudtls => 병신
+ssibal => 씨발
+shibal => 시발
+sibal => 시발
+sipal => 시팔
+tlqkf => 시발
+jiral => 지랄
+jonna => 존나

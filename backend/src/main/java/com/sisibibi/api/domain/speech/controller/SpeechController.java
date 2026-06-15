@@ -1,12 +1,14 @@
 package com.sisibibi.api.domain.speech.controller;
 
 import com.sisibibi.api.domain.speech.dto.request.SpeechCreateReq;
+import com.sisibibi.api.domain.speech.dto.request.SpeechLinkUpdateReq;
 import com.sisibibi.api.domain.speech.dto.request.SpeechUpdateReq;
 import com.sisibibi.api.domain.speech.dto.response.SpeechCreateRes;
 import com.sisibibi.api.domain.speech.dto.response.SpeechCursorPageRes;
 import com.sisibibi.api.domain.speech.dto.response.SpeechDetailRes;
 import com.sisibibi.api.domain.speech.service.SpeechService;
 import com.sisibibi.api.global.response.ApiResponse;
+import com.sisibibi.api.global.security.AuthPrincipal;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Max;
@@ -14,6 +16,7 @@ import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -21,7 +24,6 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -37,12 +39,12 @@ public class SpeechController {
     @PostMapping("/rooms/{roomId}/speeches")
     public ResponseEntity<ApiResponse<SpeechCreateRes>> createMainOpinion(
             @PathVariable @Positive Long roomId,
-            @RequestHeader("X-User-Id") @Positive Long userId,
+            @AuthenticationPrincipal AuthPrincipal principal,
             @Valid @RequestBody SpeechCreateReq request
     ) {
         SpeechCreateRes response = speechService.createMainOpinion(
                 roomId,
-                userId,
+                principal.userId(),
                 request.toCommand()
         );
 
@@ -76,22 +78,34 @@ public class SpeechController {
     @PatchMapping("/speeches/{speechId}")
     public ResponseEntity<ApiResponse<SpeechDetailRes>> updateSpeech(
             @PathVariable @Positive Long speechId,
-            @RequestHeader("X-User-Id") @Positive Long userId,
+            @AuthenticationPrincipal AuthPrincipal principal,
             @Valid @RequestBody SpeechUpdateReq request
     ) {
         return ResponseEntity.ok(ApiResponse.ok(
                 "내 의견 수정이 완료되었습니다.",
-                speechService.updateSpeech(speechId, userId, request.toCommand())
+                speechService.updateSpeech(speechId, principal.userId(), request.toCommand())
         ));
     }
 
     @DeleteMapping("/speeches/{speechId}")
     public ResponseEntity<ApiResponse<Void>> deleteSpeech(
             @PathVariable @Positive Long speechId,
-            @RequestHeader("X-User-Id") @Positive Long userId
+            @AuthenticationPrincipal AuthPrincipal principal
     ) {
-        speechService.deleteSpeech(speechId, userId);
+        speechService.deleteSpeech(speechId, principal.userId());
 
         return ResponseEntity.ok(ApiResponse.okMessage("내 의견 삭제가 완료되었습니다."));
+    }
+
+    @PatchMapping("/speeches/{speechId}/link")
+    public ResponseEntity<ApiResponse<SpeechDetailRes>> updateSpeechLink(
+            @PathVariable @Positive Long speechId,
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @Valid @RequestBody SpeechLinkUpdateReq request
+    ) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                "근거 링크 첨부가 완료되었습니다.",
+                speechService.updateSpeechLink(speechId, principal.userId(), request.linkUrl())
+        ));
     }
 }

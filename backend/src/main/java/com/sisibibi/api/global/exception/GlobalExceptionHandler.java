@@ -27,6 +27,10 @@ public class GlobalExceptionHandler {
             "uk_room_participants_room_id_user_id";
     private static final String SPEAKING_QUEUE_ROOM_ORDER_UNIQUE_CONSTRAINT =
             "uk_speaking_queue_room_order";
+    private static final String SPEAKING_QUEUE_ROOM_USER_ACTIVE_UNIQUE_CONSTRAINT =
+            "uk_speaking_queue_room_user_active";
+    private static final String SPEECH_REPORTS_SPEECH_REPORTER_UNIQUE_CONSTRAINT =
+            "uk_speech_reports_speech_reporter";
     private static final String PAYMENTS_ORDER_ID_UNIQUE_CONSTRAINT = "uk_payments_order_id";
 
     @ExceptionHandler(CustomException.class)
@@ -220,6 +224,14 @@ public class GlobalExceptionHandler {
 
         if (isConstraintViolation(e, SPEAKING_QUEUE_ROOM_ORDER_UNIQUE_CONSTRAINT)) {
             return ErrorCode.SPEAKING_QUEUE_ORDER_CONFLICT;
+        }
+
+        if (isConstraintViolation(e, SPEAKING_QUEUE_ROOM_USER_ACTIVE_UNIQUE_CONSTRAINT)) {
+            return ErrorCode.SPEAKING_REQUEST_ALREADY_EXISTS;
+        }
+
+        if (isConstraintViolation(e, SPEECH_REPORTS_SPEECH_REPORTER_UNIQUE_CONSTRAINT)) {
+            return ErrorCode.SPEECH_REPORT_ALREADY_EXISTS;
         }
 
         if (isConstraintViolation(e, PAYMENTS_ORDER_ID_UNIQUE_CONSTRAINT)) {

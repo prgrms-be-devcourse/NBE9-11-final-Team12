@@ -51,7 +51,6 @@ public class Room {
         room.title = title;
         room.status = RoomStatus.OPEN;
         room.startedAt = now;
-        room.createdAt = now;
         return room;
     }
 }
