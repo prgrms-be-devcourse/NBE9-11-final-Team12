@@ -22,6 +22,7 @@ public class RoomParticipantService {
   private final RoomRepository roomRepository;
   private final RoomParticipantRepository roomParticipantRepository;
 
+  //test cicd
   @Transactional
   public RoomParticipantRes joinRoom(Long roomId, Long userId) {
     Room room = roomRepository.findById(roomId)
