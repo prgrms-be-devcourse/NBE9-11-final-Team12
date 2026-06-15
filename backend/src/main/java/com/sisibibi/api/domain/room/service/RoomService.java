@@ -55,13 +55,6 @@ public class RoomService {
 
   @Transactional
   public int closeExpiredRooms(LocalDateTime now) {
-    List<Room> expiredRooms = roomRepository.findByStatusAndEndedAtLessThanEqual(
-        RoomStatus.OPEN,
-        now
-    );
-
-    expiredRooms.forEach(room -> room.close(now));
-
-    return expiredRooms.size();
+    return roomRepository.closeExpiredRooms(now);
   }
 }
