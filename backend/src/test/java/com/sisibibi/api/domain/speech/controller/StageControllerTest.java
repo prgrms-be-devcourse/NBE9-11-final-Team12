@@ -5,13 +5,19 @@ import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.service.SpeakingQueueService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
+import com.sisibibi.api.global.security.AuthPrincipal;
 import java.time.LocalDateTime;
+import java.util.List;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
@@ -31,6 +37,11 @@ class StageControllerTest {
     @MockitoBean
     private SpeakingQueueService speakingQueueService;
 
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
     @Test
     void requestSpeakingTurn_returnsCreatedResponse() throws Exception {
         StageRequestRes response = new StageRequestRes(
@@ -45,7 +56,7 @@ class StageControllerTest {
                 .willReturn(response);
 
         mockMvc.perform(post("/api/v1/rooms/1/stage/requests")
-                        .param("userId", "10"))
+                        .with(authPrincipal(10L)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.message").value("발언권 신청이 완료되었습니다."))
@@ -64,23 +75,23 @@ class StageControllerTest {
                 .willThrow(new CustomException(ErrorCode.SPEAKING_REQUEST_ALREADY_EXISTS));
 
         mockMvc.perform(post("/api/v1/rooms/1/stage/requests")
-                        .param("userId", "10"))
+                        .with(authPrincipal(10L)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("SPEAKING_REQUEST_ALREADY_EXISTS"))
                 .andExpect(jsonPath("$.message").value("이미 발언권을 신청한 상태입니다."));
     }
 
     @Test
-    void requestSpeakingTurn_returnsBadRequestWhenUserIdIsMissing() throws Exception {
+    void requestSpeakingTurn_returnsUnauthorizedWhenPrincipalIsMissing() throws Exception {
         mockMvc.perform(post("/api/v1/rooms/1/stage/requests"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
     }
 
     @Test
-    void requestSpeakingTurn_returnsBadRequestWhenUserIdIsNotPositive() throws Exception {
-        mockMvc.perform(post("/api/v1/rooms/1/stage/requests")
-                        .param("userId", "-1"))
+    void requestSpeakingTurn_returnsBadRequestWhenRoomIdIsNotPositive() throws Exception {
+        mockMvc.perform(post("/api/v1/rooms/0/stage/requests")
+                        .with(authPrincipal(10L)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
     }
@@ -88,7 +99,7 @@ class StageControllerTest {
     @Test
     void cancelSpeakingRequest_returnsOkResponse() throws Exception {
         mockMvc.perform(delete("/api/v1/rooms/1/stage/requests/me")
-                        .param("userId", "10"))
+                        .with(authPrincipal(10L)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.message").value("발언권 신청이 취소되었습니다."));
@@ -103,7 +114,7 @@ class StageControllerTest {
                 .cancelSpeakingRequest(1L, 10L);
 
         mockMvc.perform(delete("/api/v1/rooms/1/stage/requests/me")
-                        .param("userId", "10"))
+                        .with(authPrincipal(10L)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code")
                         .value("SPEAKING_REQUEST_NOT_CANCELABLE"))
@@ -112,9 +123,22 @@ class StageControllerTest {
     }
 
     @Test
-    void cancelSpeakingRequest_returnsBadRequestWhenUserIdIsMissing() throws Exception {
+    void cancelSpeakingRequest_returnsUnauthorizedWhenPrincipalIsMissing() throws Exception {
         mockMvc.perform(delete("/api/v1/rooms/1/stage/requests/me"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    private RequestPostProcessor authPrincipal(Long userId) {
+        return request -> {
+            SecurityContextHolder.getContext().setAuthentication(
+                    new UsernamePasswordAuthenticationToken(
+                            new AuthPrincipal(userId, "user@example.com", "USER"),
+                            null,
+                            List.of()
+                    )
+            );
+            return request;
+        };
     }
 }

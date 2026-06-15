@@ -2,6 +2,8 @@ package com.sisibibi.api.domain.speech.controller;
 
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.service.SpeakingQueueService;
+import com.sisibibi.api.global.exception.CustomException;
+import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.response.ApiResponse;
 import com.sisibibi.api.global.security.AuthPrincipal;
 import jakarta.validation.constraints.Positive;
@@ -29,6 +31,10 @@ public class StageController {
             @PathVariable @Positive Long roomId,
             @AuthenticationPrincipal AuthPrincipal principal
     ) {
+        if (principal == null) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
+
         StageRequestRes response = speakingQueueService.requestSpeakingTurn(roomId, principal.userId());
 
         return ResponseEntity
@@ -41,6 +47,10 @@ public class StageController {
             @PathVariable @Positive Long roomId,
             @AuthenticationPrincipal AuthPrincipal principal
     ) {
+        if (principal == null) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
+
         speakingQueueService.cancelSpeakingRequest(roomId, principal.userId());
 
         return ResponseEntity.ok(
