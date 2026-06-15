@@ -124,7 +124,7 @@ class SpeakingQueueRepositoryTest {
                 15,
                 LocalDateTime.of(2026, 6, 12, 11, 30)
         );
-        assigned.assign();
+        assign(assigned);
         SpeakingQueue saved = speakingQueueRepository.saveAndFlush(assigned);
 
         Optional<SpeakingQueue> found = speakingQueueRepository
@@ -149,7 +149,7 @@ class SpeakingQueueRepositoryTest {
                 2,
                 LocalDateTime.of(2026, 6, 12, 11, 31)
         );
-        assigned.assign();
+        assign(assigned);
         speakingQueueRepository.saveAndFlush(assigned);
         speakingQueueRepository.saveAndFlush(
                 SpeakingQueue.waiting(
@@ -164,5 +164,12 @@ class SpeakingQueueRepositoryTest {
                 speakingQueueRepository.findRoomIdsRequiringAssignment();
 
         assertThat(candidateRoomIds).containsExactly(1L);
+    }
+
+    private void assign(SpeakingQueue speakingQueue) {
+        speakingQueue.assign(
+                LocalDateTime.of(2026, 6, 12, 11, 31),
+                LocalDateTime.of(2026, 6, 12, 11, 33)
+        );
     }
 }

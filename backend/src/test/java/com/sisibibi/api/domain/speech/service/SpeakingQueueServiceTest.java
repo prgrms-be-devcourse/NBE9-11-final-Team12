@@ -147,7 +147,10 @@ class SpeakingQueueServiceTest {
     private SpeakingQueue completedRequest(Long roomId, Long userId, int queueOrder) {
         SpeakingQueue speakingQueue =
                 persistedWaitingRequest(roomId, userId, queueOrder);
-        speakingQueue.assign();
+        speakingQueue.assign(
+                LocalDateTime.of(2026, 6, 12, 11, 31),
+                LocalDateTime.of(2026, 6, 12, 11, 33)
+        );
         speakingQueue.complete();
         return speakingQueue;
     }

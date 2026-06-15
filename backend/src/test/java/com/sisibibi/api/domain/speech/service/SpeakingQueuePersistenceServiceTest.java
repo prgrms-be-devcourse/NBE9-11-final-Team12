@@ -133,7 +133,7 @@ class SpeakingQueuePersistenceServiceTest {
                 15,
                 java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
         );
-        assigned.assign();
+        assign(assigned);
         given(roomRepository.findByIdForUpdate(1L))
                 .willReturn(Optional.of(Room.open(1L, "토론방")));
         given(speakingQueueRepository.findByRoomIdAndUserIdAndStatusIn(
@@ -177,6 +177,9 @@ class SpeakingQueuePersistenceServiceTest {
 
         assertThat(assigned).contains(firstWaiting);
         assertThat(firstWaiting.getStatus()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
+        assertThat(firstWaiting.getAssignedAt()).isNotNull();
+        assertThat(firstWaiting.getExpiresAt())
+                .isEqualTo(firstWaiting.getAssignedAt().plusMinutes(2));
 
         InOrder order = inOrder(roomRepository, speakingQueueRepository);
         order.verify(roomRepository).findByIdForUpdate(1L);
@@ -264,7 +267,7 @@ class SpeakingQueuePersistenceServiceTest {
                 15,
                 java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
         );
-        assigned.assign();
+        assign(assigned);
         given(roomRepository.findByIdForUpdate(1L))
                 .willReturn(Optional.of(Room.open(1L, "토론방")));
         given(speakingQueueRepository.findByRoomIdAndStatus(
@@ -311,7 +314,7 @@ class SpeakingQueuePersistenceServiceTest {
                 15,
                 java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
         );
-        assigned.assign();
+        assign(assigned);
         given(roomRepository.findByIdForUpdate(1L))
                 .willReturn(Optional.of(Room.open(1L, "토론방")));
         given(speakingQueueRepository.findByRoomIdAndStatus(
@@ -326,5 +329,12 @@ class SpeakingQueuePersistenceServiceTest {
                 .isEqualTo(ErrorCode.FORBIDDEN);
 
         assertThat(assigned.getStatus()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
+    }
+
+    private void assign(SpeakingQueue speakingQueue) {
+        speakingQueue.assign(
+                java.time.LocalDateTime.of(2026, 6, 12, 11, 31),
+                java.time.LocalDateTime.of(2026, 6, 12, 11, 33)
+        );
     }
 }
