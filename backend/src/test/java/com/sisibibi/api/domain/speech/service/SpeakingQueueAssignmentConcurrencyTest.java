@@ -2,6 +2,8 @@ package com.sisibibi.api.domain.speech.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.sisibibi.api.domain.room.entity.Room;
+import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
@@ -33,12 +35,19 @@ class SpeakingQueueAssignmentConcurrencyTest {
     @Autowired
     private SpeakingQueueRepository speakingQueueRepository;
 
+    @Autowired
+    private RoomRepository roomRepository;
+
+    private Long roomId;
+
     @BeforeEach
     void setUpWaitingQueue() {
         speakingQueueRepository.deleteAll();
+        roomRepository.deleteAll();
+        roomId = roomRepository.saveAndFlush(Room.open(1L, "토론방")).getId();
         speakingQueueRepository.saveAndFlush(
                 SpeakingQueue.waiting(
-                        1L,
+                        roomId,
                         10L,
                         1,
                         LocalDateTime.of(2026, 6, 15, 10, 0)
@@ -46,7 +55,7 @@ class SpeakingQueueAssignmentConcurrencyTest {
         );
         speakingQueueRepository.saveAndFlush(
                 SpeakingQueue.waiting(
-                        1L,
+                        roomId,
                         20L,
                         2,
                         LocalDateTime.of(2026, 6, 15, 10, 1)
@@ -86,6 +95,6 @@ class SpeakingQueueAssignmentConcurrencyTest {
     private Optional<SpeakingQueue> assignAfterSignal(CountDownLatch start)
             throws InterruptedException {
         start.await();
-        return speakingQueuePersistenceService.assignNextSpeaker(1L);
+        return speakingQueuePersistenceService.assignNextSpeaker(roomId);
     }
 }

@@ -90,4 +90,37 @@ class SpeakingQueueRepositoryTest {
         assertThat(found.getId()).isEqualTo(first.getId());
         assertThat(found.getQueueOrder()).isEqualTo(15);
     }
+
+    @Test
+    void findRoomIdsRequiringAssignment_returnsOnlyRoomsWithoutAssignedSpeaker() {
+        speakingQueueRepository.saveAndFlush(
+                SpeakingQueue.waiting(
+                        1L,
+                        10L,
+                        1,
+                        LocalDateTime.of(2026, 6, 12, 11, 30)
+                )
+        );
+        SpeakingQueue assigned = SpeakingQueue.waiting(
+                2L,
+                20L,
+                2,
+                LocalDateTime.of(2026, 6, 12, 11, 31)
+        );
+        assigned.assign();
+        speakingQueueRepository.saveAndFlush(assigned);
+        speakingQueueRepository.saveAndFlush(
+                SpeakingQueue.waiting(
+                        2L,
+                        21L,
+                        3,
+                        LocalDateTime.of(2026, 6, 12, 11, 32)
+                )
+        );
+
+        List<Long> candidateRoomIds =
+                speakingQueueRepository.findRoomIdsRequiringAssignment();
+
+        assertThat(candidateRoomIds).containsExactly(1L);
+    }
 }

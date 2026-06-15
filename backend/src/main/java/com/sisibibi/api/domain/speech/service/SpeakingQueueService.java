@@ -3,7 +3,6 @@ package com.sisibibi.api.domain.speech.service;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.repository.RedisSpeakingQueueRepository;
-import java.util.Objects;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,13 +19,6 @@ public class SpeakingQueueService {
     public StageRequestRes requestSpeakingTurn(Long roomId, Long userId) {
         SpeakingQueue saved =
                 speakingQueuePersistenceService.createWaitingRequest(roomId, userId);
-
-        Optional<SpeakingQueue> assigned = assignNextSpeaker(roomId);
-        Optional<SpeakingQueue> assignedRequest =
-                assigned.filter(value -> isSameRequest(value, saved));
-        if (assignedRequest.isPresent()) {
-            return StageRequestRes.from(assignedRequest.get());
-        }
 
         synchronizeWaitingRedisProjection(saved);
         return StageRequestRes.from(saved);
@@ -76,12 +68,4 @@ public class SpeakingQueueService {
         }
     }
 
-    private boolean isSameRequest(
-            SpeakingQueue first,
-            SpeakingQueue second
-    ) {
-        return Objects.equals(first.getRoomId(), second.getRoomId())
-                && Objects.equals(first.getUserId(), second.getUserId())
-                && Objects.equals(first.getQueueOrder(), second.getQueueOrder());
-    }
 }

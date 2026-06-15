@@ -12,7 +12,6 @@ import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.repository.RedisSpeakingQueueRepository;
 import java.time.LocalDateTime;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -32,37 +31,20 @@ class SpeakingQueueServiceTest {
     private SpeakingQueueService speakingQueueService;
 
     @Test
-    void requestSpeakingTurn_assignsRequestImmediatelyWhenCurrentSpeakerDoesNotExist() {
+    void requestSpeakingTurn_persistsWaitingRequestWithoutSynchronousAssignment() {
         SpeakingQueue saved = persistedWaitingRequest(1L, 7L, 15);
         given(speakingQueuePersistenceService.createWaitingRequest(1L, 7L))
                 .willReturn(saved);
-        SpeakingQueue assigned = assignedRequest(1L, 7L, 15);
-        given(speakingQueuePersistenceService.assignNextSpeaker(1L))
-                .willReturn(Optional.of(assigned));
 
         StageRequestRes response = speakingQueueService.requestSpeakingTurn(1L, 7L);
 
         assertThat(response.roomId()).isEqualTo(1L);
         assertThat(response.userId()).isEqualTo(7L);
-        assertThat(response.status()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
-        assertThat(response.queueOrder()).isEqualTo(15);
-        verify(redisSpeakingQueueRepository).assign(1L, 7L);
-        verify(redisSpeakingQueueRepository, never()).upsert(1L, 7L, 15);
-    }
-
-    @Test
-    void requestSpeakingTurn_keepsRequestWaitingWhenCurrentSpeakerExists() {
-        SpeakingQueue saved = persistedWaitingRequest(1L, 7L, 15);
-        given(speakingQueuePersistenceService.createWaitingRequest(1L, 7L))
-                .willReturn(saved);
-        given(speakingQueuePersistenceService.assignNextSpeaker(1L))
-                .willReturn(Optional.empty());
-
-        StageRequestRes response = speakingQueueService.requestSpeakingTurn(1L, 7L);
-
         assertThat(response.status()).isEqualTo(SpeakingQueueStatus.WAITING);
+        assertThat(response.queueOrder()).isEqualTo(15);
         verify(redisSpeakingQueueRepository).upsert(1L, 7L, 15);
         verify(redisSpeakingQueueRepository, never()).assign(1L, 7L);
+        verify(speakingQueuePersistenceService, never()).assignNextSpeaker(1L);
     }
 
     @Test
@@ -85,18 +67,16 @@ class SpeakingQueueServiceTest {
         SpeakingQueue saved = persistedWaitingRequest(1L, 7L, 15);
         given(speakingQueuePersistenceService.createWaitingRequest(1L, 7L))
                 .willReturn(saved);
-        SpeakingQueue assigned = assignedRequest(1L, 7L, 15);
-        given(speakingQueuePersistenceService.assignNextSpeaker(1L))
-                .willReturn(Optional.of(assigned));
         doThrow(new IllegalStateException("redis unavailable"))
                 .when(redisSpeakingQueueRepository)
-                .assign(1L, 7L);
+                .upsert(1L, 7L, 15);
 
         StageRequestRes response = speakingQueueService.requestSpeakingTurn(1L, 7L);
 
         assertThat(response.queueOrder()).isEqualTo(15);
-        assertThat(response.status()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
+        assertThat(response.status()).isEqualTo(SpeakingQueueStatus.WAITING);
         verify(speakingQueuePersistenceService).createWaitingRequest(1L, 7L);
+        verify(speakingQueuePersistenceService, never()).assignNextSpeaker(1L);
     }
 
     private SpeakingQueue persistedWaitingRequest(Long roomId, Long userId, int queueOrder) {
@@ -108,9 +88,4 @@ class SpeakingQueueServiceTest {
         );
     }
 
-    private SpeakingQueue assignedRequest(Long roomId, Long userId, int queueOrder) {
-        SpeakingQueue speakingQueue = persistedWaitingRequest(roomId, userId, queueOrder);
-        speakingQueue.assign();
-        return speakingQueue;
-    }
 }

@@ -8,6 +8,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 
+import com.sisibibi.api.domain.room.entity.Room;
+import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
@@ -28,6 +30,9 @@ class SpeakingQueuePersistenceServiceTest {
 
     @Mock
     private SpeakingQueueRepository speakingQueueRepository;
+
+    @Mock
+    private RoomRepository roomRepository;
 
     @InjectMocks
     private SpeakingQueuePersistenceService speakingQueuePersistenceService;
@@ -78,16 +83,18 @@ class SpeakingQueuePersistenceServiceTest {
                 15,
                 java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
         );
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(Room.open(1L, "토론방")));
+        given(speakingQueueRepository.existsByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        )).willReturn(false);
         given(speakingQueueRepository
                 .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
                         1L,
                         SpeakingQueueStatus.WAITING
                 ))
                 .willReturn(Optional.of(firstWaiting));
-        given(speakingQueueRepository.existsByRoomIdAndStatus(
-                1L,
-                SpeakingQueueStatus.ASSIGNED
-        )).willReturn(false);
 
         Optional<SpeakingQueue> assigned =
                 speakingQueuePersistenceService.assignNextSpeaker(1L);
@@ -95,14 +102,15 @@ class SpeakingQueuePersistenceServiceTest {
         assertThat(assigned).contains(firstWaiting);
         assertThat(firstWaiting.getStatus()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
 
-        InOrder order = inOrder(speakingQueueRepository);
+        InOrder order = inOrder(roomRepository, speakingQueueRepository);
+        order.verify(roomRepository).findByIdForUpdate(1L);
+        order.verify(speakingQueueRepository)
+                .existsByRoomIdAndStatus(1L, SpeakingQueueStatus.ASSIGNED);
         order.verify(speakingQueueRepository)
                 .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
                         1L,
                         SpeakingQueueStatus.WAITING
                 );
-        order.verify(speakingQueueRepository)
-                .existsByRoomIdAndStatus(1L, SpeakingQueueStatus.ASSIGNED);
     }
 
     @Test
@@ -113,12 +121,8 @@ class SpeakingQueuePersistenceServiceTest {
                 15,
                 java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
         );
-        given(speakingQueueRepository
-                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
-                        1L,
-                        SpeakingQueueStatus.WAITING
-                ))
-                .willReturn(Optional.of(waiting));
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(Room.open(1L, "토론방")));
         given(speakingQueueRepository.existsByRoomIdAndStatus(
                 1L,
                 SpeakingQueueStatus.ASSIGNED
@@ -129,10 +133,21 @@ class SpeakingQueuePersistenceServiceTest {
 
         assertThat(assigned).isEmpty();
         assertThat(waiting.getStatus()).isEqualTo(SpeakingQueueStatus.WAITING);
+        verify(speakingQueueRepository, never())
+                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+                        1L,
+                        SpeakingQueueStatus.WAITING
+                );
     }
 
     @Test
     void assignNextSpeaker_returnsEmptyWhenWaitingQueueIsEmpty() {
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(Room.open(1L, "토론방")));
+        given(speakingQueueRepository.existsByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        )).willReturn(false);
         given(speakingQueueRepository
                 .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
                         1L,
@@ -144,7 +159,24 @@ class SpeakingQueuePersistenceServiceTest {
                 speakingQueuePersistenceService.assignNextSpeaker(1L);
 
         assertThat(assigned).isEmpty();
+    }
+
+    @Test
+    void assignNextSpeaker_rejectsMissingRoomBeforeInspectingQueue() {
+        given(roomRepository.findByIdForUpdate(1L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                speakingQueuePersistenceService.assignNextSpeaker(1L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
+
         verify(speakingQueueRepository, never())
                 .existsByRoomIdAndStatus(1L, SpeakingQueueStatus.ASSIGNED);
+        verify(speakingQueueRepository, never())
+                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+                        1L,
+                        SpeakingQueueStatus.WAITING
+                );
     }
 }
