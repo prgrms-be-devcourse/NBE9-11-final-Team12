@@ -47,7 +47,12 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
             return MessageBuilder.createMessage(message.getPayload(), accessor.getMessageHeaders());
         }
 
-        if (command == StompCommand.SEND || command == StompCommand.SUBSCRIBE) {
+        if (command == StompCommand.SEND) {
+            requirePrincipal(accessor);
+            return MessageBuilder.createMessage(message.getPayload(), accessor.getMessageHeaders());
+        }
+
+        if (command == StompCommand.SUBSCRIBE) {
             AuthPrincipal principal = requirePrincipal(accessor);
             validateChatDestinationAccess(principal, accessor.getDestination());
             return MessageBuilder.createMessage(message.getPayload(), accessor.getMessageHeaders());

@@ -3,16 +3,16 @@ package com.sisibibi.api.global.websocket;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.security.cookie.AuthCookieProvider;
 import com.sisibibi.api.global.security.jwt.JwtTokenProvider;
+import jakarta.servlet.http.Cookie;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpHeaders;
+import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.server.HandshakeInterceptor;
 
-import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -30,7 +30,7 @@ public class WebSocketAuthHandshakeInterceptor implements HandshakeInterceptor {
             Map<String, Object> attributes
     ) {
         String accessToken = findCookieValue(
-                request.getHeaders().get(HttpHeaders.COOKIE),
+                request,
                 AuthCookieProvider.ACCESS_TOKEN_COOKIE_NAME
         );
 
@@ -59,18 +59,19 @@ public class WebSocketAuthHandshakeInterceptor implements HandshakeInterceptor {
     ) {
     }
 
-    private String findCookieValue(List<String> cookieHeaders, String cookieName) {
-        if (cookieHeaders == null) {
+    private String findCookieValue(ServerHttpRequest request, String cookieName) {
+        if (!(request instanceof ServletServerHttpRequest servletRequest)) {
             return null;
         }
 
-        for (String cookieHeader : cookieHeaders) {
-            String[] cookies = cookieHeader.split(";");
-            for (String cookie : cookies) {
-                String[] parts = cookie.trim().split("=", 2);
-                if (parts.length == 2 && cookieName.equals(parts[0])) {
-                    return parts[1];
-                }
+        Cookie[] cookies = servletRequest.getServletRequest().getCookies();
+        if (cookies == null) {
+            return null;
+        }
+
+        for (Cookie cookie : cookies) {
+            if (cookieName.equals(cookie.getName())) {
+                return cookie.getValue();
             }
         }
 

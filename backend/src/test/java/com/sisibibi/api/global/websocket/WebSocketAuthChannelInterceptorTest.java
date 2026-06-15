@@ -19,6 +19,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 class WebSocketAuthChannelInterceptorTest {
 
@@ -53,6 +55,22 @@ class WebSocketAuthChannelInterceptorTest {
 
         assertThatThrownBy(() -> interceptor.preSend(message, null))
                 .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void preSend_allowsSendWithoutParticipantLookup_whenUserExists() {
+        AuthPrincipal principal = new AuthPrincipal(2L, "user@example.com", "USER");
+        Principal user = authenticatedPrincipal(principal);
+        Message<byte[]> message = message(StompCommand.SEND, "/app/rooms/1/chat/messages", user, null);
+
+        Message<?> result = interceptor.preSend(message, null);
+
+        assertThat(result).isNotNull();
+        verify(roomParticipantRepository, never()).existsByRoomIdAndUserIdAndStatus(
+                1L,
+                2L,
+                RoomParticipantStatus.JOINED
+        );
     }
 
     @Test
