@@ -59,6 +59,10 @@ public class SecurityConfig {
             .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
             .requestMatchers("/api/v1/topics/issues/**").permitAll()
             .requestMatchers(
+                "/actuator/health",
+                "/actuator/prometheus"
+            ).permitAll()
+            .requestMatchers(
                 "/api/v1/auth/signup",
                 "/api/v1/auth/login",
                 "/api/v1/auth/reissue"
