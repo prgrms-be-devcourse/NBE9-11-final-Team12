@@ -64,6 +64,28 @@ class SecurityConfigTest {
     }
 
     @Test
+    void adminApi_rejectsUserRole() throws Exception {
+        String accessToken = jwtTokenProvider.createAccessToken(
+                new AuthPrincipal(1L, "user@example.com", "USER")
+        );
+
+        mockMvc.perform(get("/api/v1/admin/test")
+                        .cookie(new Cookie(AuthCookieProvider.ACCESS_TOKEN_COOKIE_NAME, accessToken)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void adminApi_acceptsAdminRole() throws Exception {
+        String accessToken = jwtTokenProvider.createAccessToken(
+                new AuthPrincipal(1L, "admin@example.com", "ADMIN")
+        );
+
+        mockMvc.perform(get("/api/v1/admin/test")
+                        .cookie(new Cookie(AuthCookieProvider.ACCESS_TOKEN_COOKIE_NAME, accessToken)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void cors_allowsConfiguredFrontendOriginWithCredentials() throws Exception {
         mockMvc.perform(options("/api/v1/test/protected")
                         .header("Origin", "http://localhost:3000")
@@ -108,6 +130,13 @@ class SecurityConfigTest {
 
         @GetMapping("/api/v1/test/protected")
         ResponseEntity<ApiResponse<Long>> protectedApi(
+                @AuthenticationPrincipal AuthPrincipal principal
+        ) {
+            return ResponseEntity.ok(ApiResponse.ok(principal.userId()));
+        }
+
+        @GetMapping("/api/v1/admin/test")
+        ResponseEntity<ApiResponse<Long>> adminApi(
                 @AuthenticationPrincipal AuthPrincipal principal
         ) {
             return ResponseEntity.ok(ApiResponse.ok(principal.userId()));

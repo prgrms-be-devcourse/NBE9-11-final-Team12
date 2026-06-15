@@ -28,9 +28,11 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
     """)
   int closeExpiredRooms(@Param("now") LocalDateTime now);
 
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select room from Room room where room.id = :roomId")
-    Optional<Room> findByIdForUpdate(@Param("roomId") Long roomId);
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("select room from Room room where room.id = :roomId")
+  Optional<Room> findByIdForUpdate(@Param("roomId") Long roomId);
 
   List<Room> findAllByOrderByCreatedAtDesc();
+
+  Optional<Room> findByTopicId(Long topicId);
 }
