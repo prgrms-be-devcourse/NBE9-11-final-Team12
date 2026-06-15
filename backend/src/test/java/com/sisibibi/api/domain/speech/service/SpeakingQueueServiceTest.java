@@ -2,18 +2,24 @@ package com.sisibibi.api.domain.speech.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.sisibibi.api.domain.speech.config.SpeakingQueueProperties;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.repository.RedisSpeakingQueueRepository;
+import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -26,6 +32,9 @@ class SpeakingQueueServiceTest {
 
     @Mock
     private SpeakingQueuePersistenceService speakingQueuePersistenceService;
+
+    @Mock
+    private SpeakingQueueProperties speakingQueueProperties;
 
     @InjectMocks
     private SpeakingQueueService speakingQueueService;
@@ -44,7 +53,11 @@ class SpeakingQueueServiceTest {
         assertThat(response.queueOrder()).isEqualTo(15);
         verify(redisSpeakingQueueRepository).upsert(1L, 7L, 15);
         verify(redisSpeakingQueueRepository, never()).assign(1L, 7L);
-        verify(speakingQueuePersistenceService, never()).assignNextSpeaker(1L);
+        verify(speakingQueuePersistenceService, never()).assignNextSpeaker(
+                eq(1L),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        );
     }
 
     @Test
@@ -76,7 +89,38 @@ class SpeakingQueueServiceTest {
         assertThat(response.queueOrder()).isEqualTo(15);
         assertThat(response.status()).isEqualTo(SpeakingQueueStatus.WAITING);
         verify(speakingQueuePersistenceService).createWaitingRequest(1L, 7L);
-        verify(speakingQueuePersistenceService, never()).assignNextSpeaker(1L);
+        verify(speakingQueuePersistenceService, never()).assignNextSpeaker(
+                eq(1L),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        );
+    }
+
+    @Test
+    void assignNextSpeaker_appliesConfiguredTurnDuration() {
+        given(speakingQueueProperties.getTurnDuration())
+                .willReturn(Duration.ofSeconds(90));
+        given(speakingQueuePersistenceService.assignNextSpeaker(
+                eq(1L),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        )).willReturn(Optional.empty());
+
+        speakingQueueService.assignNextSpeaker(1L);
+
+        ArgumentCaptor<LocalDateTime> assignedAtCaptor =
+                ArgumentCaptor.forClass(LocalDateTime.class);
+        ArgumentCaptor<LocalDateTime> expiresAtCaptor =
+                ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(speakingQueuePersistenceService).assignNextSpeaker(
+                eq(1L),
+                assignedAtCaptor.capture(),
+                expiresAtCaptor.capture()
+        );
+        assertThat(Duration.between(
+                assignedAtCaptor.getValue(),
+                expiresAtCaptor.getValue()
+        )).isEqualTo(Duration.ofSeconds(90));
     }
 
     @Test

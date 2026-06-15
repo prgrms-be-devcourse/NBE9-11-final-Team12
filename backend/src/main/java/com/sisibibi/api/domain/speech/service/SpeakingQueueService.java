@@ -1,8 +1,10 @@
 package com.sisibibi.api.domain.speech.service;
 
+import com.sisibibi.api.domain.speech.config.SpeakingQueueProperties;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.repository.RedisSpeakingQueueRepository;
+import java.time.LocalDateTime;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,6 +17,7 @@ public class SpeakingQueueService {
 
     private final RedisSpeakingQueueRepository redisSpeakingQueueRepository;
     private final SpeakingQueuePersistenceService speakingQueuePersistenceService;
+    private final SpeakingQueueProperties speakingQueueProperties;
 
     public StageRequestRes requestSpeakingTurn(Long roomId, Long userId) {
         SpeakingQueue saved =
@@ -25,8 +28,13 @@ public class SpeakingQueueService {
     }
 
     public Optional<SpeakingQueue> assignNextSpeaker(Long roomId) {
+        LocalDateTime assignedAt = LocalDateTime.now();
         Optional<SpeakingQueue> assigned =
-                speakingQueuePersistenceService.assignNextSpeaker(roomId);
+                speakingQueuePersistenceService.assignNextSpeaker(
+                        roomId,
+                        assignedAt,
+                        assignedAt.plus(speakingQueueProperties.getTurnDuration())
+                );
         assigned.ifPresent(this::synchronizeAssignedRedisProjection);
         return assigned;
     }

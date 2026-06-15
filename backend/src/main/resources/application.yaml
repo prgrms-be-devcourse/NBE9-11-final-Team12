@@ -47,6 +47,7 @@ app:
   frontend:
     url: ${FRONTEND_URL:http://localhost:3000}
   speaking:
+    turn-duration: ${SPEAKING_TURN_DURATION:2m}
     assignment:
       enabled: ${SPEAKING_ASSIGNMENT_ENABLED:true}
       fixed-delay-ms: ${SPEAKING_ASSIGNMENT_FIXED_DELAY_MS:200}

@@ -7,6 +7,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 
+import com.sisibibi.api.domain.speech.config.SpeakingQueueProperties;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.repository.RedisSpeakingQueueRepository;
@@ -63,7 +64,8 @@ class SpeakingQueueConsistencyRiskTest {
                 .willThrow(new IllegalStateException("database unavailable"));
         SpeakingQueueService service = new SpeakingQueueService(
                 redisSpeakingQueueRepository,
-                failingPersistenceService
+                failingPersistenceService,
+                mock(SpeakingQueueProperties.class)
         );
 
         assertThatThrownBy(() -> service.requestSpeakingTurn(ROOM_ID, USER_ID))
@@ -91,7 +93,8 @@ class SpeakingQueueConsistencyRiskTest {
                 .upsert(ROOM_ID, USER_ID, 15);
         SpeakingQueueService service = new SpeakingQueueService(
                 failingRedisRepository,
-                persistenceService
+                persistenceService,
+                mock(SpeakingQueueProperties.class)
         );
 
         StageRequestRes response = service.requestSpeakingTurn(ROOM_ID, USER_ID);

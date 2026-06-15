@@ -28,6 +28,11 @@ import org.springframework.test.util.ReflectionTestUtils;
 @ExtendWith(MockitoExtension.class)
 class SpeakingQueuePersistenceServiceTest {
 
+    private static final java.time.LocalDateTime ASSIGNED_AT =
+            java.time.LocalDateTime.of(2026, 6, 12, 11, 31);
+    private static final java.time.LocalDateTime EXPIRES_AT =
+            java.time.LocalDateTime.of(2026, 6, 12, 11, 33);
+
     @Mock
     private SpeakingQueueRepository speakingQueueRepository;
 
@@ -173,13 +178,16 @@ class SpeakingQueuePersistenceServiceTest {
                 .willReturn(Optional.of(firstWaiting));
 
         Optional<SpeakingQueue> assigned =
-                speakingQueuePersistenceService.assignNextSpeaker(1L);
+                speakingQueuePersistenceService.assignNextSpeaker(
+                        1L,
+                        ASSIGNED_AT,
+                        EXPIRES_AT
+                );
 
         assertThat(assigned).contains(firstWaiting);
         assertThat(firstWaiting.getStatus()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
-        assertThat(firstWaiting.getAssignedAt()).isNotNull();
-        assertThat(firstWaiting.getExpiresAt())
-                .isEqualTo(firstWaiting.getAssignedAt().plusMinutes(2));
+        assertThat(firstWaiting.getAssignedAt()).isEqualTo(ASSIGNED_AT);
+        assertThat(firstWaiting.getExpiresAt()).isEqualTo(EXPIRES_AT);
 
         InOrder order = inOrder(roomRepository, speakingQueueRepository);
         order.verify(roomRepository).findByIdForUpdate(1L);
@@ -208,7 +216,11 @@ class SpeakingQueuePersistenceServiceTest {
         )).willReturn(true);
 
         Optional<SpeakingQueue> assigned =
-                speakingQueuePersistenceService.assignNextSpeaker(1L);
+                speakingQueuePersistenceService.assignNextSpeaker(
+                        1L,
+                        ASSIGNED_AT,
+                        EXPIRES_AT
+                );
 
         assertThat(assigned).isEmpty();
         assertThat(waiting.getStatus()).isEqualTo(SpeakingQueueStatus.WAITING);
@@ -235,7 +247,11 @@ class SpeakingQueuePersistenceServiceTest {
                 .willReturn(Optional.empty());
 
         Optional<SpeakingQueue> assigned =
-                speakingQueuePersistenceService.assignNextSpeaker(1L);
+                speakingQueuePersistenceService.assignNextSpeaker(
+                        1L,
+                        ASSIGNED_AT,
+                        EXPIRES_AT
+                );
 
         assertThat(assigned).isEmpty();
     }
@@ -245,7 +261,11 @@ class SpeakingQueuePersistenceServiceTest {
         given(roomRepository.findByIdForUpdate(1L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() ->
-                speakingQueuePersistenceService.assignNextSpeaker(1L))
+                speakingQueuePersistenceService.assignNextSpeaker(
+                        1L,
+                        ASSIGNED_AT,
+                        EXPIRES_AT
+                ))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.ROOM_NOT_FOUND);

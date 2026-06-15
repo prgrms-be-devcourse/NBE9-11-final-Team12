@@ -6,7 +6,6 @@ import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -17,8 +16,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class SpeakingQueuePersistenceService {
-
-    private static final Duration DEFAULT_SPEAKING_DURATION = Duration.ofMinutes(2);
 
     private static final List<SpeakingQueueStatus> ACTIVE_STATUSES =
             List.of(SpeakingQueueStatus.WAITING, SpeakingQueueStatus.ASSIGNED);
@@ -69,7 +66,11 @@ public class SpeakingQueuePersistenceService {
     }
 
     @Transactional
-    public Optional<SpeakingQueue> assignNextSpeaker(Long roomId) {
+    public Optional<SpeakingQueue> assignNextSpeaker(
+            Long roomId,
+            LocalDateTime assignedAt,
+            LocalDateTime expiresAt
+    ) {
         roomRepository.findByIdForUpdate(roomId)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
 
@@ -92,11 +93,7 @@ public class SpeakingQueuePersistenceService {
         }
 
         SpeakingQueue nextSpeaker = waitingRequest.get();
-        LocalDateTime assignedAt = LocalDateTime.now();
-        nextSpeaker.assign(
-                assignedAt,
-                assignedAt.plus(DEFAULT_SPEAKING_DURATION)
-        );
+        nextSpeaker.assign(assignedAt, expiresAt);
         return Optional.of(nextSpeaker);
     }
 
