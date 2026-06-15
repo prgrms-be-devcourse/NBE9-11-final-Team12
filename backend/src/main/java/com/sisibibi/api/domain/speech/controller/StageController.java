@@ -57,4 +57,20 @@ public class StageController {
                 ApiResponse.okMessage("발언권 신청이 취소되었습니다.")
         );
     }
+
+    @PostMapping("/complete")
+    public ResponseEntity<ApiResponse<Void>> completeSpeakingTurn(
+            @PathVariable @Positive Long roomId,
+            @AuthenticationPrincipal AuthPrincipal principal
+    ) {
+        if (principal == null) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
+
+        speakingQueueService.completeSpeakingTurn(roomId, principal.userId());
+
+        return ResponseEntity.ok(
+                ApiResponse.okMessage("발언이 종료되었습니다.")
+        );
+    }
 }
