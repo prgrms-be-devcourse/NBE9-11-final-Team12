@@ -22,6 +22,7 @@ public class RoomParticipantService {
   private final RoomRepository roomRepository;
   private final RoomParticipantRepository roomParticipantRepository;
 
+  //test cicd
   @Transactional
   public RoomParticipantRes joinRoom(Long roomId, Long userId) {
     Room room = roomRepository.findById(roomId)
@@ -46,5 +47,18 @@ public class RoomParticipantService {
         ));
 
     return RoomParticipantRes.from(participant);
+  }
+
+  @Transactional
+  public void leaveRoom(Long roomId, Long userId) {
+    if (!roomRepository.existsById(roomId)) {
+      throw new CustomException(ErrorCode.ROOM_NOT_FOUND);
+    }
+
+    RoomParticipant participant = roomParticipantRepository
+        .findByRoomIdAndUserId(roomId, userId)
+        .orElseThrow(() -> new CustomException(ErrorCode.ROOM_PARTICIPANT_NOT_FOUND));
+
+    participant.leave();
   }
 }

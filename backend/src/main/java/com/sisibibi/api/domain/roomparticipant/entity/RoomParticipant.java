@@ -54,4 +54,13 @@ public class RoomParticipant {
         this.leftAt = null;
         this.status = RoomParticipantStatus.JOINED;
     }
+
+    public void leave() {
+        if (this.status == RoomParticipantStatus.LEFT) {
+            return;
+        }
+
+        this.leftAt = LocalDateTime.now();
+        this.status = RoomParticipantStatus.LEFT;
+    }
 }

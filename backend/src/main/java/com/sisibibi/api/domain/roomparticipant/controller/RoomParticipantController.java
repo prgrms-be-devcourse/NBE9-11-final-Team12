@@ -41,4 +41,19 @@ public class RoomParticipantController {
         .status(HttpStatus.CREATED)
         .body(ApiResponse.created("토론방 입장이 완료되었습니다.", response));
   }
+
+
+  @PostMapping("/out")
+  public ResponseEntity<ApiResponse<Void>> leaveRoom(
+      @PathVariable @Positive Long roomId,
+      @AuthenticationPrincipal AuthPrincipal principal
+  ) {
+    if (principal == null) {
+      throw new CustomException(ErrorCode.UNAUTHORIZED);
+    }
+
+    roomParticipantService.leaveRoom(roomId, principal.userId());
+
+    return ResponseEntity.ok(ApiResponse.okMessage("토론방 퇴장이 완료되었습니다."));
+  }
 }

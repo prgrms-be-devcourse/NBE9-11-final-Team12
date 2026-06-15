@@ -107,4 +107,56 @@ class RoomParticipantServiceTest {
 
     verify(roomParticipantRepository, never()).save(any());
   }
+
+  @Test
+  void leaveRoom_changesParticipantStatusToLeft_whenParticipantJoined() {
+    RoomParticipant participant = RoomParticipant.join(1L, 2L);
+
+    given(roomRepository.existsById(1L)).willReturn(true);
+    given(roomParticipantRepository.findByRoomIdAndUserId(1L, 2L))
+        .willReturn(Optional.of(participant));
+
+    roomParticipantService.leaveRoom(1L, 2L);
+
+    assertThat(participant.getStatus()).isEqualTo(RoomParticipantStatus.LEFT);
+    assertThat(participant.getLeftAt()).isNotNull();
+  }
+
+  @Test
+  void leaveRoom_isIdempotent_whenParticipantAlreadyLeft() {
+    RoomParticipant participant = RoomParticipant.join(1L, 2L);
+    participant.leave();
+    var firstLeftAt = participant.getLeftAt();
+
+    given(roomRepository.existsById(1L)).willReturn(true);
+    given(roomParticipantRepository.findByRoomIdAndUserId(1L, 2L))
+        .willReturn(Optional.of(participant));
+
+    roomParticipantService.leaveRoom(1L, 2L);
+
+    assertThat(participant.getStatus()).isEqualTo(RoomParticipantStatus.LEFT);
+    assertThat(participant.getLeftAt()).isEqualTo(firstLeftAt);
+  }
+
+  @Test
+  void leaveRoom_throwsRoomNotFound_whenRoomDoesNotExist() {
+    given(roomRepository.existsById(999L)).willReturn(false);
+
+    assertThatThrownBy(() -> roomParticipantService.leaveRoom(999L, 2L))
+        .isInstanceOf(CustomException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
+  }
+
+  @Test
+  void leaveRoom_throwsParticipantNotFound_whenUserHasNeverJoinedRoom() {
+    given(roomRepository.existsById(1L)).willReturn(true);
+    given(roomParticipantRepository.findByRoomIdAndUserId(1L, 2L))
+        .willReturn(Optional.empty());
+
+    assertThatThrownBy(() -> roomParticipantService.leaveRoom(1L, 2L))
+        .isInstanceOf(CustomException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.ROOM_PARTICIPANT_NOT_FOUND);
+  }
 }

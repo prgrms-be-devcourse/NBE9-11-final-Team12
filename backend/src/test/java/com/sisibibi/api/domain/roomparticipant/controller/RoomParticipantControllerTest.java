@@ -1,7 +1,6 @@
-package com.sisibibi.api.domain.roomparticipant.cotroller;
+package com.sisibibi.api.domain.roomparticipant.controller;
 
 import com.sisibibi.api.domain.roomparticipant.dto.response.RoomParticipantRes;
-import com.sisibibi.api.domain.roomparticipant.controller.RoomParticipantController;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.service.RoomParticipantService;
 import com.sisibibi.api.global.exception.CustomException;
@@ -110,5 +109,31 @@ class RoomParticipantControllerTest {
     mockMvc.perform(post("/api/v1/rooms/{roomId}/participants", 1L))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("ROOM_CLOSED"));
+  }
+
+  @Test
+  void leaveRoom_returnsOk() throws Exception {
+    SecurityContextHolder.getContext().setAuthentication(
+        new UsernamePasswordAuthenticationToken(
+            new AuthPrincipal(2L, "user@example.com", "USER"),
+            null,
+            List.of()
+        )
+    );
+
+    mockMvc.perform(post("/api/v1/rooms/{roomId}/participants/out", 1L))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value(200))
+        .andExpect(jsonPath("$.code").value("SUCCESS"))
+        .andExpect(jsonPath("$.message").value("토론방 퇴장이 완료되었습니다."));
+
+    verify(roomParticipantService).leaveRoom(1L, 2L);
+  }
+
+  @Test
+  void leaveRoom_returnsUnauthorized_whenPrincipalIsMissing() throws Exception {
+    mockMvc.perform(post("/api/v1/rooms/{roomId}/participants/out", 1L))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
   }
 }
