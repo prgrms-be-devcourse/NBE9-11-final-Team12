@@ -8,15 +8,22 @@ import com.sisibibi.api.domain.speech.dto.response.SpeechListRes;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.service.SpeechService;
+import com.sisibibi.api.global.exception.CustomException;
+import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.exception.GlobalExceptionHandler;
+import com.sisibibi.api.global.security.AuthPrincipal;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -47,6 +54,11 @@ class SpeechControllerTest {
     @MockitoBean
     private SpeechService speechService;
 
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
     @Test
     void createMainOpinion_returnsCreated() throws Exception {
         given(speechService.createMainOpinion(any(), any(), any()))
@@ -60,7 +72,7 @@ class SpeechControllerTest {
                 ));
 
         mockMvc.perform(post("/api/v1/rooms/{roomId}/speeches", 1L)
-                        .header("X-User-Id", 2L)
+                        .with(authPrincipal(2L))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -80,7 +92,7 @@ class SpeechControllerTest {
     @Test
     void createMainOpinion_returnsBadRequest_whenContentIsBlank() throws Exception {
         mockMvc.perform(post("/api/v1/rooms/{roomId}/speeches", 1L)
-                        .header("X-User-Id", 2L)
+                        .with(authPrincipal(2L))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -96,7 +108,7 @@ class SpeechControllerTest {
     @Test
     void createMainOpinion_returnsBadRequest_whenStanceIsInvalid() throws Exception {
         mockMvc.perform(post("/api/v1/rooms/{roomId}/speeches", 1L)
-                        .header("X-User-Id", 2L)
+                        .with(authPrincipal(2L))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -109,17 +121,23 @@ class SpeechControllerTest {
     }
 
     @Test
-    void createMainOpinion_returnsUnauthorized_whenUserHeaderIsMissing() throws Exception {
+    void createMainOpinion_returnsBadRequest_whenContentContainsProfanity() throws Exception {
+        given(speechService.createMainOpinion(any(), any(), any()))
+                .willThrow(new CustomException(ErrorCode.SPEECH_CONTENT_CONTAINS_PROFANITY));
+
         mockMvc.perform(post("/api/v1/rooms/{roomId}/speeches", 1L)
+                        .with(authPrincipal(2L))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "content": "의견",
+                                  "content": "욕설이 포함된 의견",
                                   "stance": "PRO"
                                 }
                                 """))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("SPEECH_CONTENT_CONTAINS_PROFANITY"))
+                .andExpect(jsonPath("$.message")
+                        .value("욕설 또는 비속어가 포함된 의견은 등록할 수 없습니다."));
     }
 
     @Test
@@ -199,7 +217,7 @@ class SpeechControllerTest {
         ));
 
         mockMvc.perform(patch("/api/v1/speeches/{speechId}", 10L)
-                        .header("X-User-Id", 2L)
+                        .with(authPrincipal(2L))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -218,7 +236,7 @@ class SpeechControllerTest {
     @Test
     void updateSpeech_returnsBadRequest_whenContentIsBlank() throws Exception {
         mockMvc.perform(patch("/api/v1/speeches/{speechId}", 10L)
-                        .header("X-User-Id", 2L)
+                        .with(authPrincipal(2L))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -232,25 +250,11 @@ class SpeechControllerTest {
     }
 
     @Test
-    void updateSpeech_returnsUnauthorized_whenUserHeaderIsMissing() throws Exception {
-        mockMvc.perform(patch("/api/v1/speeches/{speechId}", 10L)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "content": "수정된 의견",
-                                  "stance": "PRO"
-                                }
-                                """))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
-    }
-
-    @Test
     void deleteSpeech_returnsOk() throws Exception {
         doNothing().when(speechService).deleteSpeech(10L, 2L);
 
         mockMvc.perform(delete("/api/v1/speeches/{speechId}", 10L)
-                        .header("X-User-Id", 2L))
+                        .with(authPrincipal(2L)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("내 의견 삭제가 완료되었습니다."))
                 .andExpect(jsonPath("$.data").doesNotExist());
@@ -259,17 +263,88 @@ class SpeechControllerTest {
     }
 
     @Test
-    void deleteSpeech_returnsUnauthorized_whenUserHeaderIsMissing() throws Exception {
-        mockMvc.perform(delete("/api/v1/speeches/{speechId}", 10L))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    void deleteSpeech_returnsBadRequest_whenSpeechIdIsNotPositive() throws Exception {
+        mockMvc.perform(delete("/api/v1/speeches/{speechId}", 0L)
+                        .with(authPrincipal(2L)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
     }
 
     @Test
-    void deleteSpeech_returnsBadRequest_whenSpeechIdIsNotPositive() throws Exception {
-        mockMvc.perform(delete("/api/v1/speeches/{speechId}", 0L)
-                        .header("X-User-Id", 2L))
+    void updateSpeechLink_returnsOk() throws Exception {
+        given(speechService.updateSpeechLink(10L, 2L, "https://example.com/evidence"))
+                .willReturn(new SpeechDetailRes(
+                        10L,
+                        1L,
+                        2L,
+                        "의견",
+                        SpeechStance.PRO,
+                        "https://example.com/evidence",
+                        null,
+                        SpeechStatus.READY,
+                        null,
+                        null,
+                        LocalDateTime.of(2026, 6, 12, 10, 0),
+                        LocalDateTime.of(2026, 6, 12, 12, 0)
+                ));
+
+        mockMvc.perform(patch("/api/v1/speeches/{speechId}/link", 10L)
+                        .with(authPrincipal(2L))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "linkUrl": "https://example.com/evidence"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("근거 링크 첨부가 완료되었습니다."))
+                .andExpect(jsonPath("$.data.linkUrl").value("https://example.com/evidence"));
+
+        verify(speechService).updateSpeechLink(10L, 2L, "https://example.com/evidence");
+    }
+
+    @Test
+    void updateSpeechLink_returnsBadRequest_whenLinkUrlIsBlank() throws Exception {
+        mockMvc.perform(patch("/api/v1/speeches/{speechId}/link", 10L)
+                        .with(authPrincipal(2L))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "linkUrl": " "
+                                }
+                                """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"))
+                .andExpect(jsonPath("$.data.linkUrl").value("근거 링크는 비어 있을 수 없습니다."));
+    }
+
+    @Test
+    void updateSpeechLink_returnsBadRequest_whenLinkUrlIsInvalid() throws Exception {
+        mockMvc.perform(patch("/api/v1/speeches/{speechId}/link", 10L)
+                        .with(authPrincipal(2L))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "linkUrl": "example.com/evidence"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"))
+                .andExpect(jsonPath("$.data.linkUrl").value("올바른 링크 형식이어야 합니다."));
+    }
+
+    private UsernamePasswordAuthenticationToken authToken(Long userId) {
+        return new UsernamePasswordAuthenticationToken(
+                new AuthPrincipal(userId, "user@example.com", "USER"),
+                null,
+                List.of()
+        );
+    }
+
+    private RequestPostProcessor authPrincipal(Long userId) {
+        return request -> {
+            SecurityContextHolder.getContext().setAuthentication(authToken(userId));
+            return request;
+        };
     }
 }

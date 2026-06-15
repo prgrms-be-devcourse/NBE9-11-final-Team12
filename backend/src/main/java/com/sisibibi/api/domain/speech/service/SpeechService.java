@@ -16,6 +16,7 @@ import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
+import com.sisibibi.api.global.moderation.ProfanityDetector;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +31,7 @@ public class SpeechService {
     private final RoomRepository roomRepository;
     private final RoomParticipantRepository roomParticipantRepository;
     private final SpeechRepository speechRepository;
+    private final ProfanityDetector profanityDetector;
 
     @Transactional
     public SpeechCreateRes createMainOpinion(
@@ -53,6 +55,8 @@ public class SpeechService {
         if (!isParticipating) {
             throw new CustomException(ErrorCode.ROOM_PARTICIPATION_REQUIRED);
         }
+
+        validateContent(command.content());
 
         Speech speech = Speech.createMainOpinion(
                 roomId,
@@ -110,6 +114,7 @@ public class SpeechService {
             throw new CustomException(ErrorCode.SPEECH_NOT_EDITABLE);
         }
 
+        validateContent(command.content());
         speech.updateMainOpinion(command.content(), command.stance());
         return SpeechDetailRes.from(speech);
     }
@@ -128,5 +133,28 @@ public class SpeechService {
         }
 
         speech.softDelete();
+    }
+
+    @Transactional
+    public SpeechDetailRes updateSpeechLink(Long speechId, Long userId, String linkUrl) {
+        Speech speech = speechRepository.findByIdAndDeletedFalse(speechId)
+                .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_NOT_FOUND));
+
+        if (!speech.getUserId().equals(userId)) {
+            throw new CustomException(ErrorCode.SPEECH_ACCESS_DENIED);
+        }
+
+        if (speech.getStatus() == SpeechStatus.COMPLETED) {
+            throw new CustomException(ErrorCode.SPEECH_NOT_EDITABLE);
+        }
+
+        speech.updateLink(linkUrl);
+        return SpeechDetailRes.from(speech);
+    }
+
+    private void validateContent(String content) {
+        if (profanityDetector.containsProfanity(content)) {
+            throw new CustomException(ErrorCode.SPEECH_CONTENT_CONTAINS_PROFANITY);
+        }
     }
 }

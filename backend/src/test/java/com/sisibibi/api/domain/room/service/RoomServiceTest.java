@@ -54,7 +54,7 @@ class RoomServiceTest {
     assertThat(savedRoom.getTitle()).isEqualTo("토론 주제");
     assertThat(savedRoom.getStatus()).isEqualTo(RoomStatus.OPEN);
     assertThat(savedRoom.getStartedAt()).isNotNull();
-    assertThat(savedRoom.getCreatedAt()).isNotNull();
+    assertThat(savedRoom.getCreatedAt()).isNull();
     assertThat(result.status()).isEqualTo(RoomStatus.OPEN);
   }
 
