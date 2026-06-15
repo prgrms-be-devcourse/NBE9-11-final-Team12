@@ -76,6 +76,82 @@ class SpeakingQueuePersistenceServiceTest {
     }
 
     @Test
+    void cancelWaitingRequest_cancelsWaitingRequestAfterLockingRoom() {
+        SpeakingQueue waiting = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(Room.open(1L, "토론방")));
+        given(speakingQueueRepository.findByRoomIdAndUserIdAndStatusIn(
+                1L,
+                7L,
+                List.of(SpeakingQueueStatus.WAITING, SpeakingQueueStatus.ASSIGNED)
+        )).willReturn(Optional.of(waiting));
+
+        SpeakingQueue canceled =
+                speakingQueuePersistenceService.cancelWaitingRequest(1L, 7L);
+
+        assertThat(canceled).isSameAs(waiting);
+        assertThat(canceled.getStatus()).isEqualTo(SpeakingQueueStatus.CANCELED);
+        assertThat(canceled.getCanceledAt()).isNotNull();
+        assertThat(canceled.getActiveRequest()).isNull();
+
+        InOrder order = inOrder(roomRepository, speakingQueueRepository);
+        order.verify(roomRepository).findByIdForUpdate(1L);
+        order.verify(speakingQueueRepository).findByRoomIdAndUserIdAndStatusIn(
+                1L,
+                7L,
+                List.of(SpeakingQueueStatus.WAITING, SpeakingQueueStatus.ASSIGNED)
+        );
+    }
+
+    @Test
+    void cancelWaitingRequest_rejectsMissingActiveRequest() {
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(Room.open(1L, "토론방")));
+        given(speakingQueueRepository.findByRoomIdAndUserIdAndStatusIn(
+                1L,
+                7L,
+                List.of(SpeakingQueueStatus.WAITING, SpeakingQueueStatus.ASSIGNED)
+        )).willReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                speakingQueuePersistenceService.cancelWaitingRequest(1L, 7L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SPEAKING_REQUEST_NOT_FOUND);
+    }
+
+    @Test
+    void cancelWaitingRequest_rejectsAssignedRequest() {
+        SpeakingQueue assigned = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        assigned.assign();
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(Room.open(1L, "토론방")));
+        given(speakingQueueRepository.findByRoomIdAndUserIdAndStatusIn(
+                1L,
+                7L,
+                List.of(SpeakingQueueStatus.WAITING, SpeakingQueueStatus.ASSIGNED)
+        )).willReturn(Optional.of(assigned));
+
+        assertThatThrownBy(() ->
+                speakingQueuePersistenceService.cancelWaitingRequest(1L, 7L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SPEAKING_REQUEST_NOT_CANCELABLE);
+
+        assertThat(assigned.getStatus()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
+    }
+
+    @Test
     void assignNextSpeaker_assignsFirstWaitingRequestWhenCurrentSpeakerDoesNotExist() {
         SpeakingQueue firstWaiting = SpeakingQueue.waiting(
                 1L,

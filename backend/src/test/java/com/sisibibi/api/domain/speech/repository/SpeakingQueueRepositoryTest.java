@@ -7,6 +7,7 @@ import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -38,6 +39,30 @@ class SpeakingQueueRepositoryTest {
                 7L,
                 List.of(SpeakingQueueStatus.WAITING, SpeakingQueueStatus.ASSIGNED)
         )).isTrue();
+    }
+
+    @Test
+    void findByRoomIdAndUserIdAndStatusIn_returnsActiveRequest() {
+        SpeakingQueue saved = speakingQueueRepository.saveAndFlush(
+                SpeakingQueue.waiting(
+                        1L,
+                        10L,
+                        1,
+                        LocalDateTime.of(2026, 6, 12, 11, 30)
+                )
+        );
+
+        Optional<SpeakingQueue> found = speakingQueueRepository
+                .findByRoomIdAndUserIdAndStatusIn(
+                        1L,
+                        10L,
+                        List.of(
+                                SpeakingQueueStatus.WAITING,
+                                SpeakingQueueStatus.ASSIGNED
+                        )
+                );
+
+        assertThat(found).contains(saved);
     }
 
     @Test
