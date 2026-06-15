@@ -38,4 +38,13 @@ public class RoomController {
 
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
+
+  @GetMapping
+  public ResponseEntity<ApiResponse<List<RoomSummaryRes>>> getRooms() {
+    List<RoomSummaryRes> response = roomService.getRooms();
+
+    return ResponseEntity.ok(ApiResponse.ok(response));
+  }
+
+
 }

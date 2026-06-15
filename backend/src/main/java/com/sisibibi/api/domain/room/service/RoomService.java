@@ -59,10 +59,19 @@ public class RoomService {
     return roomRepository.closeExpiredRooms(now);
   }
 
+  // 하나의 토론방 상세 조회
   public RoomDetailRes getRoom(Long roomId) {
     Room room = roomRepository.findById(roomId)
         .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
 
     return RoomDetailRes.from(room);
+  }
+
+  // 전체 토론방 조회
+  public List<RoomSummaryRes> getRooms() {
+    return roomRepository.findAllByOrderByCreatedAtDesc()
+        .stream()
+        .map(RoomSummaryRes::from)
+        .toList();
   }
 }

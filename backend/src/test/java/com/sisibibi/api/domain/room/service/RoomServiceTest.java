@@ -2,6 +2,7 @@ package com.sisibibi.api.domain.room.service;
 
 import com.sisibibi.api.domain.room.dto.request.CreateRoomReq;
 import com.sisibibi.api.domain.room.dto.response.CreateRoomRes;
+import com.sisibibi.api.domain.room.dto.response.RoomDetailRes;
 import com.sisibibi.api.domain.room.dto.response.RoomSummaryRes;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
@@ -129,5 +130,46 @@ class RoomServiceTest {
     assertThat(closedCount).isZero();
 
     verify(roomRepository).closeExpiredRooms(now);
+  }
+  @Test
+  void getRooms_returnsRoomsOrderedByCreatedAtDesc() {
+    Room firstRoom = Room.open(1L, "첫 번째 토론방");
+    Room secondRoom = Room.open(2L, "두 번째 토론방");
+
+    given(roomRepository.findAllByOrderByCreatedAtDesc())
+        .willReturn(List.of(secondRoom, firstRoom));
+
+    List<RoomSummaryRes> result = roomService.getRooms();
+
+    assertThat(result).hasSize(2);
+    assertThat(result.get(0).title()).isEqualTo("두 번째 토론방");
+    assertThat(result.get(1).title()).isEqualTo("첫 번째 토론방");
+
+    verify(roomRepository).findAllByOrderByCreatedAtDesc();
+  }
+
+  @Test
+  void getRoom_returnsRoomDetail_whenRoomExists() {
+    Room room = Room.open(1L, "상세 조회 토론방");
+
+    given(roomRepository.findById(10L)).willReturn(Optional.of(room));
+
+    RoomDetailRes result = roomService.getRoom(10L);
+
+    assertThat(result.topicId()).isEqualTo(1L);
+    assertThat(result.title()).isEqualTo("상세 조회 토론방");
+    assertThat(result.status()).isEqualTo(RoomStatus.OPEN);
+
+    verify(roomRepository).findById(10L);
+  }
+
+  @Test
+  void getRoom_throwsRoomNotFound_whenRoomDoesNotExist() {
+    given(roomRepository.findById(999L)).willReturn(Optional.empty());
+
+    assertThatThrownBy(() -> roomService.getRoom(999L))
+        .isInstanceOf(CustomException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
   }
 }
