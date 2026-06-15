@@ -71,4 +71,25 @@ class RedisSpeakingQueueRepositoryTest {
 
         assertThat(redisTemplate.opsForZSet().score(QUEUE_KEY, "10")).isNull();
     }
+
+    @Test
+    void assign_removesUserFromQueueAndStoresCurrentSpeaker() {
+        speakingQueueRepository.upsert(1L, 10L, 15);
+
+        speakingQueueRepository.assign(1L, 10L);
+
+        assertThat(redisTemplate.opsForZSet().score(QUEUE_KEY, "10")).isNull();
+        assertThat(redisTemplate.opsForValue().get("stage:current:{1}")).isEqualTo("10");
+    }
+
+    @Test
+    void assign_isIdempotentForSameCurrentSpeaker() {
+        speakingQueueRepository.upsert(1L, 10L, 15);
+
+        speakingQueueRepository.assign(1L, 10L);
+        speakingQueueRepository.assign(1L, 10L);
+
+        assertThat(redisTemplate.opsForZSet().score(QUEUE_KEY, "10")).isNull();
+        assertThat(redisTemplate.opsForValue().get("stage:current:{1}")).isEqualTo("10");
+    }
 }

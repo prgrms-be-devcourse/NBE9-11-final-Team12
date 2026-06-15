@@ -31,7 +31,7 @@ class StageControllerTest {
     @Test
     void requestSpeakingTurn_returnsCreatedResponse() throws Exception {
         StageRequestRes response = new StageRequestRes(
-                SpeakingQueueStatus.WAITING,
+                SpeakingQueueStatus.ASSIGNED,
                 1L,
                 10L,
                 1,
@@ -49,7 +49,7 @@ class StageControllerTest {
                 .andExpect(jsonPath("$.data.roomId").value(1))
                 .andExpect(jsonPath("$.data.userId").value(10))
                 .andExpect(jsonPath("$.data.queueOrder").value(1))
-                .andExpect(jsonPath("$.data.status").value("WAITING"))
+                .andExpect(jsonPath("$.data.status").value("ASSIGNED"))
                 .andExpect(jsonPath("$.data.requestedAt").exists())
                 .andExpect(jsonPath("$.data.id").doesNotExist())
                 .andExpect(jsonPath("$.data.canceledAt").doesNotExist());

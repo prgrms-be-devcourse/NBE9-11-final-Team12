@@ -7,6 +7,7 @@ import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,5 +39,30 @@ public class SpeakingQueuePersistenceService {
         SpeakingQueue saved = speakingQueueRepository.saveAndFlush(speakingQueue);
         saved.assignQueueOrderFromId();
         return saved;
+    }
+
+    @Transactional
+    public Optional<SpeakingQueue> assignNextSpeaker(Long roomId) {
+        Optional<SpeakingQueue> waitingRequest =
+                speakingQueueRepository
+                        .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+                                roomId,
+                                SpeakingQueueStatus.WAITING
+                        );
+
+        if (waitingRequest.isEmpty()) {
+            return Optional.empty();
+        }
+
+        if (speakingQueueRepository.existsByRoomIdAndStatus(
+                roomId,
+                SpeakingQueueStatus.ASSIGNED
+        )) {
+            return Optional.empty();
+        }
+
+        SpeakingQueue nextSpeaker = waitingRequest.get();
+        nextSpeaker.assign();
+        return Optional.of(nextSpeaker);
     }
 }
