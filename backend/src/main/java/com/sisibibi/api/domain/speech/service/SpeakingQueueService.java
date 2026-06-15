@@ -31,6 +31,12 @@ public class SpeakingQueueService {
         return assigned;
     }
 
+    public void cancelSpeakingRequest(Long roomId, Long userId) {
+        SpeakingQueue canceled =
+                speakingQueuePersistenceService.cancelWaitingRequest(roomId, userId);
+        synchronizeCanceledRedisProjection(canceled);
+    }
+
     private void synchronizeWaitingRedisProjection(SpeakingQueue speakingQueue) {
         try {
             redisSpeakingQueueRepository.upsert(
@@ -59,6 +65,24 @@ public class SpeakingQueueService {
         } catch (RuntimeException synchronizationException) {
             log.error(
                     "Failed to synchronize assigned speaker to Redis. "
+                            + "roomId={}, userId={}, queueOrder={}",
+                    speakingQueue.getRoomId(),
+                    speakingQueue.getUserId(),
+                    speakingQueue.getQueueOrder(),
+                    synchronizationException
+            );
+        }
+    }
+
+    private void synchronizeCanceledRedisProjection(SpeakingQueue speakingQueue) {
+        try {
+            redisSpeakingQueueRepository.remove(
+                    speakingQueue.getRoomId(),
+                    speakingQueue.getUserId()
+            );
+        } catch (RuntimeException synchronizationException) {
+            log.error(
+                    "Failed to remove canceled speaking request from Redis. "
                             + "roomId={}, userId={}, queueOrder={}",
                     speakingQueue.getRoomId(),
                     speakingQueue.getUserId(),

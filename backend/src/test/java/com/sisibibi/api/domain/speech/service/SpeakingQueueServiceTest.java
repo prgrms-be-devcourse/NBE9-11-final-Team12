@@ -79,6 +79,35 @@ class SpeakingQueueServiceTest {
         verify(speakingQueuePersistenceService, never()).assignNextSpeaker(1L);
     }
 
+    @Test
+    void cancelSpeakingRequest_cancelsDurableRequestAndRemovesRedisProjection() {
+        SpeakingQueue canceled = persistedWaitingRequest(1L, 7L, 15);
+        canceled.cancel(LocalDateTime.of(2026, 6, 12, 11, 35));
+        given(speakingQueuePersistenceService.cancelWaitingRequest(1L, 7L))
+                .willReturn(canceled);
+
+        speakingQueueService.cancelSpeakingRequest(1L, 7L);
+
+        verify(speakingQueuePersistenceService).cancelWaitingRequest(1L, 7L);
+        verify(redisSpeakingQueueRepository).remove(1L, 7L);
+    }
+
+    @Test
+    void cancelSpeakingRequest_keepsCanceledRdbStateWhenRedisRemovalFails() {
+        SpeakingQueue canceled = persistedWaitingRequest(1L, 7L, 15);
+        canceled.cancel(LocalDateTime.of(2026, 6, 12, 11, 35));
+        given(speakingQueuePersistenceService.cancelWaitingRequest(1L, 7L))
+                .willReturn(canceled);
+        doThrow(new IllegalStateException("redis unavailable"))
+                .when(redisSpeakingQueueRepository)
+                .remove(1L, 7L);
+
+        speakingQueueService.cancelSpeakingRequest(1L, 7L);
+
+        verify(speakingQueuePersistenceService).cancelWaitingRequest(1L, 7L);
+        verify(redisSpeakingQueueRepository).remove(1L, 7L);
+    }
+
     private SpeakingQueue persistedWaitingRequest(Long roomId, Long userId, int queueOrder) {
         return SpeakingQueue.waiting(
                 roomId,
