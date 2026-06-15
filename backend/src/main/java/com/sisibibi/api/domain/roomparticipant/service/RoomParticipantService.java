@@ -14,6 +14,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -61,4 +63,17 @@ public class RoomParticipantService {
 
     participant.leave();
   }
+  public List<RoomParticipantRes> getRoomParticipants(Long roomId) {
+    if (!roomRepository.existsById(roomId)) {
+      throw new CustomException(ErrorCode.ROOM_NOT_FOUND);
+    }
+
+    return roomParticipantRepository
+        .findByRoomIdAndStatusOrderByJoinedAtAsc(roomId, RoomParticipantStatus.JOINED)
+        .stream()
+        .map(RoomParticipantRes::from)
+        .toList();
+  }
+
+
 }

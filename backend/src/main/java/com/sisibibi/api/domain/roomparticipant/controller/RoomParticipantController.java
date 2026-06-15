@@ -12,10 +12,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @Validated
 @RestController
@@ -55,5 +54,14 @@ public class RoomParticipantController {
     roomParticipantService.leaveRoom(roomId, principal.userId());
 
     return ResponseEntity.ok(ApiResponse.okMessage("토론방 퇴장이 완료되었습니다."));
+  }
+
+  @GetMapping
+  public ResponseEntity<ApiResponse<List<RoomParticipantRes>>> getRoomParticipants(
+      @PathVariable @Positive Long roomId
+  ) {
+    List<RoomParticipantRes> response = roomParticipantService.getRoomParticipants(roomId);
+
+    return ResponseEntity.ok(ApiResponse.ok(response));
   }
 }

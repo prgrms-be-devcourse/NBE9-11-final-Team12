@@ -16,6 +16,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -158,5 +159,64 @@ class RoomParticipantServiceTest {
         .isInstanceOf(CustomException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.ROOM_PARTICIPANT_NOT_FOUND);
+  }
+
+  @Test
+  void getRoomParticipants_returnsJoinedParticipantsOrderedByJoinedAtAsc() {
+    RoomParticipant firstParticipant = RoomParticipant.join(1L, 2L);
+    RoomParticipant secondParticipant = RoomParticipant.join(1L, 3L);
+
+    given(roomRepository.existsById(1L)).willReturn(true);
+    given(roomParticipantRepository.findByRoomIdAndStatusOrderByJoinedAtAsc(
+        1L,
+        RoomParticipantStatus.JOINED
+    )).willReturn(List.of(firstParticipant, secondParticipant));
+
+    List<RoomParticipantRes> result = roomParticipantService.getRoomParticipants(1L);
+
+    assertThat(result).hasSize(2);
+    assertThat(result.get(0).roomId()).isEqualTo(1L);
+    assertThat(result.get(0).userId()).isEqualTo(2L);
+    assertThat(result.get(0).status()).isEqualTo(RoomParticipantStatus.JOINED);
+    assertThat(result.get(1).userId()).isEqualTo(3L);
+
+    verify(roomRepository).existsById(1L);
+    verify(roomParticipantRepository).findByRoomIdAndStatusOrderByJoinedAtAsc(
+        1L,
+        RoomParticipantStatus.JOINED
+    );
+  }
+
+  @Test
+  void getRoomParticipants_returnsEmptyList_whenJoinedParticipantDoesNotExist() {
+    given(roomRepository.existsById(1L)).willReturn(true);
+    given(roomParticipantRepository.findByRoomIdAndStatusOrderByJoinedAtAsc(
+        1L,
+        RoomParticipantStatus.JOINED
+    )).willReturn(List.of());
+
+    List<RoomParticipantRes> result = roomParticipantService.getRoomParticipants(1L);
+
+    assertThat(result).isEmpty();
+
+    verify(roomRepository).existsById(1L);
+    verify(roomParticipantRepository).findByRoomIdAndStatusOrderByJoinedAtAsc(
+        1L,
+        RoomParticipantStatus.JOINED
+    );
+  }
+
+  @Test
+  void getRoomParticipants_throwsRoomNotFound_whenRoomDoesNotExist() {
+    given(roomRepository.existsById(999L)).willReturn(false);
+
+    assertThatThrownBy(() -> roomParticipantService.getRoomParticipants(999L))
+        .isInstanceOf(CustomException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
+
+    verify(roomRepository).existsById(999L);
+    verify(roomParticipantRepository, never())
+        .findByRoomIdAndStatusOrderByJoinedAtAsc(any(), any());
   }
 }
