@@ -29,7 +29,7 @@ import java.util.regex.Pattern;
 public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
 
     private static final Pattern CHAT_DESTINATION_PATTERN =
-            Pattern.compile("^/(?:app|topic)/rooms/(\\d+)/chat/messages$");
+            Pattern.compile("^/topic/rooms/(\\d+)/chat/messages$");
 
     private final RoomParticipantRepository roomParticipantRepository;
 
