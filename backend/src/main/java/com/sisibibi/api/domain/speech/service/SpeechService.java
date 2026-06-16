@@ -168,14 +168,23 @@ public class SpeechService {
             Long speechId
     ) {
         if (profanityDetector.containsProfanity(content)) {
-            log.warn(
-                    "Speech content blocked by profanity detector. "
-                            + "action={}, roomId={}, userId={}, speechId={}",
-                    action,
-                    roomId,
-                    userId,
-                    speechId
-            );
+            if (speechId == null) {
+                log.warn(
+                        "Speech content blocked by profanity detector. action={}, roomId={}, userId={}",
+                        action,
+                        roomId,
+                        userId
+                );
+            } else {
+                log.warn(
+                        "Speech content blocked by profanity detector. "
+                                + "action={}, roomId={}, userId={}, speechId={}",
+                        action,
+                        roomId,
+                        userId,
+                        speechId
+                );
+            }
             throw new CustomException(ErrorCode.SPEECH_CONTENT_CONTAINS_PROFANITY);
         }
     }
