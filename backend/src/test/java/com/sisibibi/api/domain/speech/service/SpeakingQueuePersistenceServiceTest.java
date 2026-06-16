@@ -352,6 +352,55 @@ class SpeakingQueuePersistenceServiceTest {
     }
 
     @Test
+    void findCurrentSpeaker_returnsAssignedSpeaker() {
+        SpeakingQueue assigned = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        assign(assigned);
+        given(roomRepository.existsById(1L)).willReturn(true);
+        given(speakingQueueRepository.findByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        )).willReturn(Optional.of(assigned));
+
+        Optional<SpeakingQueue> currentSpeaker =
+                speakingQueuePersistenceService.findCurrentSpeaker(1L);
+
+        assertThat(currentSpeaker).contains(assigned);
+    }
+
+    @Test
+    void findCurrentSpeaker_returnsEmptyWhenAssignedSpeakerDoesNotExist() {
+        given(roomRepository.existsById(1L)).willReturn(true);
+        given(speakingQueueRepository.findByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        )).willReturn(Optional.empty());
+
+        Optional<SpeakingQueue> currentSpeaker =
+                speakingQueuePersistenceService.findCurrentSpeaker(1L);
+
+        assertThat(currentSpeaker).isEmpty();
+    }
+
+    @Test
+    void findCurrentSpeaker_rejectsMissingRoom() {
+        given(roomRepository.existsById(1L)).willReturn(false);
+
+        assertThatThrownBy(() ->
+                speakingQueuePersistenceService.findCurrentSpeaker(1L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
+
+        verify(speakingQueueRepository, never())
+                .findByRoomIdAndStatus(1L, SpeakingQueueStatus.ASSIGNED);
+    }
+
+    @Test
     void expireCurrentSpeaker_completesExpiredAssignedRequestAfterLockingRoom() {
         SpeakingQueue assigned = SpeakingQueue.waiting(
                 1L,

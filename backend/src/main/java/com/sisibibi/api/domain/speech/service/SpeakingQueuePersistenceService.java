@@ -115,6 +115,18 @@ public class SpeakingQueuePersistenceService {
         return currentSpeaker;
     }
 
+    @Transactional(readOnly = true)
+    public Optional<SpeakingQueue> findCurrentSpeaker(Long roomId) {
+        if (!roomRepository.existsById(roomId)) {
+            throw new CustomException(ErrorCode.ROOM_NOT_FOUND);
+        }
+
+        return speakingQueueRepository.findByRoomIdAndStatus(
+                roomId,
+                SpeakingQueueStatus.ASSIGNED
+        );
+    }
+
     @Transactional
     public Optional<SpeakingQueue> expireCurrentSpeaker(
             Long roomId,
