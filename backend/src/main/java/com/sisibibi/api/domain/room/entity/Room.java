@@ -62,4 +62,18 @@ public class Room {
         this.status = RoomStatus.CLOSED;
         this.endedAt = closedAt;
     }
+
+    public void update(String title, LocalDateTime startedAt, LocalDateTime endedAt) {
+        if (title != null) {
+            this.title = title;
+        }
+
+        if (startedAt != null) {
+            this.startedAt = startedAt;
+        }
+
+        if (endedAt != null) {
+            this.endedAt = endedAt;
+        }
+    }
 }
