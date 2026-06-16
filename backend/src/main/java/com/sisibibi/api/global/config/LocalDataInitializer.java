@@ -43,6 +43,9 @@ public class LocalDataInitializer implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         User testUser = findOrCreateUser(TEST_USER_EMAIL, "테스트유저");
         User author = findOrCreateUser(AUTHOR_EMAIL, "의견작성자");
+        LocalDateTime startedAt = LocalDateTime.now();
+        LocalDateTime endedAt = startedAt.plusMinutes(5);
+
         findOrCreateAdmin();
         Topic topic = topicRepository.findByTitle(TOPIC_TITLE)
                 .orElseGet(() -> topicRepository.save(Topic.approved(
@@ -51,8 +54,7 @@ public class LocalDataInitializer implements ApplicationRunner {
                         "AI·기술",
                         "https://example.com/ai-news"
                 )));
-        LocalDateTime startedAt = LocalDateTime.now();
-        LocalDateTime endedAt = startedAt.plusMinutes(5);
+
         Room room = roomRepository.findByTopicId(topic.getId())
                 .orElseGet(() -> roomRepository.save(Room.open(topic.getId(), topic.getTitle(), startedAt, endedAt)));
 

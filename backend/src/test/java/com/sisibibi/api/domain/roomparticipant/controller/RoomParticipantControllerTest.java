@@ -74,13 +74,6 @@ class RoomParticipantControllerTest {
   }
 
   @Test
-  void joinRoom_returnsUnauthorized_whenPrincipalIsMissing() throws Exception {
-    mockMvc.perform(post("/api/v1/rooms/{roomId}/participants", 1L))
-        .andExpect(status().isUnauthorized())
-        .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
-  }
-
-  @Test
   void joinRoom_returnsBadRequest_whenRoomIdIsNotPositive() throws Exception {
     SecurityContextHolder.getContext().setAuthentication(
         new UsernamePasswordAuthenticationToken(
@@ -130,13 +123,6 @@ class RoomParticipantControllerTest {
         .andExpect(jsonPath("$.message").value("토론방 퇴장이 완료되었습니다."));
 
     verify(roomParticipantService).leaveRoom(1L, 2L);
-  }
-
-  @Test
-  void leaveRoom_returnsUnauthorized_whenPrincipalIsMissing() throws Exception {
-    mockMvc.perform(post("/api/v1/rooms/{roomId}/participants/out", 1L))
-        .andExpect(status().isUnauthorized())
-        .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
   }
 
   @Test

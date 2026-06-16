@@ -192,19 +192,17 @@ class RoomServiceTest {
     LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
     LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
     Room room = Room.open(1L, "수정 전 제목", firstStartedAt, firstEndedAt);
-    LocalDateTime startedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
-    LocalDateTime endedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
 
     given(roomRepository.findById(10L)).willReturn(Optional.of(room));
 
     RoomDetailRes result = roomService.updateRoom(
         10L,
-        new UpdateRoomReq("수정 후 제목", startedAt, endedAt)
+        new UpdateRoomReq("수정 후 제목", firstStartedAt, firstEndedAt)
     );
 
     assertThat(result.title()).isEqualTo("수정 후 제목");
-    assertThat(result.startedAt()).isEqualTo(startedAt);
-    assertThat(result.endedAt()).isEqualTo(endedAt);
+    assertThat(result.startedAt()).isEqualTo(firstStartedAt);
+    assertThat(result.endedAt()).isEqualTo(firstEndedAt);
 
     verify(roomRepository).findById(10L);
   }
