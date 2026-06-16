@@ -22,7 +22,10 @@ public class LoadTestDataInitializer implements ApplicationRunner {
     private boolean enabled;
 
     @Value("${app.load-test.seed.room-id:1}")
-    private long roomId;
+    private long roomIdStart;
+
+    @Value("${app.load-test.seed.room-count:1}")
+    private int roomCount;
 
     @Value("${app.load-test.seed.user-id-start:1}")
     private long userIdStart;
@@ -42,20 +45,19 @@ public class LoadTestDataInitializer implements ApplicationRunner {
         }
 
         if (resetSpeakingQueue) {
+            jdbcTemplate.update("delete from speaking_queue");
+        }
+
+        for (long roomId = roomIdStart; roomId < roomIdStart + roomCount; roomId++) {
             jdbcTemplate.update(
-                    "delete from speaking_queue where room_id = ?",
+                    """
+                            insert into rooms (id, status)
+                            values (?, 'OPEN')
+                            on duplicate key update status = 'OPEN'
+                            """,
                     roomId
             );
         }
-
-        jdbcTemplate.update(
-                """
-                        insert into rooms (id, status)
-                        values (?, 'OPEN')
-                        on duplicate key update status = 'OPEN'
-                        """,
-                roomId
-        );
 
         for (long userId = userIdStart; userId < userIdStart + userCount; userId++) {
             jdbcTemplate.update(
@@ -69,8 +71,10 @@ public class LoadTestDataInitializer implements ApplicationRunner {
         }
 
         log.info(
-                "[LOAD TEST SEED] roomId={}, userIdStart={}, userCount={}, resetSpeakingQueue={}",
-                roomId,
+                "[LOAD TEST SEED] roomIdStart={}, roomCount={}, userIdStart={}, "
+                        + "userCount={}, resetSpeakingQueue={}",
+                roomIdStart,
+                roomCount,
                 userIdStart,
                 userCount,
                 resetSpeakingQueue

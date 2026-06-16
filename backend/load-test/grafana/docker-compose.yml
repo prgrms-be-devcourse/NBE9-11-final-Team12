@@ -1,0 +1,46 @@
+services:
+  influxdb:
+    image: influxdb:1.8
+    container_name: sisibibi-k6-influxdb
+    ports:
+      - "8086:8086"
+    environment:
+      INFLUXDB_DB: k6
+      INFLUXDB_HTTP_AUTH_ENABLED: "false"
+    volumes:
+      - influxdb-data:/var/lib/influxdb
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: sisibibi-k6-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-remote-write-receiver
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+
+  grafana:
+    image: grafana/grafana:11.2.2
+    container_name: sisibibi-k6-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_DEFAULT_THEME: light
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - influxdb
+      - prometheus
+
+volumes:
+  influxdb-data:
+  prometheus-data:
+  grafana-data:

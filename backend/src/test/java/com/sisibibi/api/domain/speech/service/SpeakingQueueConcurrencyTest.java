@@ -246,7 +246,13 @@ class SpeakingQueueConcurrencyTest {
 
         speakingQueueService.requestSpeakingTurn(roomId, currentSpeakerUserId);
         speakingQueueService.requestSpeakingTurn(roomId, nextUserId);
-        LocalDateTime schedulerNow = LocalDateTime.now();
+        StageRequestRes currentSpeakerBeforeRace = speakingQueueService.getMyRequest(
+                roomId,
+                currentSpeakerUserId
+        );
+        Duration speakingTimeLimit = Duration.ofMinutes(3);
+        LocalDateTime schedulerNow =
+                currentSpeakerBeforeRace.assignedAt().plus(speakingTimeLimit).plusNanos(1);
 
         ConcurrentRun<Object> run = runConcurrently(
                 2,
@@ -261,7 +267,7 @@ class SpeakingQueueConcurrencyTest {
                     return speakingQueueService.expireCurrentSpeakerIfTimedOut(
                             roomId,
                             schedulerNow,
-                            Duration.ZERO
+                            speakingTimeLimit
                     );
                 }
         );

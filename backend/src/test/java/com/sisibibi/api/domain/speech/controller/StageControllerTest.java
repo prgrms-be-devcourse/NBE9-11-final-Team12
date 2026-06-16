@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.speech.controller;
 
 import com.sisibibi.api.domain.speech.dto.response.StageCompleteRes;
+import com.sisibibi.api.domain.speech.dto.response.StagePositionRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.dto.response.CurrentSpeakerRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
@@ -85,6 +86,43 @@ class StageControllerTest {
                         .param("userId", "-1"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
+    }
+
+    @Test
+    void getMyPosition_returnsOkResponse() throws Exception {
+        StagePositionRes response = new StagePositionRes(
+                1L,
+                10L,
+                SpeakingQueueStatus.WAITING,
+                3,
+                1,
+                2
+        );
+
+        given(speakingQueueService.getMyPosition(1L, 10L))
+                .willReturn(response);
+
+        mockMvc.perform(get("/api/v1/rooms/1/stage/requests/me/position")
+                        .param("userId", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.roomId").value(1))
+                .andExpect(jsonPath("$.data.userId").value(10))
+                .andExpect(jsonPath("$.data.status").value("WAITING"))
+                .andExpect(jsonPath("$.data.queueOrder").value(3))
+                .andExpect(jsonPath("$.data.aheadCount").value(1))
+                .andExpect(jsonPath("$.data.waitingRank").value(2));
+    }
+
+    @Test
+    void getMyPosition_returnsNotFoundWhenActiveRequestDoesNotExist() throws Exception {
+        given(speakingQueueService.getMyPosition(1L, 10L))
+                .willThrow(new CustomException(ErrorCode.SPEAKING_REQUEST_NOT_FOUND));
+
+        mockMvc.perform(get("/api/v1/rooms/1/stage/requests/me/position")
+                        .param("userId", "10"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("SPEAKING_REQUEST_NOT_FOUND"));
     }
 
     @Test

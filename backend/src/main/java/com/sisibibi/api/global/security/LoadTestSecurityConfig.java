@@ -15,6 +15,7 @@ public class LoadTestSecurityConfig {
         return http
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/api/load-test/**").permitAll()
                         .requestMatchers("/api/v1/rooms/*/stage/**").permitAll()
                         .anyRequest().authenticated()
                 )

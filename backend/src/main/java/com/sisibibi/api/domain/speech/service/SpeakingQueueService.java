@@ -5,6 +5,7 @@ import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.speech.dto.response.CurrentSpeakerRes;
 import com.sisibibi.api.domain.speech.dto.response.StageCompleteRes;
 import com.sisibibi.api.domain.speech.dto.response.StageExpireRes;
+import com.sisibibi.api.domain.speech.dto.response.StagePositionRes;
 import com.sisibibi.api.domain.speech.dto.response.StageQueueRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
@@ -81,6 +82,29 @@ public class SpeakingQueueService {
                 .orElseThrow(() -> new CustomException(ErrorCode.SPEAKING_REQUEST_NOT_FOUND));
 
         return StageRequestRes.from(speakingQueue);
+    }
+
+    @Transactional(readOnly = true)
+    public StagePositionRes getMyPosition(Long roomId, Long userId) {
+        SpeakingQueue speakingQueue = speakingQueueRepository
+                .findFirstByRoomIdAndUserIdAndStatusInOrderByIdDesc(
+                        roomId,
+                        userId,
+                        ACTIVE_STATUSES
+                )
+                .orElseThrow(() -> new CustomException(ErrorCode.SPEAKING_REQUEST_NOT_FOUND));
+
+        if (speakingQueue.getStatus() == SpeakingQueueStatus.ASSIGNED) {
+            return StagePositionRes.assigned(speakingQueue);
+        }
+
+        long aheadCount = speakingQueueRepository.countByRoomIdAndStatusAndQueueOrderLessThan(
+                roomId,
+                SpeakingQueueStatus.WAITING,
+                speakingQueue.getQueueOrder()
+        );
+
+        return StagePositionRes.waiting(speakingQueue, aheadCount);
     }
 
     @Transactional

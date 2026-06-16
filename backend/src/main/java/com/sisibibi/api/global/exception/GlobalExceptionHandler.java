@@ -157,8 +157,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     protected ResponseEntity<ApiResponse<Void>> handleException(Exception e) {
         ErrorCode errorCode = ErrorCode.INTERNAL_SERVER_ERROR;
+        Throwable rootCause = getRootCause(e);
 
-        log.error("Unexpected server error.", e);
+        log.error(
+                "Unexpected server error. exception={}, message={}, rootCause={}, rootMessage={}",
+                e.getClass().getName(),
+                e.getMessage(),
+                rootCause.getClass().getName(),
+                rootCause.getMessage(),
+                e
+        );
 
         return ResponseEntity
                 .status(errorCode.getStatus())
@@ -207,5 +215,15 @@ public class GlobalExceptionHandler {
         }
 
         return false;
+    }
+
+    private Throwable getRootCause(Throwable throwable) {
+        Throwable current = throwable;
+
+        while (current.getCause() != null) {
+            current = current.getCause();
+        }
+
+        return current;
     }
 }

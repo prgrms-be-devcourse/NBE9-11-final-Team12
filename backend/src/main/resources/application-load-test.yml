@@ -3,6 +3,21 @@ app:
     seed:
       enabled: true
       room-id: 1
+      room-count: 10
       user-id-start: 1
-      user-count: 1000
+      user-count: 7500
       reset-speaking-queue: true
+
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 10
+      connection-timeout: 10000
+      max-lifetime: 1700000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus

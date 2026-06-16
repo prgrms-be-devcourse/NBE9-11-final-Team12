@@ -86,6 +86,57 @@ abstract class SpeakingQueueRdbLimitTestSupport {
                 .containsExactlyInAnyOrderElementsOf(rangeClosed(1, requestCount));
     }
 
+    @Test
+    void serviceCapacityDistributedRequestSpike_observesTenRoomsWithOneHundredUsersEach()
+            throws Exception {
+        clearSpeakingQueue();
+        int roomCount = 10;
+        int usersPerRoom = 100;
+        int requestCount = roomCount * usersPerRoom;
+        List<Long> roomIds = createOpenRooms(roomCount);
+        List<Long> userIds = createActiveUsers(requestCount);
+
+        LimitRun<StageRequestRes> run = runConcurrently(
+                requestCount,
+                index -> {
+                    int roomIndex = index / usersPerRoom;
+                    return speakingQueueService.requestSpeakingTurn(
+                            roomIds.get(roomIndex),
+                            userIds.get(index)
+                    );
+                }
+        );
+
+        List<StageRequestRes> successes = run.successes();
+        List<Throwable> failures = run.failures();
+        List<Integer> waitingCounts = roomIds.stream()
+                .map(roomId -> speakingQueueService.getWaitingQueue(roomId).items().size())
+                .toList();
+        long assignedCount = successes.stream()
+                .filter(result -> result.status() == SpeakingQueueStatus.ASSIGNED)
+                .count();
+        long waitingCount = successes.stream()
+                .filter(result -> result.status() == SpeakingQueueStatus.WAITING)
+                .count();
+
+        printLimitSummary(
+                "서비스 용량 모델 분산 신청 스파이크",
+                requestCount,
+                run,
+                "roomCount=" + roomCount
+                        + ", usersPerRoom=" + usersPerRoom
+                        + ", assignedCount=" + assignedCount
+                        + ", waitingCount=" + waitingCount
+                        + ", perRoomWaitingCounts=" + waitingCounts
+        );
+
+        assertThat(successes).hasSize(requestCount);
+        assertThat(failures).isEmpty();
+        assertThat(assignedCount).isEqualTo(roomCount);
+        assertThat(waitingCount).isEqualTo(requestCount - roomCount);
+        assertThat(waitingCounts).containsOnly(usersPerRoom - 1);
+    }
+
     @ParameterizedTest(name = "긴 대기열 조회 한계 관찰: 대기자 {0}명")
     @ValueSource(ints = {100, 500, 1000})
     void waitingQueueLookup_observesLongQueueReadLimit(int waitingCount) {
@@ -636,6 +687,16 @@ abstract class SpeakingQueueRdbLimitTestSupport {
         return roomRepository.save(Room.open()).getId();
     }
 
+    private List<Long> createOpenRooms(int count) {
+        List<Long> roomIds = new ArrayList<>();
+
+        for (int index = 0; index < count; index++) {
+            roomIds.add(createOpenRoom());
+        }
+
+        return roomIds;
+    }
+
     private Long createActiveUser() {
         return userRepository.save(User.active()).getId();
     }
@@ -811,11 +872,24 @@ abstract class SpeakingQueueRdbLimitTestSupport {
         Long roomId = createOpenRoom();
         Long currentSpeakerUserId = createActiveUser();
         Long nextSpeakerUserId = createActiveUser();
+        Duration speakingTimeLimit = Duration.ofMinutes(3);
+        LocalDateTime assignedAt = LocalDateTime.now().minusMinutes(4);
+        SpeakingQueue currentSpeakerQueue = SpeakingQueue.create(
+                roomId,
+                currentSpeakerUserId,
+                1,
+                assignedAt
+        );
+        currentSpeakerQueue.assign(assignedAt);
+        SpeakingQueue nextWaitingSpeaker = SpeakingQueue.create(
+                roomId,
+                nextSpeakerUserId,
+                2,
+                assignedAt.plusSeconds(1)
+        );
+        speakingQueueRepository.saveAll(List.of(currentSpeakerQueue, nextWaitingSpeaker));
 
-        speakingQueueService.requestSpeakingTurn(roomId, currentSpeakerUserId);
-        speakingQueueService.requestSpeakingTurn(roomId, nextSpeakerUserId);
-
-        LocalDateTime schedulerNow = LocalDateTime.now();
+        LocalDateTime schedulerNow = assignedAt.plus(speakingTimeLimit).plusNanos(1);
         long startedAt = System.nanoTime();
 
         LimitRun<Object> run = runConcurrently(
@@ -831,7 +905,7 @@ abstract class SpeakingQueueRdbLimitTestSupport {
                     return speakingQueueService.expireCurrentSpeakerIfTimedOut(
                             roomId,
                             schedulerNow,
-                            Duration.ZERO
+                            speakingTimeLimit
                     );
                 }
         );

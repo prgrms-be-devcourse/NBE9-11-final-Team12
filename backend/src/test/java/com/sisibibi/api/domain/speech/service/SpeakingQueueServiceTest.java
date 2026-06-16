@@ -3,6 +3,7 @@ package com.sisibibi.api.domain.speech.service;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.speech.dto.response.StageExpireRes;
+import com.sisibibi.api.domain.speech.dto.response.StagePositionRes;
 import com.sisibibi.api.domain.speech.dto.response.StageQueueRes;
 import com.sisibibi.api.domain.speech.dto.response.StageCompleteRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
@@ -148,6 +149,62 @@ class SpeakingQueueServiceTest {
         Long userId = createActiveUser();
 
         assertThatThrownBy(() -> speakingQueueService.getMyRequest(roomId, userId))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SPEAKING_REQUEST_NOT_FOUND);
+    }
+
+    @Test
+    void getMyPosition_returnsWaitingRankAndAheadCount() {
+        Long roomId = createOpenRoom();
+        Long currentSpeakerUserId = createActiveUser();
+        Long firstWaitingUserId = createActiveUser();
+        Long secondWaitingUserId = createActiveUser();
+        Long thirdWaitingUserId = createActiveUser();
+
+        speakingQueueService.requestSpeakingTurn(roomId, currentSpeakerUserId);
+        speakingQueueService.requestSpeakingTurn(roomId, firstWaitingUserId);
+        speakingQueueService.requestSpeakingTurn(roomId, secondWaitingUserId);
+        speakingQueueService.requestSpeakingTurn(roomId, thirdWaitingUserId);
+
+        StagePositionRes position = speakingQueueService.getMyPosition(roomId, secondWaitingUserId);
+
+        assertThat(position.roomId()).isEqualTo(roomId);
+        assertThat(position.userId()).isEqualTo(secondWaitingUserId);
+        assertThat(position.status()).isEqualTo(SpeakingQueueStatus.WAITING);
+        assertThat(position.queueOrder()).isEqualTo(3);
+        assertThat(position.aheadCount()).isEqualTo(1);
+        assertThat(position.waitingRank()).isEqualTo(2);
+    }
+
+    @Test
+    void getMyPosition_returnsZeroWaitingRankWhenUserIsCurrentSpeaker() {
+        Long roomId = createOpenRoom();
+        Long userId = createActiveUser();
+
+        speakingQueueService.requestSpeakingTurn(roomId, userId);
+
+        StagePositionRes position = speakingQueueService.getMyPosition(roomId, userId);
+
+        assertThat(position.roomId()).isEqualTo(roomId);
+        assertThat(position.userId()).isEqualTo(userId);
+        assertThat(position.status()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
+        assertThat(position.queueOrder()).isEqualTo(1);
+        assertThat(position.aheadCount()).isZero();
+        assertThat(position.waitingRank()).isZero();
+    }
+
+    @Test
+    void getMyPosition_throwsWhenActiveRequestDoesNotExist() {
+        Long roomId = createOpenRoom();
+        Long currentSpeakerUserId = createActiveUser();
+        Long waitingUserId = createActiveUser();
+
+        speakingQueueService.requestSpeakingTurn(roomId, currentSpeakerUserId);
+        speakingQueueService.requestSpeakingTurn(roomId, waitingUserId);
+        speakingQueueService.cancelMyRequest(roomId, waitingUserId);
+
+        assertThatThrownBy(() -> speakingQueueService.getMyPosition(roomId, waitingUserId))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.SPEAKING_REQUEST_NOT_FOUND);

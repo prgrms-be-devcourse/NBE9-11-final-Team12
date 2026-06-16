@@ -41,6 +41,26 @@ class SpeakingQueueRepositoryTest {
         assertThat(roomIds).containsExactly(900_001L);
     }
 
+    @Test
+    void countByRoomIdAndStatusAndQueueOrderLessThan_countsOnlyWaitingRequestsAhead() {
+        Long roomId = 900_010L;
+        LocalDateTime now = LocalDateTime.now();
+
+        speakingQueueRepository.save(assignedQueue(roomId, 910_010L, 1, now));
+        speakingQueueRepository.save(waitingQueue(roomId, 910_011L, 2));
+        speakingQueueRepository.save(waitingQueue(roomId, 910_012L, 3));
+        speakingQueueRepository.save(canceledQueue(roomId, 910_013L, 4));
+        speakingQueueRepository.save(waitingQueue(roomId, 910_014L, 5));
+
+        long aheadCount = speakingQueueRepository.countByRoomIdAndStatusAndQueueOrderLessThan(
+                roomId,
+                SpeakingQueueStatus.WAITING,
+                5
+        );
+
+        assertThat(aheadCount).isEqualTo(2);
+    }
+
     private SpeakingQueue waitingQueue(Long roomId, Long userId, int queueOrder) {
         return SpeakingQueue.create(roomId, userId, queueOrder, LocalDateTime.now());
     }
