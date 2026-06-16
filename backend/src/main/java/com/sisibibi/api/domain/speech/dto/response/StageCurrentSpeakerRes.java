@@ -21,6 +21,7 @@ public record StageCurrentSpeakerRes(
                 new CurrentSpeaker(
                         speakingQueue.getUserId(),
                         nickname,
+                        speakingQueue.getQueueOrder(),
                         speakingQueue.getAssignedAt(),
                         speakingQueue.getExpiresAt()
                 )
@@ -30,6 +31,7 @@ public record StageCurrentSpeakerRes(
     public record CurrentSpeaker(
             Long userId,
             String nickname,
+            Integer queueOrder,
             LocalDateTime assignedAt,
             LocalDateTime expiresAt
     ) {
