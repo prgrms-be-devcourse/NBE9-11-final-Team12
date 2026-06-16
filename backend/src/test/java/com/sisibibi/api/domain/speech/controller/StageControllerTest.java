@@ -51,6 +51,7 @@ class StageControllerTest {
                 new StageCurrentSpeakerRes.CurrentSpeaker(
                         10L,
                         "logic_hunter",
+                        3,
                         LocalDateTime.of(2026, 6, 16, 14, 20),
                         LocalDateTime.of(2026, 6, 16, 14, 22)
                 )
@@ -67,7 +68,7 @@ class StageControllerTest {
                 .andExpect(jsonPath("$.data.currentSpeaker.userId").value(10))
                 .andExpect(jsonPath("$.data.currentSpeaker.nickname")
                         .value("logic_hunter"))
-                .andExpect(jsonPath("$.data.currentSpeaker.queueOrder").doesNotExist())
+                .andExpect(jsonPath("$.data.currentSpeaker.queueOrder").value(3))
                 .andExpect(jsonPath("$.data.currentSpeaker.assignedAt").exists())
                 .andExpect(jsonPath("$.data.currentSpeaker.expiresAt").exists())
                 .andExpect(jsonPath("$.data.currentSpeaker.isMe").doesNotExist());
