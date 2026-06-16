@@ -75,6 +75,20 @@ class RedisSpeakingQueueRepositoryTest {
     }
 
     @Test
+    void rank_returnsOneBasedWaitingRank() {
+        speakingQueueRepository.upsert(1L, 10L, 15);
+        speakingQueueRepository.upsert(1L, 20L, 21);
+
+        assertThat(speakingQueueRepository.rank(1L, 10L)).contains(1);
+        assertThat(speakingQueueRepository.rank(1L, 20L)).contains(2);
+    }
+
+    @Test
+    void rank_returnsEmptyWhenUserIsNotWaiting() {
+        assertThat(speakingQueueRepository.rank(1L, 10L)).isEmpty();
+    }
+
+    @Test
     void assign_removesUserFromQueueAndStoresCurrentSpeaker() {
         speakingQueueRepository.upsert(1L, 10L, 15);
 

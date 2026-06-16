@@ -5,6 +5,7 @@ import com.sisibibi.api.domain.speech.dto.response.StageCurrentSpeakerRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestStatusRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
+import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.repository.RedisSpeakingQueueRepository;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import lombok.RequiredArgsConstructor;
@@ -54,7 +55,10 @@ public class SpeakingQueueService {
                 speakingQueuePersistenceService.findMyActiveRequest(roomId, userId);
 
         return activeRequest
-                .map(request -> StageRequestStatusRes.from(request, null))
+                .map(request -> StageRequestStatusRes.from(
+                        request,
+                        currentWaitingRank(request)
+                ))
                 .orElseGet(StageRequestStatusRes::empty);
     }
 
@@ -83,6 +87,17 @@ public class SpeakingQueueService {
                 speakingQueuePersistenceService.expireCurrentSpeaker(roomId, now);
         expired.ifPresent(this::synchronizeCompletedRedisProjection);
         return expired;
+    }
+
+    private Integer currentWaitingRank(SpeakingQueue speakingQueue) {
+        if (speakingQueue.getStatus() != SpeakingQueueStatus.WAITING) {
+            return null;
+        }
+
+        return redisSpeakingQueueRepository.rank(
+                speakingQueue.getRoomId(),
+                speakingQueue.getUserId()
+        ).orElse(null);
     }
 
     private void synchronizeWaitingRedisProjection(SpeakingQueue speakingQueue) {

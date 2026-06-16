@@ -173,6 +173,8 @@ class SpeakingQueueServiceTest {
         SpeakingQueue waiting = persistedWaitingRequest(1L, 7L, 15);
         given(speakingQueuePersistenceService.findMyActiveRequest(1L, 7L))
                 .willReturn(Optional.of(waiting));
+        given(redisSpeakingQueueRepository.rank(1L, 7L))
+                .willReturn(Optional.of(3));
 
         StageRequestStatusRes response =
                 speakingQueueService.getMySpeakingRequestStatus(1L, 7L);
@@ -182,12 +184,28 @@ class SpeakingQueueServiceTest {
         assertThat(response.roomId()).isEqualTo(1L);
         assertThat(response.userId()).isEqualTo(7L);
         assertThat(response.queueOrder()).isEqualTo(15);
-        assertThat(response.currentRank()).isNull();
+        assertThat(response.currentRank()).isEqualTo(3);
         assertThat(response.cancelable()).isTrue();
         assertThat(response.requestedAt())
                 .isEqualTo(LocalDateTime.of(2026, 6, 12, 11, 30));
         assertThat(response.assignedAt()).isNull();
         assertThat(response.expiresAt()).isNull();
+    }
+
+    @Test
+    void getMySpeakingRequestStatus_returnsNullRankWhenWaitingRequestIsMissingInRedis() {
+        SpeakingQueue waiting = persistedWaitingRequest(1L, 7L, 15);
+        given(speakingQueuePersistenceService.findMyActiveRequest(1L, 7L))
+                .willReturn(Optional.of(waiting));
+        given(redisSpeakingQueueRepository.rank(1L, 7L))
+                .willReturn(Optional.empty());
+
+        StageRequestStatusRes response =
+                speakingQueueService.getMySpeakingRequestStatus(1L, 7L);
+
+        assertThat(response.hasRequest()).isTrue();
+        assertThat(response.status()).isEqualTo(SpeakingQueueStatus.WAITING);
+        assertThat(response.currentRank()).isNull();
     }
 
     @Test
@@ -208,6 +226,7 @@ class SpeakingQueueServiceTest {
                 .isEqualTo(LocalDateTime.of(2026, 6, 12, 11, 31));
         assertThat(response.expiresAt())
                 .isEqualTo(LocalDateTime.of(2026, 6, 12, 11, 33));
+        verify(redisSpeakingQueueRepository, never()).rank(1L, 7L);
     }
 
     @Test
