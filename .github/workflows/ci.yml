@@ -109,11 +109,15 @@ jobs:
         run: |
           REPORT="build/reports/jacoco/test/html/index.html"
 
-          echo "## JaCoCo Coverage Report" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## JaCoCo Coverage Report"
 
-          if test -f "$REPORT"; then
-            echo "- HTML artifact: \`jacoco-html-report\`" >> "$GITHUB_STEP_SUMMARY"
-            echo "- Open \`index.html\` after downloading the artifact." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "- JaCoCo HTML report was not generated." >> "$GITHUB_STEP_SUMMARY"
-          fi
+            if test -f "$REPORT"; then
+              echo "✅ JaCoCo report generated successfully."
+              echo "- HTML artifact: \`jacoco-html-report\`"
+              echo "- Download the artifact and open \`index.html\`."
+            else
+              echo "❌ JaCoCo HTML report was not found at \`$REPORT\`."
+              echo "- Check whether \`jacocoTestReport\` completed successfully."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
