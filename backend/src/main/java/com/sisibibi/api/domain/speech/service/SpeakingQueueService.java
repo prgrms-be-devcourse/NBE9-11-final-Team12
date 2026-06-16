@@ -3,6 +3,7 @@ package com.sisibibi.api.domain.speech.service;
 import com.sisibibi.api.domain.speech.config.SpeakingQueueProperties;
 import com.sisibibi.api.domain.speech.dto.response.StageCurrentSpeakerRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
+import com.sisibibi.api.domain.speech.dto.response.StageRequestStatusRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.repository.RedisSpeakingQueueRepository;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
@@ -46,6 +47,15 @@ public class SpeakingQueueService {
         SpeakingQueue canceled =
                 speakingQueuePersistenceService.cancelWaitingRequest(roomId, userId);
         synchronizeCanceledRedisProjection(canceled);
+    }
+
+    public StageRequestStatusRes getMySpeakingRequestStatus(Long roomId, Long userId) {
+        Optional<SpeakingQueue> activeRequest =
+                speakingQueuePersistenceService.findMyActiveRequest(roomId, userId);
+
+        return activeRequest
+                .map(request -> StageRequestStatusRes.from(request, null))
+                .orElseGet(StageRequestStatusRes::empty);
     }
 
     public void completeSpeakingTurn(Long roomId, Long userId) {

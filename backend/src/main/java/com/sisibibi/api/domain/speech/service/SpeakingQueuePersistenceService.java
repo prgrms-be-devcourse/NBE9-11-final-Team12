@@ -70,6 +70,19 @@ public class SpeakingQueuePersistenceService {
         return speakingQueue;
     }
 
+    @Transactional(readOnly = true)
+    public Optional<SpeakingQueue> findMyActiveRequest(Long roomId, Long userId) {
+        if (!roomRepository.existsById(roomId)) {
+            throw new CustomException(ErrorCode.ROOM_NOT_FOUND);
+        }
+
+        return speakingQueueRepository.findByRoomIdAndUserIdAndStatusIn(
+                roomId,
+                userId,
+                ACTIVE_STATUSES
+        );
+    }
+
     @Transactional
     public Optional<SpeakingQueue> assignNextSpeaker(
             Long roomId,

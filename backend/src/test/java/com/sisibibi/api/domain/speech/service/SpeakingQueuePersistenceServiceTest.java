@@ -187,6 +187,60 @@ class SpeakingQueuePersistenceServiceTest {
     }
 
     @Test
+    void findMyActiveRequest_returnsActiveRequest() {
+        SpeakingQueue waiting = SpeakingQueue.waiting(
+                1L,
+                7L,
+                3,
+                java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        given(roomRepository.existsById(1L)).willReturn(true);
+        given(speakingQueueRepository.findByRoomIdAndUserIdAndStatusIn(
+                1L,
+                7L,
+                List.of(SpeakingQueueStatus.WAITING, SpeakingQueueStatus.ASSIGNED)
+        )).willReturn(Optional.of(waiting));
+
+        Optional<SpeakingQueue> found =
+                speakingQueuePersistenceService.findMyActiveRequest(1L, 7L);
+
+        assertThat(found).contains(waiting);
+    }
+
+    @Test
+    void findMyActiveRequest_returnsEmptyWhenActiveRequestDoesNotExist() {
+        given(roomRepository.existsById(1L)).willReturn(true);
+        given(speakingQueueRepository.findByRoomIdAndUserIdAndStatusIn(
+                1L,
+                7L,
+                List.of(SpeakingQueueStatus.WAITING, SpeakingQueueStatus.ASSIGNED)
+        )).willReturn(Optional.empty());
+
+        Optional<SpeakingQueue> found =
+                speakingQueuePersistenceService.findMyActiveRequest(1L, 7L);
+
+        assertThat(found).isEmpty();
+    }
+
+    @Test
+    void findMyActiveRequest_rejectsMissingRoom() {
+        given(roomRepository.existsById(1L)).willReturn(false);
+
+        assertThatThrownBy(() ->
+                speakingQueuePersistenceService.findMyActiveRequest(1L, 7L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
+
+        verify(speakingQueueRepository, never())
+                .findByRoomIdAndUserIdAndStatusIn(
+                        1L,
+                        7L,
+                        List.of(SpeakingQueueStatus.WAITING, SpeakingQueueStatus.ASSIGNED)
+                );
+    }
+
+    @Test
     void assignNextSpeaker_assignsFirstWaitingRequestWhenCurrentSpeakerDoesNotExist() {
         SpeakingQueue firstWaiting = SpeakingQueue.waiting(
                 1L,
