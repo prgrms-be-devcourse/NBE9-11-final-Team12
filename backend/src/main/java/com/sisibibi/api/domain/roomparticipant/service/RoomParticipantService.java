@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.roomparticipant.service;
 
 
+import com.sisibibi.api.domain.roomparticipant.dto.response.RoomParticipantCountRes;
 import com.sisibibi.api.domain.roomparticipant.dto.response.RoomParticipantRes;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
@@ -73,6 +74,19 @@ public class RoomParticipantService {
         .stream()
         .map(RoomParticipantRes::from)
         .toList();
+  }
+
+  public RoomParticipantCountRes getCurrentParticipantCount(Long roomId) {
+    if (!roomRepository.existsById(roomId)) {
+      throw new CustomException(ErrorCode.ROOM_NOT_FOUND);
+    }
+
+    int participantCount = roomParticipantRepository.countByRoomIdAndStatus(
+        roomId,
+        RoomParticipantStatus.JOINED
+    );
+
+    return new RoomParticipantCountRes(roomId, participantCount);
   }
 
 

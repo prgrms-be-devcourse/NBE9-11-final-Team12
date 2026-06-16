@@ -12,6 +12,7 @@ import com.sisibibi.api.domain.topic.entity.Topic;
 import com.sisibibi.api.domain.topic.repository.TopicRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -92,8 +93,13 @@ class RoomServiceTest {
 
   @Test
   void getOpenRooms_returnsOnlyOpenRoomsOrderedByCreatedAtDesc() {
-    Room firstRoom = Room.open(1L, "첫 번째 토론방");
-    Room secondRoom = Room.open(2L, "두 번째 토론방");
+    LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
+    LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
+    LocalDateTime secondStartedAt = LocalDateTime.of(2026, 6, 15, 13, 0);
+    LocalDateTime secondEndedAt = LocalDateTime.of(2026, 6, 15, 15, 0);
+
+    Room firstRoom = Room.open(1L, "첫 번째 토론방", firstStartedAt, firstEndedAt);
+    Room secondRoom = Room.open(2L, "두 번째 토론방", secondStartedAt, secondEndedAt);
 
     given(roomRepository.findByStatusOrderByCreatedAtDesc(RoomStatus.OPEN))
         .willReturn(List.of(secondRoom, firstRoom));
@@ -134,8 +140,13 @@ class RoomServiceTest {
   }
   @Test
   void getRooms_returnsRoomsOrderedByCreatedAtDesc() {
-    Room firstRoom = Room.open(1L, "첫 번째 토론방");
-    Room secondRoom = Room.open(2L, "두 번째 토론방");
+    LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
+    LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
+    LocalDateTime secondStartedAt = LocalDateTime.of(2026, 6, 15, 13, 0);
+    LocalDateTime secondEndedAt = LocalDateTime.of(2026, 6, 15, 15, 0);
+
+    Room firstRoom = Room.open(1L, "첫 번째 토론방", firstStartedAt, firstEndedAt);
+    Room secondRoom = Room.open(2L, "두 번째 토론방", secondStartedAt, secondEndedAt);
 
     given(roomRepository.findAllByOrderByCreatedAtDesc())
         .willReturn(List.of(secondRoom, firstRoom));
@@ -151,7 +162,9 @@ class RoomServiceTest {
 
   @Test
   void getRoom_returnsRoomDetail_whenRoomExists() {
-    Room room = Room.open(1L, "상세 조회 토론방");
+    LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
+    LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
+    Room room = Room.open(1L, "상세 조회 토론방", firstStartedAt, firstEndedAt);
 
     given(roomRepository.findById(10L)).willReturn(Optional.of(room));
 
@@ -176,20 +189,20 @@ class RoomServiceTest {
 
   @Test
   void updateRoom_updatesRoom_whenRoomExists() {
-    Room room = Room.open(1L, "수정 전 제목");
-    LocalDateTime startedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
-    LocalDateTime endedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
+    LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
+    LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
+    Room room = Room.open(1L, "수정 전 제목", firstStartedAt, firstEndedAt);
 
     given(roomRepository.findById(10L)).willReturn(Optional.of(room));
 
     RoomDetailRes result = roomService.updateRoom(
         10L,
-        new UpdateRoomReq("수정 후 제목", startedAt, endedAt)
+        new UpdateRoomReq("수정 후 제목", firstStartedAt, firstEndedAt)
     );
 
     assertThat(result.title()).isEqualTo("수정 후 제목");
-    assertThat(result.startedAt()).isEqualTo(startedAt);
-    assertThat(result.endedAt()).isEqualTo(endedAt);
+    assertThat(result.startedAt()).isEqualTo(firstStartedAt);
+    assertThat(result.endedAt()).isEqualTo(firstEndedAt);
 
     verify(roomRepository).findById(10L);
   }
@@ -209,7 +222,9 @@ class RoomServiceTest {
 
   @Test
   void updateRoom_throwsInvalidInput_whenTitleIsBlank() {
-    Room room = Room.open(1L, "수정 전 제목");
+    LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
+    LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
+    Room room = Room.open(1L, "수정 전 제목", firstStartedAt, firstEndedAt);
 
     given(roomRepository.findById(10L)).willReturn(Optional.of(room));
 
@@ -224,7 +239,9 @@ class RoomServiceTest {
 
   @Test
   void updateRoom_throwsInvalidInput_whenEndedAtIsBeforeStartedAt() {
-    Room room = Room.open(1L, "수정 전 제목");
+    LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
+    LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
+    Room room = Room.open(1L, "수정 후 제목", firstStartedAt, firstEndedAt);
 
     given(roomRepository.findById(10L)).willReturn(Optional.of(room));
 
@@ -243,7 +260,9 @@ class RoomServiceTest {
 
   @Test
   void deleteRoom_closesRoom_whenRoomExists() {
-    Room room = Room.open(1L, "삭제 대상 토론방");
+    LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
+    LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
+    Room room = Room.open(1L, "삭제 대상 토론방", firstStartedAt, firstEndedAt);
 
     given(roomRepository.findById(10L)).willReturn(Optional.of(room));
 

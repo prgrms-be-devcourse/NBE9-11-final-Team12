@@ -29,6 +29,7 @@ public class RoomService {
   private final RoomRepository roomRepository;
   private final TopicRepository topicRepository;
 
+
   @Transactional
   public CreateRoomRes createRoom(CreateRoomReq request) {
     Topic topic = topicRepository.findById(request.topicId())
@@ -41,8 +42,10 @@ public class RoomService {
     if (roomRepository.existsByTopicId(topic.getId())) {
       throw new CustomException(ErrorCode.ROOM_ALREADY_EXISTS);
     }
+    LocalDateTime startedAt = LocalDateTime.now();
+    LocalDateTime endedAt = startedAt.plusMinutes(5);
 
-    Room room = Room.open(topic.getId(), topic.getTitle());
+    Room room = Room.open(topic.getId(), topic.getTitle(), startedAt, endedAt);
     Room savedRoom = roomRepository.save(room);
 
     return CreateRoomRes.from(savedRoom);

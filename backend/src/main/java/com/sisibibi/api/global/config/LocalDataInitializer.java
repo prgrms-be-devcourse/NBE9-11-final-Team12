@@ -18,6 +18,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+
 @Slf4j
 @Component
 @Profile("local")
@@ -41,6 +43,9 @@ public class LocalDataInitializer implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         User testUser = findOrCreateUser(TEST_USER_EMAIL, "테스트유저");
         User author = findOrCreateUser(AUTHOR_EMAIL, "의견작성자");
+        LocalDateTime startedAt = LocalDateTime.now();
+        LocalDateTime endedAt = startedAt.plusMinutes(5);
+
         findOrCreateAdmin();
         Topic topic = topicRepository.findByTitle(TOPIC_TITLE)
                 .orElseGet(() -> topicRepository.save(Topic.approved(
@@ -49,8 +54,9 @@ public class LocalDataInitializer implements ApplicationRunner {
                         "AI·기술",
                         "https://example.com/ai-news"
                 )));
+
         Room room = roomRepository.findByTopicId(topic.getId())
-                .orElseGet(() -> roomRepository.save(Room.open(topic.getId(), topic.getTitle())));
+                .orElseGet(() -> roomRepository.save(Room.open(topic.getId(), topic.getTitle(), startedAt, endedAt)));
 
         if (!speechRepository.existsByRoomIdAndUserIdAndDeletedFalse(room.getId(), author.getId())) {
             speechRepository.save(Speech.createMainOpinion(

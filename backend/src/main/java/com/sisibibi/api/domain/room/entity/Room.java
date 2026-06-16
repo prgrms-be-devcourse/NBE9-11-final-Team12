@@ -43,14 +43,13 @@ public class Room {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    public static Room open(Long topicId, String title) {
-        LocalDateTime now = LocalDateTime.now();
-
+    public static Room open(Long topicId, String title, LocalDateTime startedAt, LocalDateTime endedAt) {
         Room room = new Room();
         room.topicId = topicId;
         room.title = title;
         room.status = RoomStatus.OPEN;
-        room.startedAt = now;
+        room.startedAt = startedAt;
+        room.endedAt = endedAt;
         return room;
     }
 

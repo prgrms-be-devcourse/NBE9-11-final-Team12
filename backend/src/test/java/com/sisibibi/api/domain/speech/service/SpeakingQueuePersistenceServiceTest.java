@@ -16,6 +16,8 @@ import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
+
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -43,10 +45,19 @@ class SpeakingQueuePersistenceServiceTest {
     @InjectMocks
     private SpeakingQueuePersistenceService speakingQueuePersistenceService;
 
+    private Room openRoom(Long topicId, String title) {
+        return Room.open(
+            topicId,
+            title,
+            LocalDateTime.of(2026, 6, 15, 10, 0),
+            LocalDateTime.of(2026, 6, 15, 12, 0)
+        );
+    }
+
     @Test
     void createWaitingRequest_persistsRequestWithNextRoomScopedOrder() {
         given(roomRepository.findByIdForUpdate(1L))
-                .willReturn(Optional.of(Room.open(1L, "토론방")));
+            .willReturn(Optional.of(openRoom(1L, "토론방")));
         given(speakingQueueRepository.existsByRoomIdAndUserIdAndStatusIn(
                 1L,
                 7L,
@@ -74,7 +85,7 @@ class SpeakingQueuePersistenceServiceTest {
     @Test
     void createWaitingRequest_rejectsExistingActiveRequest() {
         given(roomRepository.findByIdForUpdate(1L))
-                .willReturn(Optional.of(Room.open(1L, "토론방")));
+            .willReturn(Optional.of(openRoom(1L, "토론방")));
         given(speakingQueueRepository.existsByRoomIdAndUserIdAndStatusIn(
                 1L,
                 7L,
@@ -119,7 +130,7 @@ class SpeakingQueuePersistenceServiceTest {
                 java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
         );
         given(roomRepository.findByIdForUpdate(1L))
-                .willReturn(Optional.of(Room.open(1L, "토론방")));
+            .willReturn(Optional.of(openRoom(1L, "토론방")));
         given(speakingQueueRepository.findByRoomIdAndUserIdAndStatusIn(
                 1L,
                 7L,
@@ -146,7 +157,7 @@ class SpeakingQueuePersistenceServiceTest {
     @Test
     void cancelWaitingRequest_rejectsMissingActiveRequest() {
         given(roomRepository.findByIdForUpdate(1L))
-                .willReturn(Optional.of(Room.open(1L, "토론방")));
+            .willReturn(Optional.of(openRoom(1L, "토론방")));
         given(speakingQueueRepository.findByRoomIdAndUserIdAndStatusIn(
                 1L,
                 7L,
@@ -169,8 +180,10 @@ class SpeakingQueuePersistenceServiceTest {
                 java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
         );
         assign(assigned);
+        LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
+        LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
         given(roomRepository.findByIdForUpdate(1L))
-                .willReturn(Optional.of(Room.open(1L, "토론방")));
+            .willReturn(Optional.of(Room.open(1L, "토론방",firstStartedAt, firstEndedAt)));
         given(speakingQueueRepository.findByRoomIdAndUserIdAndStatusIn(
                 1L,
                 7L,
@@ -249,7 +262,7 @@ class SpeakingQueuePersistenceServiceTest {
                 java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
         );
         given(roomRepository.findByIdForUpdate(1L))
-                .willReturn(Optional.of(Room.open(1L, "토론방")));
+            .willReturn(Optional.of(openRoom(1L, "토론방")));
         given(speakingQueueRepository.existsByRoomIdAndStatus(
                 1L,
                 SpeakingQueueStatus.ASSIGNED
@@ -293,7 +306,7 @@ class SpeakingQueuePersistenceServiceTest {
                 java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
         );
         given(roomRepository.findByIdForUpdate(1L))
-                .willReturn(Optional.of(Room.open(1L, "토론방")));
+            .willReturn(Optional.of(openRoom(1L, "토론방")));
         given(speakingQueueRepository.existsByRoomIdAndStatus(
                 1L,
                 SpeakingQueueStatus.ASSIGNED
@@ -318,7 +331,7 @@ class SpeakingQueuePersistenceServiceTest {
     @Test
     void assignNextSpeaker_returnsEmptyWhenWaitingQueueIsEmpty() {
         given(roomRepository.findByIdForUpdate(1L))
-                .willReturn(Optional.of(Room.open(1L, "토론방")));
+            .willReturn(Optional.of(openRoom(1L, "토론방")));
         given(speakingQueueRepository.existsByRoomIdAndStatus(
                 1L,
                 SpeakingQueueStatus.ASSIGNED
@@ -373,7 +386,7 @@ class SpeakingQueuePersistenceServiceTest {
         );
         assign(assigned);
         given(roomRepository.findByIdForUpdate(1L))
-                .willReturn(Optional.of(Room.open(1L, "토론방")));
+            .willReturn(Optional.of(openRoom(1L, "토론방")));
         given(speakingQueueRepository.findByRoomIdAndStatus(
                 1L,
                 SpeakingQueueStatus.ASSIGNED
@@ -397,7 +410,7 @@ class SpeakingQueuePersistenceServiceTest {
     @Test
     void completeCurrentSpeaker_rejectsWhenCurrentSpeakerDoesNotExist() {
         given(roomRepository.findByIdForUpdate(1L))
-                .willReturn(Optional.of(Room.open(1L, "토론방")));
+            .willReturn(Optional.of(openRoom(1L, "토론방")));
         given(speakingQueueRepository.findByRoomIdAndStatus(
                 1L,
                 SpeakingQueueStatus.ASSIGNED
@@ -420,7 +433,7 @@ class SpeakingQueuePersistenceServiceTest {
         );
         assign(assigned);
         given(roomRepository.findByIdForUpdate(1L))
-                .willReturn(Optional.of(Room.open(1L, "토론방")));
+            .willReturn(Optional.of(openRoom(1L, "토론방")));
         given(speakingQueueRepository.findByRoomIdAndStatus(
                 1L,
                 SpeakingQueueStatus.ASSIGNED
@@ -488,7 +501,7 @@ class SpeakingQueuePersistenceServiceTest {
         );
         assign(assigned);
         given(roomRepository.findByIdForUpdate(1L))
-                .willReturn(Optional.of(Room.open(1L, "토론방")));
+            .willReturn(Optional.of(openRoom(1L, "토론방")));
         given(speakingQueueRepository.findByRoomIdAndStatus(
                 1L,
                 SpeakingQueueStatus.ASSIGNED
@@ -522,7 +535,7 @@ class SpeakingQueuePersistenceServiceTest {
         );
         assign(assigned);
         given(roomRepository.findByIdForUpdate(1L))
-                .willReturn(Optional.of(Room.open(1L, "토론방")));
+            .willReturn(Optional.of(openRoom(1L, "토론방")));
         given(speakingQueueRepository.findByRoomIdAndStatus(
                 1L,
                 SpeakingQueueStatus.ASSIGNED
@@ -541,7 +554,7 @@ class SpeakingQueuePersistenceServiceTest {
     @Test
     void expireCurrentSpeaker_returnsEmptyWhenSpeakerWasAlreadyCompleted() {
         given(roomRepository.findByIdForUpdate(1L))
-                .willReturn(Optional.of(Room.open(1L, "토론방")));
+            .willReturn(Optional.of(openRoom(1L, "토론방")));
         given(speakingQueueRepository.findByRoomIdAndStatus(
                 1L,
                 SpeakingQueueStatus.ASSIGNED
