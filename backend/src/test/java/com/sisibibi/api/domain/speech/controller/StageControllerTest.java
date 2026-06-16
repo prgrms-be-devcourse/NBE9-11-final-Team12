@@ -1,5 +1,6 @@
 package com.sisibibi.api.domain.speech.controller;
 
+import com.sisibibi.api.domain.speech.dto.response.StageCurrentSpeakerRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.service.SpeakingQueueService;
@@ -23,6 +24,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -40,6 +42,73 @@ class StageControllerTest {
     @AfterEach
     void tearDown() {
         SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void getCurrentSpeaker_returnsCurrentSpeaker() throws Exception {
+        StageCurrentSpeakerRes response = new StageCurrentSpeakerRes(
+                true,
+                new StageCurrentSpeakerRes.CurrentSpeaker(
+                        100L,
+                        10L,
+                        "logic_hunter",
+                        3,
+                        LocalDateTime.of(2026, 6, 16, 14, 20),
+                        LocalDateTime.of(2026, 6, 16, 14, 22),
+                        true
+                )
+        );
+        given(speakingQueueService.getCurrentSpeaker(1L, 10L))
+                .willReturn(response);
+
+        mockMvc.perform(get("/api/v1/rooms/1/stage")
+                        .with(authPrincipal(10L)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.message").value("요청에 성공했습니다."))
+                .andExpect(jsonPath("$.data.hasCurrentSpeaker").value(true))
+                .andExpect(jsonPath("$.data.currentSpeaker.queueId").value(100))
+                .andExpect(jsonPath("$.data.currentSpeaker.userId").value(10))
+                .andExpect(jsonPath("$.data.currentSpeaker.nickname")
+                        .value("logic_hunter"))
+                .andExpect(jsonPath("$.data.currentSpeaker.queueOrder").value(3))
+                .andExpect(jsonPath("$.data.currentSpeaker.assignedAt").exists())
+                .andExpect(jsonPath("$.data.currentSpeaker.expiresAt").exists())
+                .andExpect(jsonPath("$.data.currentSpeaker.isMe").value(true));
+    }
+
+    @Test
+    void getCurrentSpeaker_returnsEmptyResponseWhenCurrentSpeakerDoesNotExist()
+            throws Exception {
+        given(speakingQueueService.getCurrentSpeaker(1L, 10L))
+                .willReturn(StageCurrentSpeakerRes.empty());
+
+        mockMvc.perform(get("/api/v1/rooms/1/stage")
+                        .with(authPrincipal(10L)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.hasCurrentSpeaker").value(false))
+                .andExpect(jsonPath("$.data.currentSpeaker").doesNotExist());
+    }
+
+    @Test
+    void getCurrentSpeaker_returnsNotFoundWhenRoomDoesNotExist() throws Exception {
+        given(speakingQueueService.getCurrentSpeaker(1L, 10L))
+                .willThrow(new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+        mockMvc.perform(get("/api/v1/rooms/1/stage")
+                        .with(authPrincipal(10L)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("ROOM_NOT_FOUND"))
+                .andExpect(jsonPath("$.message")
+                        .value("존재하지 않는 토론방입니다."));
+    }
+
+    @Test
+    void getCurrentSpeaker_returnsBadRequestWhenRoomIdIsNotPositive() throws Exception {
+        mockMvc.perform(get("/api/v1/rooms/0/stage")
+                        .with(authPrincipal(10L)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
     }
 
     @Test
