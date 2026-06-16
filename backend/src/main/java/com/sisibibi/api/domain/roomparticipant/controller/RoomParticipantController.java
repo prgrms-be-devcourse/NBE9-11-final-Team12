@@ -30,9 +30,6 @@ public class RoomParticipantController {
       @PathVariable @Positive Long roomId,
       @AuthenticationPrincipal AuthPrincipal principal
   ) {
-    if (principal == null) {
-      throw new CustomException(ErrorCode.UNAUTHORIZED);
-    }
 
 
     RoomParticipantRes response = roomParticipantService.joinRoom(roomId, principal.userId());
@@ -48,9 +45,6 @@ public class RoomParticipantController {
       @PathVariable @Positive Long roomId,
       @AuthenticationPrincipal AuthPrincipal principal
   ) {
-    if (principal == null) {
-      throw new CustomException(ErrorCode.UNAUTHORIZED);
-    }
 
     roomParticipantService.leaveRoom(roomId, principal.userId());
 
