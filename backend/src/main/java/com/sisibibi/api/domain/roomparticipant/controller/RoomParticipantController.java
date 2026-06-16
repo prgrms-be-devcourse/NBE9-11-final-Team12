@@ -1,5 +1,6 @@
 package com.sisibibi.api.domain.roomparticipant.controller;
 
+import com.sisibibi.api.domain.roomparticipant.dto.response.RoomParticipantCountRes;
 import com.sisibibi.api.domain.roomparticipant.dto.response.RoomParticipantRes;
 import com.sisibibi.api.domain.roomparticipant.service.RoomParticipantService;
 import com.sisibibi.api.global.exception.CustomException;
@@ -61,6 +62,15 @@ public class RoomParticipantController {
       @PathVariable @Positive Long roomId
   ) {
     List<RoomParticipantRes> response = roomParticipantService.getRoomParticipants(roomId);
+
+    return ResponseEntity.ok(ApiResponse.ok(response));
+  }
+
+  @GetMapping("/count")
+  public ResponseEntity<ApiResponse<RoomParticipantCountRes>> getCurrentParticipantCount(
+      @PathVariable @Positive Long roomId
+  ) {
+    RoomParticipantCountRes response = roomParticipantService.getCurrentParticipantCount(roomId);
 
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
