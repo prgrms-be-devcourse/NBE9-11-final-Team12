@@ -1,14 +1,17 @@
 package com.sisibibi.api.domain.speech.service;
 
 import com.sisibibi.api.domain.speech.config.SpeakingQueueProperties;
+import com.sisibibi.api.domain.speech.dto.response.StageCurrentSpeakerRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.repository.RedisSpeakingQueueRepository;
-import java.time.LocalDateTime;
-import java.util.Optional;
+import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -49,6 +52,17 @@ public class SpeakingQueueService {
         SpeakingQueue completed =
                 speakingQueuePersistenceService.completeCurrentSpeaker(roomId, userId);
         synchronizeCompletedRedisProjection(completed);
+    }
+
+    public StageCurrentSpeakerRes getCurrentSpeaker(Long roomId) {
+        Optional<CurrentSpeakerProjection> currentSpeaker =
+                speakingQueuePersistenceService.findCurrentSpeaker(roomId);
+
+        if (currentSpeaker.isEmpty()) {
+            return StageCurrentSpeakerRes.empty();
+        }
+
+        return StageCurrentSpeakerRes.from(currentSpeaker.get());
     }
 
     public Optional<SpeakingQueue> expireCurrentSpeaker(
