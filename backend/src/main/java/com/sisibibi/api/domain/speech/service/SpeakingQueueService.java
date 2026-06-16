@@ -1,9 +1,14 @@
 package com.sisibibi.api.domain.speech.service;
 
 import com.sisibibi.api.domain.speech.config.SpeakingQueueProperties;
+import com.sisibibi.api.domain.speech.dto.response.StageCurrentSpeakerRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.repository.RedisSpeakingQueueRepository;
+import com.sisibibi.api.domain.user.entity.User;
+import com.sisibibi.api.domain.user.repository.UserRepository;
+import com.sisibibi.api.global.exception.CustomException;
+import com.sisibibi.api.global.exception.ErrorCode;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +23,7 @@ public class SpeakingQueueService {
     private final RedisSpeakingQueueRepository redisSpeakingQueueRepository;
     private final SpeakingQueuePersistenceService speakingQueuePersistenceService;
     private final SpeakingQueueProperties speakingQueueProperties;
+    private final UserRepository userRepository;
 
     public StageRequestRes requestSpeakingTurn(Long roomId, Long userId) {
         SpeakingQueue saved =
@@ -49,6 +55,25 @@ public class SpeakingQueueService {
         SpeakingQueue completed =
                 speakingQueuePersistenceService.completeCurrentSpeaker(roomId, userId);
         synchronizeCompletedRedisProjection(completed);
+    }
+
+    public StageCurrentSpeakerRes getCurrentSpeaker(Long roomId, Long userId) {
+        Optional<SpeakingQueue> currentSpeaker =
+                speakingQueuePersistenceService.findCurrentSpeaker(roomId);
+
+        if (currentSpeaker.isEmpty()) {
+            return StageCurrentSpeakerRes.empty();
+        }
+
+        SpeakingQueue speakingQueue = currentSpeaker.get();
+        User speaker = userRepository.findById(speakingQueue.getUserId())
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
+        return StageCurrentSpeakerRes.of(
+                speakingQueue,
+                speaker.getNickname(),
+                speakingQueue.getUserId().equals(userId)
+        );
     }
 
     public Optional<SpeakingQueue> expireCurrentSpeaker(

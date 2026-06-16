@@ -10,10 +10,13 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.sisibibi.api.domain.speech.config.SpeakingQueueProperties;
+import com.sisibibi.api.domain.speech.dto.response.StageCurrentSpeakerRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.repository.RedisSpeakingQueueRepository;
+import com.sisibibi.api.domain.user.entity.User;
+import com.sisibibi.api.domain.user.repository.UserRepository;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -23,6 +26,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class SpeakingQueueServiceTest {
@@ -35,6 +39,9 @@ class SpeakingQueueServiceTest {
 
     @Mock
     private SpeakingQueueProperties speakingQueueProperties;
+
+    @Mock
+    private UserRepository userRepository;
 
     @InjectMocks
     private SpeakingQueueService speakingQueueService;
@@ -210,6 +217,65 @@ class SpeakingQueueServiceTest {
                 );
     }
 
+    @Test
+    void getCurrentSpeaker_returnsEmptyResponseWhenCurrentSpeakerDoesNotExist() {
+        given(speakingQueuePersistenceService.findCurrentSpeaker(1L))
+                .willReturn(Optional.empty());
+
+        StageCurrentSpeakerRes response =
+                speakingQueueService.getCurrentSpeaker(1L, 7L);
+
+        assertThat(response.hasCurrentSpeaker()).isFalse();
+        assertThat(response.currentSpeaker()).isNull();
+        verify(userRepository, never()).findById(org.mockito.ArgumentMatchers.anyLong());
+    }
+
+    @Test
+    void getCurrentSpeaker_returnsCurrentSpeakerWithNickname() {
+        SpeakingQueue assigned = assignedRequest(1L, 7L, 15);
+        ReflectionTestUtils.setField(assigned, "id", 100L);
+        User speaker = User.signup(
+                "speaker@example.com",
+                "encoded-password",
+                "logic_hunter"
+        );
+        given(speakingQueuePersistenceService.findCurrentSpeaker(1L))
+                .willReturn(Optional.of(assigned));
+        given(userRepository.findById(7L)).willReturn(Optional.of(speaker));
+
+        StageCurrentSpeakerRes response =
+                speakingQueueService.getCurrentSpeaker(1L, 10L);
+
+        assertThat(response.hasCurrentSpeaker()).isTrue();
+        assertThat(response.currentSpeaker().queueId()).isEqualTo(100L);
+        assertThat(response.currentSpeaker().userId()).isEqualTo(7L);
+        assertThat(response.currentSpeaker().nickname()).isEqualTo("logic_hunter");
+        assertThat(response.currentSpeaker().queueOrder()).isEqualTo(15);
+        assertThat(response.currentSpeaker().assignedAt())
+                .isEqualTo(LocalDateTime.of(2026, 6, 12, 11, 31));
+        assertThat(response.currentSpeaker().expiresAt())
+                .isEqualTo(LocalDateTime.of(2026, 6, 12, 11, 33));
+        assertThat(response.currentSpeaker().isMe()).isFalse();
+    }
+
+    @Test
+    void getCurrentSpeaker_marksCurrentUserAsMe() {
+        SpeakingQueue assigned = assignedRequest(1L, 7L, 15);
+        User speaker = User.signup(
+                "speaker@example.com",
+                "encoded-password",
+                "logic_hunter"
+        );
+        given(speakingQueuePersistenceService.findCurrentSpeaker(1L))
+                .willReturn(Optional.of(assigned));
+        given(userRepository.findById(7L)).willReturn(Optional.of(speaker));
+
+        StageCurrentSpeakerRes response =
+                speakingQueueService.getCurrentSpeaker(1L, 7L);
+
+        assertThat(response.currentSpeaker().isMe()).isTrue();
+    }
+
     private SpeakingQueue persistedWaitingRequest(Long roomId, Long userId, int queueOrder) {
         return SpeakingQueue.waiting(
                 roomId,
@@ -220,13 +286,18 @@ class SpeakingQueueServiceTest {
     }
 
     private SpeakingQueue completedRequest(Long roomId, Long userId, int queueOrder) {
+        SpeakingQueue speakingQueue = assignedRequest(roomId, userId, queueOrder);
+        speakingQueue.complete();
+        return speakingQueue;
+    }
+
+    private SpeakingQueue assignedRequest(Long roomId, Long userId, int queueOrder) {
         SpeakingQueue speakingQueue =
                 persistedWaitingRequest(roomId, userId, queueOrder);
         speakingQueue.assign(
                 LocalDateTime.of(2026, 6, 12, 11, 31),
                 LocalDateTime.of(2026, 6, 12, 11, 33)
         );
-        speakingQueue.complete();
         return speakingQueue;
     }
 

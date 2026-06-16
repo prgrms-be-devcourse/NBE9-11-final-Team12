@@ -11,6 +11,7 @@ import com.sisibibi.api.domain.speech.config.SpeakingQueueProperties;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.repository.RedisSpeakingQueueRepository;
+import com.sisibibi.api.domain.user.repository.UserRepository;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -65,7 +66,8 @@ class SpeakingQueueConsistencyRiskTest {
         SpeakingQueueService service = new SpeakingQueueService(
                 redisSpeakingQueueRepository,
                 failingPersistenceService,
-                mock(SpeakingQueueProperties.class)
+                mock(SpeakingQueueProperties.class),
+                mock(UserRepository.class)
         );
 
         assertThatThrownBy(() -> service.requestSpeakingTurn(ROOM_ID, USER_ID))
@@ -94,7 +96,8 @@ class SpeakingQueueConsistencyRiskTest {
         SpeakingQueueService service = new SpeakingQueueService(
                 failingRedisRepository,
                 persistenceService,
-                mock(SpeakingQueueProperties.class)
+                mock(SpeakingQueueProperties.class),
+                mock(UserRepository.class)
         );
 
         StageRequestRes response = service.requestSpeakingTurn(ROOM_ID, USER_ID);
