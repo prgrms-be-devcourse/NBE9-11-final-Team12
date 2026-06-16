@@ -2,6 +2,7 @@ package com.sisibibi.api.domain.speech.controller;
 
 import com.sisibibi.api.domain.speech.dto.response.StageCurrentSpeakerRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
+import com.sisibibi.api.domain.speech.dto.response.StageRequestStatusRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.service.SpeakingQueueService;
 import com.sisibibi.api.global.exception.CustomException;
@@ -176,6 +177,69 @@ class StageControllerTest {
                         .value("SPEAKING_REQUEST_NOT_CANCELABLE"))
                 .andExpect(jsonPath("$.message")
                         .value("대기 중인 발언권 신청만 취소할 수 있습니다."));
+    }
+
+    @Test
+    void getMySpeakingRequestStatus_returnsWaitingRequestStatus() throws Exception {
+        StageRequestStatusRes response = new StageRequestStatusRes(
+                true,
+                SpeakingQueueStatus.WAITING,
+                1L,
+                10L,
+                3,
+                2,
+                true,
+                LocalDateTime.of(2026, 6, 12, 10, 0),
+                null,
+                null
+        );
+        given(speakingQueueService.getMySpeakingRequestStatus(1L, 10L))
+                .willReturn(response);
+
+        mockMvc.perform(get("/api/v1/rooms/1/stage/requests/me")
+                        .with(authPrincipal(10L)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.message").value("요청에 성공했습니다."))
+                .andExpect(jsonPath("$.data.hasRequest").value(true))
+                .andExpect(jsonPath("$.data.status").value("WAITING"))
+                .andExpect(jsonPath("$.data.roomId").value(1))
+                .andExpect(jsonPath("$.data.userId").value(10))
+                .andExpect(jsonPath("$.data.queueOrder").value(3))
+                .andExpect(jsonPath("$.data.currentRank").value(2))
+                .andExpect(jsonPath("$.data.cancelable").value(true))
+                .andExpect(jsonPath("$.data.requestedAt").exists())
+                .andExpect(jsonPath("$.data.assignedAt").doesNotExist())
+                .andExpect(jsonPath("$.data.expiresAt").doesNotExist());
+    }
+
+    @Test
+    void getMySpeakingRequestStatus_returnsEmptyResponseWhenRequestDoesNotExist()
+            throws Exception {
+        given(speakingQueueService.getMySpeakingRequestStatus(1L, 10L))
+                .willReturn(StageRequestStatusRes.empty());
+
+        mockMvc.perform(get("/api/v1/rooms/1/stage/requests/me")
+                        .with(authPrincipal(10L)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.hasRequest").value(false))
+                .andExpect(jsonPath("$.data.status").doesNotExist())
+                .andExpect(jsonPath("$.data.currentRank").doesNotExist())
+                .andExpect(jsonPath("$.data.cancelable").value(false));
+    }
+
+    @Test
+    void getMySpeakingRequestStatus_returnsNotFoundWhenRoomDoesNotExist()
+            throws Exception {
+        given(speakingQueueService.getMySpeakingRequestStatus(1L, 10L))
+                .willThrow(new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+        mockMvc.perform(get("/api/v1/rooms/1/stage/requests/me")
+                        .with(authPrincipal(10L)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("ROOM_NOT_FOUND"))
+                .andExpect(jsonPath("$.message")
+                        .value("존재하지 않는 토론방입니다."));
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.sisibibi.api.domain.speech.controller;
 
 import com.sisibibi.api.domain.speech.dto.response.StageCurrentSpeakerRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
+import com.sisibibi.api.domain.speech.dto.response.StageRequestStatusRes;
 import com.sisibibi.api.domain.speech.service.SpeakingQueueService;
 import com.sisibibi.api.global.response.ApiResponse;
 import com.sisibibi.api.global.security.AuthPrincipal;
@@ -62,6 +63,20 @@ public class StageController {
         return ResponseEntity.ok(
                 ApiResponse.okMessage("발언권 신청이 취소되었습니다.")
         );
+    }
+
+    @GetMapping("/requests/me")
+    public ResponseEntity<ApiResponse<StageRequestStatusRes>> getMySpeakingRequestStatus(
+            @PathVariable @Positive Long roomId,
+            @AuthenticationPrincipal AuthPrincipal principal
+    ) {
+        StageRequestStatusRes response =
+                speakingQueueService.getMySpeakingRequestStatus(
+                        roomId,
+                        principal.userId()
+                );
+
+        return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
     @PostMapping("/complete")
