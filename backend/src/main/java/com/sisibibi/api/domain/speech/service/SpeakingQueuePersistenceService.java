@@ -66,7 +66,11 @@ public class SpeakingQueuePersistenceService {
     }
 
     @Transactional
-    public Optional<SpeakingQueue> assignNextSpeaker(Long roomId) {
+    public Optional<SpeakingQueue> assignNextSpeaker(
+            Long roomId,
+            LocalDateTime assignedAt,
+            LocalDateTime expiresAt
+    ) {
         roomRepository.findByIdForUpdate(roomId)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
 
@@ -89,7 +93,7 @@ public class SpeakingQueuePersistenceService {
         }
 
         SpeakingQueue nextSpeaker = waitingRequest.get();
-        nextSpeaker.assign();
+        nextSpeaker.assign(assignedAt, expiresAt);
         return Optional.of(nextSpeaker);
     }
 
@@ -109,5 +113,32 @@ public class SpeakingQueuePersistenceService {
 
         currentSpeaker.complete();
         return currentSpeaker;
+    }
+
+    @Transactional
+    public Optional<SpeakingQueue> expireCurrentSpeaker(
+            Long roomId,
+            LocalDateTime now
+    ) {
+        roomRepository.findByIdForUpdate(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+        Optional<SpeakingQueue> currentSpeaker =
+                speakingQueueRepository.findByRoomIdAndStatus(
+                        roomId,
+                        SpeakingQueueStatus.ASSIGNED
+                );
+
+        if (currentSpeaker.isEmpty()) {
+            return Optional.empty();
+        }
+
+        SpeakingQueue assigned = currentSpeaker.get();
+        if (assigned.getExpiresAt() == null || assigned.getExpiresAt().isAfter(now)) {
+            return Optional.empty();
+        }
+
+        assigned.complete();
+        return Optional.of(assigned);
     }
 }

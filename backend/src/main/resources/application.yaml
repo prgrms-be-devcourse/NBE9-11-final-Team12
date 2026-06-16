@@ -47,9 +47,13 @@ app:
   frontend:
     url: ${FRONTEND_URL:http://localhost:3000}
   speaking:
+    turn-duration: ${SPEAKING_TURN_DURATION:2m}
     assignment:
       enabled: ${SPEAKING_ASSIGNMENT_ENABLED:true}
       fixed-delay-ms: ${SPEAKING_ASSIGNMENT_FIXED_DELAY_MS:200}
+    expiration:
+      enabled: ${SPEAKING_EXPIRATION_ENABLED:true}
+      fixed-delay-ms: ${SPEAKING_EXPIRATION_FIXED_DELAY_MS:1000}
   auth:
     jwt:
       secret: ${JWT_SECRET:local-development-jwt-secret-key-must-be-at-least-32-bytes}

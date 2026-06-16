@@ -17,3 +17,5 @@ app:
   speaking:
     assignment:
       enabled: false
+    expiration:
+      enabled: false
