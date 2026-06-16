@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verify;
 import com.sisibibi.api.domain.speech.config.SpeakingQueueProperties;
 import com.sisibibi.api.domain.speech.dto.response.StageCurrentSpeakerRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
+import com.sisibibi.api.domain.speech.dto.response.StageRequestStatusRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.repository.RedisSpeakingQueueRepository;
@@ -152,6 +153,80 @@ class SpeakingQueueServiceTest {
 
         verify(speakingQueuePersistenceService).cancelWaitingRequest(1L, 7L);
         verify(redisSpeakingQueueRepository).remove(1L, 7L);
+    }
+
+    @Test
+    void getMySpeakingRequestStatus_returnsEmptyResponseWhenActiveRequestDoesNotExist() {
+        given(speakingQueuePersistenceService.findMyActiveRequest(1L, 7L))
+                .willReturn(Optional.empty());
+
+        StageRequestStatusRes response =
+                speakingQueueService.getMySpeakingRequestStatus(1L, 7L);
+
+        assertThat(response.hasRequest()).isFalse();
+        assertThat(response.status()).isNull();
+        assertThat(response.cancelable()).isFalse();
+    }
+
+    @Test
+    void getMySpeakingRequestStatus_returnsWaitingRequestStatus() {
+        SpeakingQueue waiting = persistedWaitingRequest(1L, 7L, 15);
+        given(speakingQueuePersistenceService.findMyActiveRequest(1L, 7L))
+                .willReturn(Optional.of(waiting));
+        given(redisSpeakingQueueRepository.rank(1L, 7L))
+                .willReturn(Optional.of(3));
+
+        StageRequestStatusRes response =
+                speakingQueueService.getMySpeakingRequestStatus(1L, 7L);
+
+        assertThat(response.hasRequest()).isTrue();
+        assertThat(response.status()).isEqualTo(SpeakingQueueStatus.WAITING);
+        assertThat(response.roomId()).isEqualTo(1L);
+        assertThat(response.userId()).isEqualTo(7L);
+        assertThat(response.queueOrder()).isEqualTo(15);
+        assertThat(response.currentRank()).isEqualTo(3);
+        assertThat(response.cancelable()).isTrue();
+        assertThat(response.requestedAt())
+                .isEqualTo(LocalDateTime.of(2026, 6, 12, 11, 30));
+        assertThat(response.assignedAt()).isNull();
+        assertThat(response.expiresAt()).isNull();
+    }
+
+    @Test
+    void getMySpeakingRequestStatus_returnsNullRankWhenWaitingRequestIsMissingInRedis() {
+        SpeakingQueue waiting = persistedWaitingRequest(1L, 7L, 15);
+        given(speakingQueuePersistenceService.findMyActiveRequest(1L, 7L))
+                .willReturn(Optional.of(waiting));
+        given(redisSpeakingQueueRepository.rank(1L, 7L))
+                .willReturn(Optional.empty());
+
+        StageRequestStatusRes response =
+                speakingQueueService.getMySpeakingRequestStatus(1L, 7L);
+
+        assertThat(response.hasRequest()).isTrue();
+        assertThat(response.status()).isEqualTo(SpeakingQueueStatus.WAITING);
+        assertThat(response.currentRank()).isNull();
+    }
+
+    @Test
+    void getMySpeakingRequestStatus_returnsAssignedRequestStatus() {
+        SpeakingQueue assigned = assignedRequest(1L, 7L, 15);
+        given(speakingQueuePersistenceService.findMyActiveRequest(1L, 7L))
+                .willReturn(Optional.of(assigned));
+
+        StageRequestStatusRes response =
+                speakingQueueService.getMySpeakingRequestStatus(1L, 7L);
+
+        assertThat(response.hasRequest()).isTrue();
+        assertThat(response.status()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
+        assertThat(response.queueOrder()).isEqualTo(15);
+        assertThat(response.currentRank()).isNull();
+        assertThat(response.cancelable()).isFalse();
+        assertThat(response.assignedAt())
+                .isEqualTo(LocalDateTime.of(2026, 6, 12, 11, 31));
+        assertThat(response.expiresAt())
+                .isEqualTo(LocalDateTime.of(2026, 6, 12, 11, 33));
+        verify(redisSpeakingQueueRepository, never()).rank(1L, 7L);
     }
 
     @Test

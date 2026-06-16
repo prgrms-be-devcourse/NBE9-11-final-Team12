@@ -3,7 +3,9 @@ package com.sisibibi.api.domain.speech.service;
 import com.sisibibi.api.domain.speech.config.SpeakingQueueProperties;
 import com.sisibibi.api.domain.speech.dto.response.StageCurrentSpeakerRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
+import com.sisibibi.api.domain.speech.dto.response.StageRequestStatusRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
+import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.repository.RedisSpeakingQueueRepository;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +50,18 @@ public class SpeakingQueueService {
         synchronizeCanceledRedisProjection(canceled);
     }
 
+    public StageRequestStatusRes getMySpeakingRequestStatus(Long roomId, Long userId) {
+        Optional<SpeakingQueue> activeRequest =
+                speakingQueuePersistenceService.findMyActiveRequest(roomId, userId);
+
+        return activeRequest
+                .map(request -> StageRequestStatusRes.from(
+                        request,
+                        currentWaitingRank(request)
+                ))
+                .orElseGet(StageRequestStatusRes::empty);
+    }
+
     public void completeSpeakingTurn(Long roomId, Long userId) {
         SpeakingQueue completed =
                 speakingQueuePersistenceService.completeCurrentSpeaker(roomId, userId);
@@ -73,6 +87,17 @@ public class SpeakingQueueService {
                 speakingQueuePersistenceService.expireCurrentSpeaker(roomId, now);
         expired.ifPresent(this::synchronizeCompletedRedisProjection);
         return expired;
+    }
+
+    private Integer currentWaitingRank(SpeakingQueue speakingQueue) {
+        if (speakingQueue.getStatus() != SpeakingQueueStatus.WAITING) {
+            return null;
+        }
+
+        return redisSpeakingQueueRepository.rank(
+                speakingQueue.getRoomId(),
+                speakingQueue.getUserId()
+        ).orElse(null);
     }
 
     private void synchronizeWaitingRedisProjection(SpeakingQueue speakingQueue) {
