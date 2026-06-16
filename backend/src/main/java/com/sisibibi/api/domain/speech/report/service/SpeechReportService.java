@@ -10,9 +10,11 @@ import com.sisibibi.api.domain.speech.report.repository.SpeechReportRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class SpeechReportService {
@@ -35,6 +37,11 @@ public class SpeechReportService {
                 .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_NOT_FOUND));
 
         if (speech.getUserId().equals(reporterUserId)) {
+            log.warn(
+                    "Self speech report blocked. speechId={}, reporterUserId={}",
+                    speechId,
+                    reporterUserId
+            );
             throw new CustomException(ErrorCode.SPEECH_REPORT_SELF_NOT_ALLOWED);
         }
 
@@ -42,6 +49,11 @@ public class SpeechReportService {
                 speechId,
                 reporterUserId
         )) {
+            log.warn(
+                    "Duplicate speech report blocked. speechId={}, reporterUserId={}",
+                    speechId,
+                    reporterUserId
+            );
             throw new CustomException(ErrorCode.SPEECH_REPORT_ALREADY_EXISTS);
         }
 
@@ -54,6 +66,16 @@ public class SpeechReportService {
                 command.description()
         );
 
-        return SpeechReportCreateRes.from(speechReportRepository.save(report));
+        SpeechReport savedReport = speechReportRepository.save(report);
+        log.info(
+                "Speech report created. reportId={}, speechId={}, reporterUserId={}, reportedUserId={}, reason={}",
+                savedReport.getId(),
+                speechId,
+                reporterUserId,
+                speech.getUserId(),
+                command.reason()
+        );
+
+        return SpeechReportCreateRes.from(savedReport);
     }
 }

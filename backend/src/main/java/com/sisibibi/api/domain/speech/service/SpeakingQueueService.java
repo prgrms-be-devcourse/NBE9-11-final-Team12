@@ -29,6 +29,13 @@ public class SpeakingQueueService {
                 speakingQueuePersistenceService.createWaitingRequest(roomId, userId);
 
         synchronizeWaitingRedisProjection(saved);
+        log.info(
+                "Speaking request created. roomId={}, userId={}, queueOrder={}, status={}",
+                saved.getRoomId(),
+                saved.getUserId(),
+                saved.getQueueOrder(),
+                saved.getStatus()
+        );
         return StageRequestRes.from(saved);
     }
 
@@ -39,8 +46,15 @@ public class SpeakingQueueService {
                         roomId,
                         assignedAt,
                         assignedAt.plus(speakingQueueProperties.getTurnDuration())
-                );
+        );
         assigned.ifPresent(this::synchronizeAssignedRedisProjection);
+        assigned.ifPresent(speakingQueue -> log.info(
+                "Speaking request assigned. roomId={}, userId={}, queueOrder={}, expiresAt={}",
+                speakingQueue.getRoomId(),
+                speakingQueue.getUserId(),
+                speakingQueue.getQueueOrder(),
+                speakingQueue.getExpiresAt()
+        ));
         return assigned;
     }
 
@@ -48,6 +62,12 @@ public class SpeakingQueueService {
         SpeakingQueue canceled =
                 speakingQueuePersistenceService.cancelWaitingRequest(roomId, userId);
         synchronizeCanceledRedisProjection(canceled);
+        log.info(
+                "Speaking request canceled. roomId={}, userId={}, queueOrder={}",
+                canceled.getRoomId(),
+                canceled.getUserId(),
+                canceled.getQueueOrder()
+        );
     }
 
     public StageRequestStatusRes getMySpeakingRequestStatus(Long roomId, Long userId) {
@@ -66,6 +86,12 @@ public class SpeakingQueueService {
         SpeakingQueue completed =
                 speakingQueuePersistenceService.completeCurrentSpeaker(roomId, userId);
         synchronizeCompletedRedisProjection(completed);
+        log.info(
+                "Speaking request completed. roomId={}, userId={}, queueOrder={}",
+                completed.getRoomId(),
+                completed.getUserId(),
+                completed.getQueueOrder()
+        );
     }
 
     public StageCurrentSpeakerRes getCurrentSpeaker(Long roomId) {
@@ -86,6 +112,13 @@ public class SpeakingQueueService {
         Optional<SpeakingQueue> expired =
                 speakingQueuePersistenceService.expireCurrentSpeaker(roomId, now);
         expired.ifPresent(this::synchronizeCompletedRedisProjection);
+        expired.ifPresent(speakingQueue -> log.info(
+                "Speaking request expired. roomId={}, userId={}, queueOrder={}, expiredAt={}",
+                speakingQueue.getRoomId(),
+                speakingQueue.getUserId(),
+                speakingQueue.getQueueOrder(),
+                now
+        ));
         return expired;
     }
 
