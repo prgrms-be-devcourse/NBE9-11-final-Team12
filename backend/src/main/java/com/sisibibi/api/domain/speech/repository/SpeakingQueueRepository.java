@@ -2,6 +2,7 @@ package com.sisibibi.api.domain.speech.repository;
 
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
+import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
@@ -32,6 +33,22 @@ public interface SpeakingQueueRepository extends JpaRepository<SpeakingQueue, Lo
     Optional<SpeakingQueue> findByRoomIdAndStatus(
             Long roomId,
             SpeakingQueueStatus status
+    );
+
+    @Query("""
+            select queue.userId as userId,
+                   speaker.nickname as nickname,
+                   queue.queueOrder as queueOrder,
+                   queue.assignedAt as assignedAt,
+                   queue.expiresAt as expiresAt
+            from SpeakingQueue queue
+            join User speaker on queue.userId = speaker.id
+            where queue.roomId = :roomId
+              and queue.status = :status
+            """)
+    Optional<CurrentSpeakerProjection> findCurrentSpeakerProjection(
+            @Param("roomId") Long roomId,
+            @Param("status") SpeakingQueueStatus status
     );
 
     boolean existsByRoomIdAndStatus(

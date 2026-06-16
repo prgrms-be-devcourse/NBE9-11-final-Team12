@@ -15,8 +15,7 @@ import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.repository.RedisSpeakingQueueRepository;
-import com.sisibibi.api.domain.user.entity.User;
-import com.sisibibi.api.domain.user.repository.UserRepository;
+import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -38,9 +37,6 @@ class SpeakingQueueServiceTest {
 
     @Mock
     private SpeakingQueueProperties speakingQueueProperties;
-
-    @Mock
-    private UserRepository userRepository;
 
     @InjectMocks
     private SpeakingQueueService speakingQueueService;
@@ -226,20 +222,19 @@ class SpeakingQueueServiceTest {
 
         assertThat(response.hasCurrentSpeaker()).isFalse();
         assertThat(response.currentSpeaker()).isNull();
-        verify(userRepository, never()).findById(org.mockito.ArgumentMatchers.anyLong());
     }
 
     @Test
     void getCurrentSpeaker_returnsCurrentSpeakerWithNickname() {
-        SpeakingQueue assigned = assignedRequest(1L, 7L, 15);
-        User speaker = User.signup(
-                "speaker@example.com",
-                "encoded-password",
-                "logic_hunter"
+        CurrentSpeakerProjection currentSpeaker = currentSpeakerProjection(
+                7L,
+                "logic_hunter",
+                15,
+                LocalDateTime.of(2026, 6, 12, 11, 31),
+                LocalDateTime.of(2026, 6, 12, 11, 33)
         );
         given(speakingQueuePersistenceService.findCurrentSpeaker(1L))
-                .willReturn(Optional.of(assigned));
-        given(userRepository.findById(7L)).willReturn(Optional.of(speaker));
+                .willReturn(Optional.of(currentSpeaker));
 
         StageCurrentSpeakerRes response =
                 speakingQueueService.getCurrentSpeaker(1L);
@@ -247,10 +242,46 @@ class SpeakingQueueServiceTest {
         assertThat(response.hasCurrentSpeaker()).isTrue();
         assertThat(response.currentSpeaker().userId()).isEqualTo(7L);
         assertThat(response.currentSpeaker().nickname()).isEqualTo("logic_hunter");
+        assertThat(response.currentSpeaker().queueOrder()).isEqualTo(15);
         assertThat(response.currentSpeaker().assignedAt())
                 .isEqualTo(LocalDateTime.of(2026, 6, 12, 11, 31));
         assertThat(response.currentSpeaker().expiresAt())
                 .isEqualTo(LocalDateTime.of(2026, 6, 12, 11, 33));
+    }
+
+    private CurrentSpeakerProjection currentSpeakerProjection(
+            Long userId,
+            String nickname,
+            Integer queueOrder,
+            LocalDateTime assignedAt,
+            LocalDateTime expiresAt
+    ) {
+        return new CurrentSpeakerProjection() {
+            @Override
+            public Long getUserId() {
+                return userId;
+            }
+
+            @Override
+            public String getNickname() {
+                return nickname;
+            }
+
+            @Override
+            public Integer getQueueOrder() {
+                return queueOrder;
+            }
+
+            @Override
+            public LocalDateTime getAssignedAt() {
+                return assignedAt;
+            }
+
+            @Override
+            public LocalDateTime getExpiresAt() {
+                return expiresAt;
+            }
+        };
     }
 
     private SpeakingQueue persistedWaitingRequest(Long roomId, Long userId, int queueOrder) {

@@ -13,6 +13,7 @@ import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
+import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import java.util.List;
@@ -353,20 +354,14 @@ class SpeakingQueuePersistenceServiceTest {
 
     @Test
     void findCurrentSpeaker_returnsAssignedSpeaker() {
-        SpeakingQueue assigned = SpeakingQueue.waiting(
-                1L,
-                7L,
-                15,
-                java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
-        );
-        assign(assigned);
+        CurrentSpeakerProjection assigned = currentSpeakerProjection();
         given(roomRepository.existsById(1L)).willReturn(true);
-        given(speakingQueueRepository.findByRoomIdAndStatus(
+        given(speakingQueueRepository.findCurrentSpeakerProjection(
                 1L,
                 SpeakingQueueStatus.ASSIGNED
         )).willReturn(Optional.of(assigned));
 
-        Optional<SpeakingQueue> currentSpeaker =
+        Optional<CurrentSpeakerProjection> currentSpeaker =
                 speakingQueuePersistenceService.findCurrentSpeaker(1L);
 
         assertThat(currentSpeaker).contains(assigned);
@@ -375,12 +370,12 @@ class SpeakingQueuePersistenceServiceTest {
     @Test
     void findCurrentSpeaker_returnsEmptyWhenAssignedSpeakerDoesNotExist() {
         given(roomRepository.existsById(1L)).willReturn(true);
-        given(speakingQueueRepository.findByRoomIdAndStatus(
+        given(speakingQueueRepository.findCurrentSpeakerProjection(
                 1L,
                 SpeakingQueueStatus.ASSIGNED
         )).willReturn(Optional.empty());
 
-        Optional<SpeakingQueue> currentSpeaker =
+        Optional<CurrentSpeakerProjection> currentSpeaker =
                 speakingQueuePersistenceService.findCurrentSpeaker(1L);
 
         assertThat(currentSpeaker).isEmpty();
@@ -397,7 +392,7 @@ class SpeakingQueuePersistenceServiceTest {
                 .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
 
         verify(speakingQueueRepository, never())
-                .findByRoomIdAndStatus(1L, SpeakingQueueStatus.ASSIGNED);
+                .findCurrentSpeakerProjection(1L, SpeakingQueueStatus.ASSIGNED);
     }
 
     @Test
@@ -483,5 +478,34 @@ class SpeakingQueuePersistenceServiceTest {
                 java.time.LocalDateTime.of(2026, 6, 12, 11, 31),
                 java.time.LocalDateTime.of(2026, 6, 12, 11, 33)
         );
+    }
+
+    private CurrentSpeakerProjection currentSpeakerProjection() {
+        return new CurrentSpeakerProjection() {
+            @Override
+            public Long getUserId() {
+                return 7L;
+            }
+
+            @Override
+            public String getNickname() {
+                return "logic_hunter";
+            }
+
+            @Override
+            public Integer getQueueOrder() {
+                return 15;
+            }
+
+            @Override
+            public java.time.LocalDateTime getAssignedAt() {
+                return ASSIGNED_AT;
+            }
+
+            @Override
+            public java.time.LocalDateTime getExpiresAt() {
+                return EXPIRES_AT;
+            }
+        };
     }
 }

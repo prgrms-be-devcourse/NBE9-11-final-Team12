@@ -3,6 +3,7 @@ package com.sisibibi.api.domain.speech.service;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
+import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
@@ -116,12 +117,12 @@ public class SpeakingQueuePersistenceService {
     }
 
     @Transactional(readOnly = true)
-    public Optional<SpeakingQueue> findCurrentSpeaker(Long roomId) {
+    public Optional<CurrentSpeakerProjection> findCurrentSpeaker(Long roomId) {
         if (!roomRepository.existsById(roomId)) {
             throw new CustomException(ErrorCode.ROOM_NOT_FOUND);
         }
 
-        return speakingQueueRepository.findByRoomIdAndStatus(
+        return speakingQueueRepository.findCurrentSpeakerProjection(
                 roomId,
                 SpeakingQueueStatus.ASSIGNED
         );

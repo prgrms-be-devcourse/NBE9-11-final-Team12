@@ -5,10 +5,7 @@ import com.sisibibi.api.domain.speech.dto.response.StageCurrentSpeakerRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.repository.RedisSpeakingQueueRepository;
-import com.sisibibi.api.domain.user.entity.User;
-import com.sisibibi.api.domain.user.repository.UserRepository;
-import com.sisibibi.api.global.exception.CustomException;
-import com.sisibibi.api.global.exception.ErrorCode;
+import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -24,7 +21,6 @@ public class SpeakingQueueService {
     private final RedisSpeakingQueueRepository redisSpeakingQueueRepository;
     private final SpeakingQueuePersistenceService speakingQueuePersistenceService;
     private final SpeakingQueueProperties speakingQueueProperties;
-    private final UserRepository userRepository;
 
     public StageRequestRes requestSpeakingTurn(Long roomId, Long userId) {
         SpeakingQueue saved =
@@ -59,21 +55,14 @@ public class SpeakingQueueService {
     }
 
     public StageCurrentSpeakerRes getCurrentSpeaker(Long roomId) {
-        Optional<SpeakingQueue> currentSpeaker =
+        Optional<CurrentSpeakerProjection> currentSpeaker =
                 speakingQueuePersistenceService.findCurrentSpeaker(roomId);
 
         if (currentSpeaker.isEmpty()) {
             return StageCurrentSpeakerRes.empty();
         }
 
-        SpeakingQueue speakingQueue = currentSpeaker.get();
-        User speaker = userRepository.findById(speakingQueue.getUserId())
-                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
-
-        return StageCurrentSpeakerRes.of(
-                speakingQueue,
-                speaker.getNickname()
-        );
+        return StageCurrentSpeakerRes.from(currentSpeaker.get());
     }
 
     public Optional<SpeakingQueue> expireCurrentSpeaker(
