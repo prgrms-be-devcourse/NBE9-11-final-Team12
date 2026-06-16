@@ -53,7 +53,9 @@ class SpeakingQueueExpirationConcurrencyTest {
         speakingQueueRepository.deleteAll();
         roomRepository.deleteAll();
 
-        Room room = Room.open(1L, "토론방");
+        LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
+        LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
+        Room room = Room.open(1L, "토론방",firstStartedAt, firstEndedAt);
         ReflectionTestUtils.setField(room, "createdAt", LocalDateTime.now());
         roomId = roomRepository.saveAndFlush(room).getId();
 
