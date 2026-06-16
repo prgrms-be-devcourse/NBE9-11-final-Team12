@@ -54,15 +54,13 @@ class StageControllerTest {
                         "logic_hunter",
                         3,
                         LocalDateTime.of(2026, 6, 16, 14, 20),
-                        LocalDateTime.of(2026, 6, 16, 14, 22),
-                        true
+                        LocalDateTime.of(2026, 6, 16, 14, 22)
                 )
         );
-        given(speakingQueueService.getCurrentSpeaker(1L, 10L))
+        given(speakingQueueService.getCurrentSpeaker(1L))
                 .willReturn(response);
 
-        mockMvc.perform(get("/api/v1/rooms/1/stage")
-                        .with(authPrincipal(10L)))
+        mockMvc.perform(get("/api/v1/rooms/1/stage"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.message").value("요청에 성공했습니다."))
@@ -74,17 +72,16 @@ class StageControllerTest {
                 .andExpect(jsonPath("$.data.currentSpeaker.queueOrder").value(3))
                 .andExpect(jsonPath("$.data.currentSpeaker.assignedAt").exists())
                 .andExpect(jsonPath("$.data.currentSpeaker.expiresAt").exists())
-                .andExpect(jsonPath("$.data.currentSpeaker.isMe").value(true));
+                .andExpect(jsonPath("$.data.currentSpeaker.isMe").doesNotExist());
     }
 
     @Test
     void getCurrentSpeaker_returnsEmptyResponseWhenCurrentSpeakerDoesNotExist()
             throws Exception {
-        given(speakingQueueService.getCurrentSpeaker(1L, 10L))
+        given(speakingQueueService.getCurrentSpeaker(1L))
                 .willReturn(StageCurrentSpeakerRes.empty());
 
-        mockMvc.perform(get("/api/v1/rooms/1/stage")
-                        .with(authPrincipal(10L)))
+        mockMvc.perform(get("/api/v1/rooms/1/stage"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.hasCurrentSpeaker").value(false))
                 .andExpect(jsonPath("$.data.currentSpeaker").doesNotExist());
@@ -92,11 +89,10 @@ class StageControllerTest {
 
     @Test
     void getCurrentSpeaker_returnsNotFoundWhenRoomDoesNotExist() throws Exception {
-        given(speakingQueueService.getCurrentSpeaker(1L, 10L))
+        given(speakingQueueService.getCurrentSpeaker(1L))
                 .willThrow(new CustomException(ErrorCode.ROOM_NOT_FOUND));
 
-        mockMvc.perform(get("/api/v1/rooms/1/stage")
-                        .with(authPrincipal(10L)))
+        mockMvc.perform(get("/api/v1/rooms/1/stage"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("ROOM_NOT_FOUND"))
                 .andExpect(jsonPath("$.message")
@@ -105,8 +101,7 @@ class StageControllerTest {
 
     @Test
     void getCurrentSpeaker_returnsBadRequestWhenRoomIdIsNotPositive() throws Exception {
-        mockMvc.perform(get("/api/v1/rooms/0/stage")
-                        .with(authPrincipal(10L)))
+        mockMvc.perform(get("/api/v1/rooms/0/stage"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
     }

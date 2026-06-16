@@ -223,7 +223,7 @@ class SpeakingQueueServiceTest {
                 .willReturn(Optional.empty());
 
         StageCurrentSpeakerRes response =
-                speakingQueueService.getCurrentSpeaker(1L, 7L);
+                speakingQueueService.getCurrentSpeaker(1L);
 
         assertThat(response.hasCurrentSpeaker()).isFalse();
         assertThat(response.currentSpeaker()).isNull();
@@ -244,7 +244,7 @@ class SpeakingQueueServiceTest {
         given(userRepository.findById(7L)).willReturn(Optional.of(speaker));
 
         StageCurrentSpeakerRes response =
-                speakingQueueService.getCurrentSpeaker(1L, 10L);
+                speakingQueueService.getCurrentSpeaker(1L);
 
         assertThat(response.hasCurrentSpeaker()).isTrue();
         assertThat(response.currentSpeaker().queueId()).isEqualTo(100L);
@@ -255,25 +255,6 @@ class SpeakingQueueServiceTest {
                 .isEqualTo(LocalDateTime.of(2026, 6, 12, 11, 31));
         assertThat(response.currentSpeaker().expiresAt())
                 .isEqualTo(LocalDateTime.of(2026, 6, 12, 11, 33));
-        assertThat(response.currentSpeaker().isMe()).isFalse();
-    }
-
-    @Test
-    void getCurrentSpeaker_marksCurrentUserAsMe() {
-        SpeakingQueue assigned = assignedRequest(1L, 7L, 15);
-        User speaker = User.signup(
-                "speaker@example.com",
-                "encoded-password",
-                "logic_hunter"
-        );
-        given(speakingQueuePersistenceService.findCurrentSpeaker(1L))
-                .willReturn(Optional.of(assigned));
-        given(userRepository.findById(7L)).willReturn(Optional.of(speaker));
-
-        StageCurrentSpeakerRes response =
-                speakingQueueService.getCurrentSpeaker(1L, 7L);
-
-        assertThat(response.currentSpeaker().isMe()).isTrue();
     }
 
     private SpeakingQueue persistedWaitingRequest(Long roomId, Long userId, int queueOrder) {

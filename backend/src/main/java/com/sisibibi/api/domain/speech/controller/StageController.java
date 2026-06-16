@@ -28,11 +28,10 @@ public class StageController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<StageCurrentSpeakerRes>> getCurrentSpeaker(
-            @PathVariable @Positive Long roomId,
-            @AuthenticationPrincipal AuthPrincipal principal
+            @PathVariable @Positive Long roomId
     ) {
         StageCurrentSpeakerRes response =
-                speakingQueueService.getCurrentSpeaker(roomId, principal.userId());
+                speakingQueueService.getCurrentSpeaker(roomId);
 
         return ResponseEntity.ok(ApiResponse.ok(response));
     }

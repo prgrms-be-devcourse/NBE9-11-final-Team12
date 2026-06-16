@@ -9,11 +9,12 @@ import com.sisibibi.api.domain.user.entity.User;
 import com.sisibibi.api.domain.user.repository.UserRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
-import java.time.LocalDateTime;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -57,7 +58,7 @@ public class SpeakingQueueService {
         synchronizeCompletedRedisProjection(completed);
     }
 
-    public StageCurrentSpeakerRes getCurrentSpeaker(Long roomId, Long userId) {
+    public StageCurrentSpeakerRes getCurrentSpeaker(Long roomId) {
         Optional<SpeakingQueue> currentSpeaker =
                 speakingQueuePersistenceService.findCurrentSpeaker(roomId);
 
@@ -71,8 +72,7 @@ public class SpeakingQueueService {
 
         return StageCurrentSpeakerRes.of(
                 speakingQueue,
-                speaker.getNickname(),
-                speakingQueue.getUserId().equals(userId)
+                speaker.getNickname()
         );
     }
 
