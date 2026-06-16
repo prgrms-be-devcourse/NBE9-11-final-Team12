@@ -48,6 +48,10 @@ app:
     url: ${FRONTEND_URL:http://localhost:3000}
   speaking:
     turn-duration: ${SPEAKING_TURN_DURATION:2m}
+    queue:
+      summary-size: ${SPEAKING_QUEUE_SUMMARY_SIZE:5}
+      default-page-size: ${SPEAKING_QUEUE_DEFAULT_PAGE_SIZE:20}
+      max-page-size: ${SPEAKING_QUEUE_MAX_PAGE_SIZE:100}
     assignment:
       enabled: ${SPEAKING_ASSIGNMENT_ENABLED:true}
       fixed-delay-ms: ${SPEAKING_ASSIGNMENT_FIXED_DELAY_MS:200}

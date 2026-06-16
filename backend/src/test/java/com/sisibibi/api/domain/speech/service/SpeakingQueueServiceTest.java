@@ -18,6 +18,8 @@ import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.repository.RedisSpeakingQueueRepository;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
+import com.sisibibi.api.global.exception.CustomException;
+import com.sisibibi.api.global.exception.ErrorCode;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -330,6 +332,7 @@ class SpeakingQueueServiceTest {
     @Test
     void getQueueSummary_returnsFirstFiveWaitingSpeakers() {
         List<Long> userIds = List.of(10L, 20L);
+        givenQueueProperties(5, 20, 100);
         given(redisSpeakingQueueRepository.count(1L)).willReturn(8L);
         given(redisSpeakingQueueRepository.findWaitingUserIds(1L, 0, 4))
                 .willReturn(userIds);
@@ -357,6 +360,7 @@ class SpeakingQueueServiceTest {
     @Test
     void getWaitingQueue_returnsPagedWaitingSpeakersWithRankOffset() {
         List<Long> userIds = List.of(30L, 40L);
+        givenQueueProperties(5, 20, 100);
         given(redisSpeakingQueueRepository.count(1L)).willReturn(4L);
         given(redisSpeakingQueueRepository.findWaitingUserIds(1L, 2, 3))
                 .willReturn(userIds);
@@ -381,6 +385,7 @@ class SpeakingQueueServiceTest {
 
     @Test
     void getWaitingQueue_returnsEmptyItemsWhenQueueIsEmpty() {
+        givenQueueProperties(5, 20, 100);
         given(redisSpeakingQueueRepository.count(1L)).willReturn(0L);
         given(redisSpeakingQueueRepository.findWaitingUserIds(1L, 0, 19))
                 .willReturn(List.of());
@@ -392,6 +397,44 @@ class SpeakingQueueServiceTest {
         assertThat(response.totalWaitingCount()).isZero();
         assertThat(response.hasNext()).isFalse();
         assertThat(response.items()).isEmpty();
+    }
+
+    @Test
+    void getWaitingQueue_usesConfiguredDefaultPageSizeWhenSizeIsMissing() {
+        givenQueueProperties(5, 30, 100);
+        given(redisSpeakingQueueRepository.count(1L)).willReturn(0L);
+        given(redisSpeakingQueueRepository.findWaitingUserIds(1L, 0, 29))
+                .willReturn(List.of());
+        given(speakingQueuePersistenceService.findNicknamesByUserIds(List.of()))
+                .willReturn(Map.of());
+
+        StageQueueRes response = speakingQueueService.getWaitingQueue(1L, null, null);
+
+        assertThat(response.offset()).isZero();
+        assertThat(response.size()).isEqualTo(30);
+        assertThat(response.items()).isEmpty();
+    }
+
+    @Test
+    void getWaitingQueue_rejectsSizeGreaterThanConfiguredMaxPageSize() {
+        givenQueueProperties(5, 20, 50);
+
+        assertThatThrownBy(() -> speakingQueueService.getWaitingQueue(1L, 0, 51))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+    }
+
+    private void givenQueueProperties(
+            int summarySize,
+            int defaultPageSize,
+            int maxPageSize
+    ) {
+        SpeakingQueueProperties.Queue queue = new SpeakingQueueProperties.Queue();
+        queue.setSummarySize(summarySize);
+        queue.setDefaultPageSize(defaultPageSize);
+        queue.setMaxPageSize(maxPageSize);
+        given(speakingQueueProperties.getQueue()).willReturn(queue);
     }
 
     private CurrentSpeakerProjection currentSpeakerProjection(

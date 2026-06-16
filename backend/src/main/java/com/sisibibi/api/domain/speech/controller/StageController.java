@@ -7,7 +7,6 @@ import com.sisibibi.api.domain.speech.dto.response.StageRequestStatusRes;
 import com.sisibibi.api.domain.speech.service.SpeakingQueueService;
 import com.sisibibi.api.global.response.ApiResponse;
 import com.sisibibi.api.global.security.AuthPrincipal;
-import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 import lombok.RequiredArgsConstructor;
@@ -53,8 +52,8 @@ public class StageController {
     @GetMapping("/queue")
     public ResponseEntity<ApiResponse<StageQueueRes>> getWaitingQueue(
             @PathVariable @Positive Long roomId,
-            @RequestParam(defaultValue = "0") @PositiveOrZero int offset,
-            @RequestParam(defaultValue = "20") @Positive @Max(100) int size
+            @RequestParam(required = false) @PositiveOrZero Integer offset,
+            @RequestParam(required = false) @Positive Integer size
     ) {
         StageQueueRes response =
                 speakingQueueService.getWaitingQueue(roomId, offset, size);
