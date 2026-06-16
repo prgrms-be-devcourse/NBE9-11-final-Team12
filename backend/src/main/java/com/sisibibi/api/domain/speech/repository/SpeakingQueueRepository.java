@@ -56,6 +56,13 @@ public interface SpeakingQueueRepository extends JpaRepository<SpeakingQueue, Lo
             SpeakingQueueStatus status
     );
 
+    @Query("""
+            select coalesce(max(queue.queueOrder), 0)
+            from SpeakingQueue queue
+            where queue.roomId = :roomId
+            """)
+    int findMaxQueueOrderByRoomId(@Param("roomId") Long roomId);
+
     default List<Long> findRoomIdsRequiringAssignment() {
         return findRoomIdsRequiringAssignment(
                 SpeakingQueueStatus.WAITING,

@@ -20,11 +20,11 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class SpeakingQueuePersistenceServiceTest {
@@ -44,28 +44,37 @@ class SpeakingQueuePersistenceServiceTest {
     private SpeakingQueuePersistenceService speakingQueuePersistenceService;
 
     @Test
-    void createWaitingRequest_persistsRequestAndAssignsOrderFromId() {
+    void createWaitingRequest_persistsRequestWithNextRoomScopedOrder() {
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(Room.open(1L, "토론방")));
         given(speakingQueueRepository.existsByRoomIdAndUserIdAndStatusIn(
                 1L,
                 7L,
                 List.of(SpeakingQueueStatus.WAITING, SpeakingQueueStatus.ASSIGNED)
         )).willReturn(false);
-        given(speakingQueueRepository.saveAndFlush(any(SpeakingQueue.class)))
-                .willAnswer(invocation -> {
-                    SpeakingQueue saved = invocation.getArgument(0);
-                    ReflectionTestUtils.setField(saved, "id", 15L);
-                    return saved;
-                });
+        given(speakingQueueRepository.findMaxQueueOrderByRoomId(1L))
+                .willReturn(2);
+        given(speakingQueueRepository.save(any(SpeakingQueue.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
 
         SpeakingQueue saved =
                 speakingQueuePersistenceService.createWaitingRequest(1L, 7L);
 
-        assertThat(saved.getQueueOrder()).isEqualTo(15);
+        assertThat(saved.getQueueOrder()).isEqualTo(3);
         assertThat(saved.getStatus()).isEqualTo(SpeakingQueueStatus.WAITING);
+
+        ArgumentCaptor<SpeakingQueue> captor =
+                ArgumentCaptor.forClass(SpeakingQueue.class);
+        verify(speakingQueueRepository).save(captor.capture());
+        assertThat(captor.getValue().getRoomId()).isEqualTo(1L);
+        assertThat(captor.getValue().getUserId()).isEqualTo(7L);
+        assertThat(captor.getValue().getQueueOrder()).isEqualTo(3);
     }
 
     @Test
     void createWaitingRequest_rejectsExistingActiveRequest() {
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(Room.open(1L, "토론방")));
         given(speakingQueueRepository.existsByRoomIdAndUserIdAndStatusIn(
                 1L,
                 7L,
@@ -78,7 +87,27 @@ class SpeakingQueuePersistenceServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.SPEAKING_REQUEST_ALREADY_EXISTS);
 
-        verify(speakingQueueRepository, never()).saveAndFlush(any(SpeakingQueue.class));
+        verify(speakingQueueRepository, never()).findMaxQueueOrderByRoomId(1L);
+        verify(speakingQueueRepository, never()).save(any(SpeakingQueue.class));
+    }
+
+    @Test
+    void createWaitingRequest_rejectsMissingRoom() {
+        given(roomRepository.findByIdForUpdate(1L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                speakingQueuePersistenceService.createWaitingRequest(1L, 7L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
+
+        verify(speakingQueueRepository, never())
+                .existsByRoomIdAndUserIdAndStatusIn(
+                        1L,
+                        7L,
+                        List.of(SpeakingQueueStatus.WAITING, SpeakingQueueStatus.ASSIGNED)
+                );
+        verify(speakingQueueRepository, never()).save(any(SpeakingQueue.class));
     }
 
     @Test

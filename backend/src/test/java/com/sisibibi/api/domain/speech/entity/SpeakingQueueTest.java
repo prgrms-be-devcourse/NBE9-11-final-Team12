@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
 
 class SpeakingQueueTest {
 
@@ -25,17 +24,15 @@ class SpeakingQueueTest {
     }
 
     @Test
-    void assignQueueOrderFromId_usesPersistedIdAsStableOrder() {
+    void waitingWithQueueOrder_createsWaitingRequestWithRoomScopedOrder() {
         SpeakingQueue speakingQueue = SpeakingQueue.waiting(
                 1L,
                 7L,
+                3,
                 LocalDateTime.of(2026, 6, 12, 11, 30)
         );
-        ReflectionTestUtils.setField(speakingQueue, "id", 15L);
 
-        speakingQueue.assignQueueOrderFromId();
-
-        assertThat(speakingQueue.getQueueOrder()).isEqualTo(15);
+        assertThat(speakingQueue.getQueueOrder()).isEqualTo(3);
     }
 
     @Test
