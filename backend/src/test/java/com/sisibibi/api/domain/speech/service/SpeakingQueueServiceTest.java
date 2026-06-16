@@ -26,7 +26,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class SpeakingQueueServiceTest {
@@ -233,7 +232,6 @@ class SpeakingQueueServiceTest {
     @Test
     void getCurrentSpeaker_returnsCurrentSpeakerWithNickname() {
         SpeakingQueue assigned = assignedRequest(1L, 7L, 15);
-        ReflectionTestUtils.setField(assigned, "id", 100L);
         User speaker = User.signup(
                 "speaker@example.com",
                 "encoded-password",
@@ -247,10 +245,8 @@ class SpeakingQueueServiceTest {
                 speakingQueueService.getCurrentSpeaker(1L);
 
         assertThat(response.hasCurrentSpeaker()).isTrue();
-        assertThat(response.currentSpeaker().queueId()).isEqualTo(100L);
         assertThat(response.currentSpeaker().userId()).isEqualTo(7L);
         assertThat(response.currentSpeaker().nickname()).isEqualTo("logic_hunter");
-        assertThat(response.currentSpeaker().queueOrder()).isEqualTo(15);
         assertThat(response.currentSpeaker().assignedAt())
                 .isEqualTo(LocalDateTime.of(2026, 6, 12, 11, 31));
         assertThat(response.currentSpeaker().expiresAt())
