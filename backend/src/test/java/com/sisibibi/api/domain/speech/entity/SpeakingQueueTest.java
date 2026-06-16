@@ -62,7 +62,10 @@ class SpeakingQueueTest {
                 15,
                 LocalDateTime.of(2026, 6, 12, 11, 30)
         );
-        speakingQueue.assign();
+        speakingQueue.assign(
+                LocalDateTime.of(2026, 6, 12, 11, 31),
+                LocalDateTime.of(2026, 6, 12, 11, 33)
+        );
 
         assertThatThrownBy(() ->
                 speakingQueue.cancel(LocalDateTime.of(2026, 6, 12, 11, 35)))
@@ -78,11 +81,15 @@ class SpeakingQueueTest {
                 15,
                 LocalDateTime.of(2026, 6, 12, 11, 30)
         );
+        LocalDateTime assignedAt = LocalDateTime.of(2026, 6, 12, 11, 31);
+        LocalDateTime expiresAt = LocalDateTime.of(2026, 6, 12, 11, 33);
 
-        speakingQueue.assign();
+        speakingQueue.assign(assignedAt, expiresAt);
 
         assertThat(speakingQueue.getStatus()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
         assertThat(speakingQueue.getActiveRequest()).isTrue();
+        assertThat(speakingQueue.getAssignedAt()).isEqualTo(assignedAt);
+        assertThat(speakingQueue.getExpiresAt()).isEqualTo(expiresAt);
     }
 
     @Test
@@ -95,9 +102,27 @@ class SpeakingQueueTest {
         );
         speakingQueue.cancel(LocalDateTime.of(2026, 6, 12, 11, 35));
 
-        assertThatThrownBy(speakingQueue::assign)
+        assertThatThrownBy(() -> speakingQueue.assign(
+                LocalDateTime.of(2026, 6, 12, 11, 36),
+                LocalDateTime.of(2026, 6, 12, 11, 38)
+        ))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Only waiting speaking requests can be assigned.");
+    }
+
+    @Test
+    void assign_rejectsExpirationThatIsNotAfterAssignment() {
+        SpeakingQueue speakingQueue = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        LocalDateTime assignedAt = LocalDateTime.of(2026, 6, 12, 11, 31);
+
+        assertThatThrownBy(() -> speakingQueue.assign(assignedAt, assignedAt))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Speaking expiration must be after assignment.");
     }
 
     @Test
@@ -108,7 +133,10 @@ class SpeakingQueueTest {
                 15,
                 LocalDateTime.of(2026, 6, 12, 11, 30)
         );
-        speakingQueue.assign();
+        speakingQueue.assign(
+                LocalDateTime.of(2026, 6, 12, 11, 31),
+                LocalDateTime.of(2026, 6, 12, 11, 33)
+        );
 
         speakingQueue.complete();
 

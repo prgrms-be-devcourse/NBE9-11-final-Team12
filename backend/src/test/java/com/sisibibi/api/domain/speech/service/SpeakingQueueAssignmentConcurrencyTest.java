@@ -20,6 +20,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +29,11 @@ import org.springframework.transaction.annotation.Transactional;
 @Import(SpeakingQueuePersistenceService.class)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class SpeakingQueueAssignmentConcurrencyTest {
+
+    private static final LocalDateTime ASSIGNED_AT =
+            LocalDateTime.of(2026, 6, 15, 10, 2);
+    private static final LocalDateTime EXPIRES_AT =
+            LocalDateTime.of(2026, 6, 15, 10, 4);
 
     @Autowired
     private SpeakingQueuePersistenceService speakingQueuePersistenceService;
@@ -44,7 +50,9 @@ class SpeakingQueueAssignmentConcurrencyTest {
     void setUpWaitingQueue() {
         speakingQueueRepository.deleteAll();
         roomRepository.deleteAll();
-        roomId = roomRepository.saveAndFlush(Room.open(1L, "토론방")).getId();
+        Room room = Room.open(1L, "토론방");
+        ReflectionTestUtils.setField(room, "createdAt", LocalDateTime.now());
+        roomId = roomRepository.saveAndFlush(room).getId();
         speakingQueueRepository.saveAndFlush(
                 SpeakingQueue.waiting(
                         roomId,
@@ -95,6 +103,10 @@ class SpeakingQueueAssignmentConcurrencyTest {
     private Optional<SpeakingQueue> assignAfterSignal(CountDownLatch start)
             throws InterruptedException {
         start.await();
-        return speakingQueuePersistenceService.assignNextSpeaker(roomId);
+        return speakingQueuePersistenceService.assignNextSpeaker(
+                roomId,
+                ASSIGNED_AT,
+                EXPIRES_AT
+        );
     }
 }

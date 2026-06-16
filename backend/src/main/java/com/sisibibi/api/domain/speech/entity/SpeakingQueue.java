@@ -28,6 +28,10 @@ import lombok.NoArgsConstructor;
                 @Index(
                         name = "idx_speaking_queue_room_user_status",
                         columnList = "room_id, user_id, status"
+                ),
+                @Index(
+                        name = "idx_speaking_queue_status_expires_at",
+                        columnList = "status, expires_at"
                 )
         },
         uniqueConstraints = {
@@ -69,6 +73,12 @@ public class SpeakingQueue {
     @Column(name = "canceled_at")
     private LocalDateTime canceledAt;
 
+    @Column(name = "assigned_at")
+    private LocalDateTime assignedAt;
+
+    @Column(name = "expires_at")
+    private LocalDateTime expiresAt;
+
     private SpeakingQueue(
             Long roomId,
             Long userId,
@@ -108,14 +118,21 @@ public class SpeakingQueue {
         this.queueOrder = Math.toIntExact(id);
     }
 
-    public void assign() {
+    public void assign(LocalDateTime assignedAt, LocalDateTime expiresAt) {
         if (status != SpeakingQueueStatus.WAITING) {
             throw new IllegalStateException(
                     "Only waiting speaking requests can be assigned."
             );
         }
+        if (assignedAt == null || expiresAt == null || !expiresAt.isAfter(assignedAt)) {
+            throw new IllegalArgumentException(
+                    "Speaking expiration must be after assignment."
+            );
+        }
 
         this.status = SpeakingQueueStatus.ASSIGNED;
+        this.assignedAt = assignedAt;
+        this.expiresAt = expiresAt;
     }
 
     public void cancel(LocalDateTime canceledAt) {
