@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 
 import com.sisibibi.api.domain.speech.config.SpeakingQueueProperties;
 import com.sisibibi.api.domain.speech.dto.response.StageCurrentSpeakerRes;
+import com.sisibibi.api.domain.speech.dto.response.StageQueueRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestStatusRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
@@ -19,6 +20,8 @@ import com.sisibibi.api.domain.speech.repository.RedisSpeakingQueueRepository;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -322,6 +325,73 @@ class SpeakingQueueServiceTest {
                 .isEqualTo(LocalDateTime.of(2026, 6, 12, 11, 31));
         assertThat(response.currentSpeaker().expiresAt())
                 .isEqualTo(LocalDateTime.of(2026, 6, 12, 11, 33));
+    }
+
+    @Test
+    void getQueueSummary_returnsFirstFiveWaitingSpeakers() {
+        List<Long> userIds = List.of(10L, 20L);
+        given(redisSpeakingQueueRepository.count(1L)).willReturn(8L);
+        given(redisSpeakingQueueRepository.findWaitingUserIds(1L, 0, 4))
+                .willReturn(userIds);
+        given(speakingQueuePersistenceService.findNicknamesByUserIds(userIds))
+                .willReturn(Map.of(
+                        10L, "logic_hunter",
+                        20L, "dream_catcher"
+                ));
+
+        StageQueueRes response = speakingQueueService.getQueueSummary(1L);
+
+        assertThat(response.totalWaitingCount()).isEqualTo(8L);
+        assertThat(response.offset()).isZero();
+        assertThat(response.size()).isEqualTo(5);
+        assertThat(response.hasNext()).isTrue();
+        assertThat(response.items()).hasSize(2);
+        assertThat(response.items().get(0).rank()).isEqualTo(1);
+        assertThat(response.items().get(0).userId()).isEqualTo(10L);
+        assertThat(response.items().get(0).nickname()).isEqualTo("logic_hunter");
+        assertThat(response.items().get(1).rank()).isEqualTo(2);
+        assertThat(response.items().get(1).userId()).isEqualTo(20L);
+        assertThat(response.items().get(1).nickname()).isEqualTo("dream_catcher");
+    }
+
+    @Test
+    void getWaitingQueue_returnsPagedWaitingSpeakersWithRankOffset() {
+        List<Long> userIds = List.of(30L, 40L);
+        given(redisSpeakingQueueRepository.count(1L)).willReturn(4L);
+        given(redisSpeakingQueueRepository.findWaitingUserIds(1L, 2, 3))
+                .willReturn(userIds);
+        given(speakingQueuePersistenceService.findNicknamesByUserIds(userIds))
+                .willReturn(Map.of(
+                        30L, "neon_wave",
+                        40L, "open_mind"
+                ));
+
+        StageQueueRes response = speakingQueueService.getWaitingQueue(1L, 2, 2);
+
+        assertThat(response.totalWaitingCount()).isEqualTo(4L);
+        assertThat(response.offset()).isEqualTo(2);
+        assertThat(response.size()).isEqualTo(2);
+        assertThat(response.hasNext()).isFalse();
+        assertThat(response.items()).hasSize(2);
+        assertThat(response.items().get(0).rank()).isEqualTo(3);
+        assertThat(response.items().get(0).nickname()).isEqualTo("neon_wave");
+        assertThat(response.items().get(1).rank()).isEqualTo(4);
+        assertThat(response.items().get(1).nickname()).isEqualTo("open_mind");
+    }
+
+    @Test
+    void getWaitingQueue_returnsEmptyItemsWhenQueueIsEmpty() {
+        given(redisSpeakingQueueRepository.count(1L)).willReturn(0L);
+        given(redisSpeakingQueueRepository.findWaitingUserIds(1L, 0, 19))
+                .willReturn(List.of());
+        given(speakingQueuePersistenceService.findNicknamesByUserIds(List.of()))
+                .willReturn(Map.of());
+
+        StageQueueRes response = speakingQueueService.getWaitingQueue(1L, 0, 20);
+
+        assertThat(response.totalWaitingCount()).isZero();
+        assertThat(response.hasNext()).isFalse();
+        assertThat(response.items()).isEmpty();
     }
 
     private CurrentSpeakerProjection currentSpeakerProjection(
