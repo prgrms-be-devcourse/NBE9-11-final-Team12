@@ -31,8 +31,8 @@ jobs:
       - name: Build
         run: ./gradlew clean build -x test
 
-      - name: Run tests
-        run: ./gradlew test
+      - name: Run tests and JaCoCo report
+        run: ./gradlew test jacocoTestReport
 
       - name: Run formatting check
         run: |
@@ -96,3 +96,24 @@ jobs:
         with:
           name: test-report
           path: backend/build/reports/tests/test
+
+      - name: Upload JaCoCo HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-html-report
+          path: backend/build/reports/jacoco/test/html
+
+      - name: Add JaCoCo summary
+        if: always()
+        run: |
+          REPORT="build/reports/jacoco/test/html/index.html"
+
+          echo "## JaCoCo Coverage Report" >> "$GITHUB_STEP_SUMMARY"
+
+          if test -f "$REPORT"; then
+            echo "- HTML artifact: \`jacoco-html-report\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Open \`index.html\` after downloading the artifact." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- JaCoCo HTML report was not generated." >> "$GITHUB_STEP_SUMMARY"
+          fi
