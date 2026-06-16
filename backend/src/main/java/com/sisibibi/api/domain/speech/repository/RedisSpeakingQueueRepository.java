@@ -2,6 +2,7 @@ package com.sisibibi.api.domain.speech.repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Repository;
@@ -56,6 +57,28 @@ public class RedisSpeakingQueueRepository {
             return Optional.empty();
         }
         return Optional.of(Math.toIntExact(rank + 1));
+    }
+
+    public List<Long> findWaitingUserIds(Long roomId, long start, long end) {
+        Set<String> userIds = redisTemplate.opsForZSet()
+                .range(queueKey(roomId), start, end);
+
+        if (userIds == null || userIds.isEmpty()) {
+            return List.of();
+        }
+
+        return userIds.stream()
+                .map(Long::valueOf)
+                .toList();
+    }
+
+    public long count(Long roomId) {
+        Long size = redisTemplate.opsForZSet().size(queueKey(roomId));
+
+        if (size == null) {
+            return 0L;
+        }
+        return size;
     }
 
     public void assign(Long roomId, Long userId) {

@@ -89,6 +89,35 @@ class RedisSpeakingQueueRepositoryTest {
     }
 
     @Test
+    void findWaitingUserIds_returnsUsersByWaitingOrder() {
+        speakingQueueRepository.upsert(1L, 30L, 30);
+        speakingQueueRepository.upsert(1L, 10L, 10);
+        speakingQueueRepository.upsert(1L, 20L, 20);
+
+        assertThat(speakingQueueRepository.findWaitingUserIds(1L, 0, 1))
+                .containsExactly(10L, 20L);
+    }
+
+    @Test
+    void findWaitingUserIds_returnsEmptyWhenQueueDoesNotExist() {
+        assertThat(speakingQueueRepository.findWaitingUserIds(1L, 0, 4))
+                .isEmpty();
+    }
+
+    @Test
+    void count_returnsWaitingQueueSize() {
+        speakingQueueRepository.upsert(1L, 10L, 10);
+        speakingQueueRepository.upsert(1L, 20L, 20);
+
+        assertThat(speakingQueueRepository.count(1L)).isEqualTo(2L);
+    }
+
+    @Test
+    void count_returnsZeroWhenQueueDoesNotExist() {
+        assertThat(speakingQueueRepository.count(1L)).isZero();
+    }
+
+    @Test
     void assign_removesUserFromQueueAndStoresCurrentSpeaker() {
         speakingQueueRepository.upsert(1L, 10L, 15);
 
