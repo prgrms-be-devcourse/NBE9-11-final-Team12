@@ -14,8 +14,7 @@ public record StageCurrentSpeakerRes(
 
     public static StageCurrentSpeakerRes of(
             SpeakingQueue speakingQueue,
-            String nickname,
-            boolean isMe
+            String nickname
     ) {
         return new StageCurrentSpeakerRes(
                 true,
@@ -25,8 +24,7 @@ public record StageCurrentSpeakerRes(
                         nickname,
                         speakingQueue.getQueueOrder(),
                         speakingQueue.getAssignedAt(),
-                        speakingQueue.getExpiresAt(),
-                        isMe
+                        speakingQueue.getExpiresAt()
                 )
         );
     }
@@ -37,8 +35,7 @@ public record StageCurrentSpeakerRes(
             String nickname,
             Integer queueOrder,
             LocalDateTime assignedAt,
-            LocalDateTime expiresAt,
-            boolean isMe
+            LocalDateTime expiresAt
     ) {
     }
 }
