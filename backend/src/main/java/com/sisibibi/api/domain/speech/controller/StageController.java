@@ -1,5 +1,6 @@
 package com.sisibibi.api.domain.speech.controller;
 
+import com.sisibibi.api.domain.speech.dto.response.StageCurrentSpeakerRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.service.SpeakingQueueService;
 import com.sisibibi.api.global.response.ApiResponse;
@@ -11,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -23,6 +25,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class StageController {
 
     private final SpeakingQueueService speakingQueueService;
+
+    @GetMapping
+    public ResponseEntity<ApiResponse<StageCurrentSpeakerRes>> getCurrentSpeaker(
+            @PathVariable @Positive Long roomId
+    ) {
+        StageCurrentSpeakerRes response =
+                speakingQueueService.getCurrentSpeaker(roomId);
+
+        return ResponseEntity.ok(ApiResponse.ok(response));
+    }
 
     @PostMapping("/requests")
     public ResponseEntity<ApiResponse<StageRequestRes>> requestSpeakingTurn(

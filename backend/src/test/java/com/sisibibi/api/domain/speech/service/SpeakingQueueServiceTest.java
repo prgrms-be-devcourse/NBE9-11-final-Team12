@@ -10,10 +10,12 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.sisibibi.api.domain.speech.config.SpeakingQueueProperties;
+import com.sisibibi.api.domain.speech.dto.response.StageCurrentSpeakerRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.repository.RedisSpeakingQueueRepository;
+import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -210,6 +212,78 @@ class SpeakingQueueServiceTest {
                 );
     }
 
+    @Test
+    void getCurrentSpeaker_returnsEmptyResponseWhenCurrentSpeakerDoesNotExist() {
+        given(speakingQueuePersistenceService.findCurrentSpeaker(1L))
+                .willReturn(Optional.empty());
+
+        StageCurrentSpeakerRes response =
+                speakingQueueService.getCurrentSpeaker(1L);
+
+        assertThat(response.hasCurrentSpeaker()).isFalse();
+        assertThat(response.currentSpeaker()).isNull();
+    }
+
+    @Test
+    void getCurrentSpeaker_returnsCurrentSpeakerWithNickname() {
+        CurrentSpeakerProjection currentSpeaker = currentSpeakerProjection(
+                7L,
+                "logic_hunter",
+                15,
+                LocalDateTime.of(2026, 6, 12, 11, 31),
+                LocalDateTime.of(2026, 6, 12, 11, 33)
+        );
+        given(speakingQueuePersistenceService.findCurrentSpeaker(1L))
+                .willReturn(Optional.of(currentSpeaker));
+
+        StageCurrentSpeakerRes response =
+                speakingQueueService.getCurrentSpeaker(1L);
+
+        assertThat(response.hasCurrentSpeaker()).isTrue();
+        assertThat(response.currentSpeaker().userId()).isEqualTo(7L);
+        assertThat(response.currentSpeaker().nickname()).isEqualTo("logic_hunter");
+        assertThat(response.currentSpeaker().queueOrder()).isEqualTo(15);
+        assertThat(response.currentSpeaker().assignedAt())
+                .isEqualTo(LocalDateTime.of(2026, 6, 12, 11, 31));
+        assertThat(response.currentSpeaker().expiresAt())
+                .isEqualTo(LocalDateTime.of(2026, 6, 12, 11, 33));
+    }
+
+    private CurrentSpeakerProjection currentSpeakerProjection(
+            Long userId,
+            String nickname,
+            Integer queueOrder,
+            LocalDateTime assignedAt,
+            LocalDateTime expiresAt
+    ) {
+        return new CurrentSpeakerProjection() {
+            @Override
+            public Long getUserId() {
+                return userId;
+            }
+
+            @Override
+            public String getNickname() {
+                return nickname;
+            }
+
+            @Override
+            public Integer getQueueOrder() {
+                return queueOrder;
+            }
+
+            @Override
+            public LocalDateTime getAssignedAt() {
+                return assignedAt;
+            }
+
+            @Override
+            public LocalDateTime getExpiresAt() {
+                return expiresAt;
+            }
+        };
+    }
+
     private SpeakingQueue persistedWaitingRequest(Long roomId, Long userId, int queueOrder) {
         return SpeakingQueue.waiting(
                 roomId,
@@ -220,13 +294,18 @@ class SpeakingQueueServiceTest {
     }
 
     private SpeakingQueue completedRequest(Long roomId, Long userId, int queueOrder) {
+        SpeakingQueue speakingQueue = assignedRequest(roomId, userId, queueOrder);
+        speakingQueue.complete();
+        return speakingQueue;
+    }
+
+    private SpeakingQueue assignedRequest(Long roomId, Long userId, int queueOrder) {
         SpeakingQueue speakingQueue =
                 persistedWaitingRequest(roomId, userId, queueOrder);
         speakingQueue.assign(
                 LocalDateTime.of(2026, 6, 12, 11, 31),
                 LocalDateTime.of(2026, 6, 12, 11, 33)
         );
-        speakingQueue.complete();
         return speakingQueue;
     }
 

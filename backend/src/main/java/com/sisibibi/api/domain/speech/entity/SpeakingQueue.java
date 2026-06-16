@@ -110,14 +110,6 @@ public class SpeakingQueue {
         return speakingQueue;
     }
 
-    public void assignQueueOrderFromId() {
-        if (id == null) {
-            throw new IllegalStateException("Speaking queue must be persisted first.");
-        }
-
-        this.queueOrder = Math.toIntExact(id);
-    }
-
     public void assign(LocalDateTime assignedAt, LocalDateTime expiresAt) {
         if (status != SpeakingQueueStatus.WAITING) {
             throw new IllegalStateException(

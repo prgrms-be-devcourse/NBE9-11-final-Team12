@@ -3,6 +3,7 @@ package com.sisibibi.api.domain.speech.service;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
+import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
@@ -25,6 +26,9 @@ public class SpeakingQueuePersistenceService {
 
     @Transactional
     public SpeakingQueue createWaitingRequest(Long roomId, Long userId) {
+        roomRepository.findByIdForUpdate(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
         if (speakingQueueRepository.existsByRoomIdAndUserIdAndStatusIn(
                 roomId,
                 userId,
@@ -33,14 +37,15 @@ public class SpeakingQueuePersistenceService {
             throw new CustomException(ErrorCode.SPEAKING_REQUEST_ALREADY_EXISTS);
         }
 
+        int nextQueueOrder =
+                speakingQueueRepository.findMaxQueueOrderByRoomId(roomId) + 1;
         SpeakingQueue speakingQueue = SpeakingQueue.waiting(
                 roomId,
                 userId,
+                nextQueueOrder,
                 LocalDateTime.now()
         );
-        SpeakingQueue saved = speakingQueueRepository.saveAndFlush(speakingQueue);
-        saved.assignQueueOrderFromId();
-        return saved;
+        return speakingQueueRepository.save(speakingQueue);
     }
 
     @Transactional
@@ -113,6 +118,18 @@ public class SpeakingQueuePersistenceService {
 
         currentSpeaker.complete();
         return currentSpeaker;
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<CurrentSpeakerProjection> findCurrentSpeaker(Long roomId) {
+        if (!roomRepository.existsById(roomId)) {
+            throw new CustomException(ErrorCode.ROOM_NOT_FOUND);
+        }
+
+        return speakingQueueRepository.findCurrentSpeakerProjection(
+                roomId,
+                SpeakingQueueStatus.ASSIGNED
+        );
     }
 
     @Transactional
