@@ -7,6 +7,7 @@ import com.sisibibi.api.domain.room.dto.response.RoomDetailRes;
 import com.sisibibi.api.domain.room.dto.response.RoomSummaryRes;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
+import com.sisibibi.api.domain.room.dto.event.RoomClosedEvent;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.topic.entity.Topic;
 import com.sisibibi.api.domain.topic.entity.TopicStatus;
@@ -14,8 +15,10 @@ import com.sisibibi.api.domain.topic.repository.TopicRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -28,6 +31,7 @@ public class RoomService {
 
   private final RoomRepository roomRepository;
   private final TopicRepository topicRepository;
+  private final ApplicationEventPublisher eventPublisher;
 
 
   @Transactional
@@ -77,7 +81,17 @@ public class RoomService {
 
   @Transactional
   public int closeExpiredRooms(LocalDateTime now) {
-    return roomRepository.closeExpiredRooms(now);
+    List<Room> expiredRooms = roomRepository.findByStatusAndEndedAtLessThanEqual(
+        RoomStatus.OPEN,
+        now
+    );
+
+    for (Room room : expiredRooms) {
+      room.close(now);
+      eventPublisher.publishEvent(new RoomClosedEvent(room.getId()));
+    }
+
+    return expiredRooms.size();
   }
 
   // 하나의 토론방 상세 조회
@@ -123,5 +137,9 @@ public class RoomService {
         .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
 
     room.close(LocalDateTime.now());
+
+    eventPublisher.publishEvent(new RoomClosedEvent(room.getId()));
   }
+
+
 }

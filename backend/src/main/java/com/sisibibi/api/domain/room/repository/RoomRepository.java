@@ -19,15 +19,6 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
 
   List<Room> findByStatusOrderByCreatedAtDesc(RoomStatus status);
 
-  @Modifying(clearAutomatically = true, flushAutomatically = true)
-  @Query("""
-    update Room r
-    set r.status = com.sisibibi.api.domain.room.entity.RoomStatus.CLOSED
-    where r.status = com.sisibibi.api.domain.room.entity.RoomStatus.OPEN
-      and r.endedAt <= :now
-    """)
-  int closeExpiredRooms(@Param("now") LocalDateTime now);
-
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("select room from Room room where room.id = :roomId")
   Optional<Room> findByIdForUpdate(@Param("roomId") Long roomId);
@@ -35,4 +26,6 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
   List<Room> findAllByOrderByCreatedAtDesc();
 
   Optional<Room> findByTopicId(Long topicId);
+
+  List<Room> findByStatusAndEndedAtLessThanEqual(RoomStatus status, LocalDateTime now);
 }

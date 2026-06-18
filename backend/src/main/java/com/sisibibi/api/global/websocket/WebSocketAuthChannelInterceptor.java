@@ -31,6 +31,9 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
     private static final Pattern CHAT_DESTINATION_PATTERN =
             Pattern.compile("^/(?:app|topic)/rooms/(\\d+)/chat/messages$");
 
+    private static final Pattern ROOM_EVENT_DESTINATION_PATTERN =
+        Pattern.compile("^/topic/rooms/(\\d+)/events$");
+
     private final RoomParticipantRepository roomParticipantRepository;
 
     @Override
@@ -55,6 +58,7 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
         if (command == StompCommand.SUBSCRIBE) {
             AuthPrincipal principal = requirePrincipal(accessor);
             validateChatDestinationAccess(principal, accessor.getDestination());
+            validateRoomEventDestinationAccess(principal, accessor.getDestination());
             return MessageBuilder.createMessage(message.getPayload(), accessor.getMessageHeaders());
         }
 
@@ -120,6 +124,28 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
                 roomId,
                 principal.userId(),
                 RoomParticipantStatus.JOINED
+        );
+
+        if (!joined) {
+            throw new AccessDeniedException(ErrorCode.ROOM_PARTICIPATION_REQUIRED.name());
+        }
+    }
+
+    private void validateRoomEventDestinationAccess(AuthPrincipal principal, String destination) {
+        if (destination == null) {
+            return;
+        }
+
+        Matcher matcher = ROOM_EVENT_DESTINATION_PATTERN.matcher(destination);
+        if (!matcher.matches()) {
+            return;
+        }
+
+        Long roomId = Long.valueOf(matcher.group(1));
+        boolean joined = roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
+            roomId,
+            principal.userId(),
+            RoomParticipantStatus.JOINED
         );
 
         if (!joined) {
