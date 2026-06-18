@@ -22,6 +22,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Pageable;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -150,6 +151,8 @@ class RoomServiceTest {
         LocalDateTime.of(2026, 6, 15, 11, 10),
         LocalDateTime.of(2026, 6, 15, 11, 15)
     );
+    ReflectionTestUtils.setField(firstRoom, "id", 10L);
+    ReflectionTestUtils.setField(secondRoom, "id", 20L);
 
     given(roomRepository.findByStatusAndEndedAtLessThanEqual(
         eq(RoomStatus.OPEN),
@@ -170,7 +173,15 @@ class RoomServiceTest {
         eq(now),
         any(Pageable.class)
     );
-    verify(eventPublisher, times(2)).publishEvent(any(RoomClosedEvent.class));
+    ArgumentCaptor<RoomClosedEvent> eventCaptor =
+        ArgumentCaptor.forClass(RoomClosedEvent.class);
+    verify(eventPublisher, times(2)).publishEvent(eventCaptor.capture());
+    assertThat(eventCaptor.getAllValues())
+        .extracting(RoomClosedEvent::roomId)
+        .containsExactly(10L, 20L);
+    assertThat(eventCaptor.getAllValues())
+        .extracting(RoomClosedEvent::closedAt)
+        .containsExactly(now, now);
   }
 
   @Test
@@ -192,7 +203,7 @@ class RoomServiceTest {
         eq(now),
         any(Pageable.class)
     );
-    verify(eventPublisher, never()).publishEvent(any(RoomClosedEvent.class));
+    verify(eventPublisher, never()).publishEvent(any());
   }
   @Test
   void getRooms_returnsRoomsOrderedByCreatedAtDesc() {
@@ -353,6 +364,7 @@ class RoomServiceTest {
     LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
     LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
     Room room = Room.open(1L, "삭제 대상 토론방", firstStartedAt, firstEndedAt);
+    ReflectionTestUtils.setField(room, "id", 10L);
 
     given(roomRepository.findById(10L)).willReturn(Optional.of(room));
 
@@ -362,6 +374,29 @@ class RoomServiceTest {
     assertThat(room.getEndedAt()).isNotNull();
 
     verify(roomRepository).findById(10L);
+    ArgumentCaptor<RoomClosedEvent> eventCaptor =
+        ArgumentCaptor.forClass(RoomClosedEvent.class);
+    verify(eventPublisher).publishEvent(eventCaptor.capture());
+    assertThat(eventCaptor.getValue().roomId()).isEqualTo(10L);
+    assertThat(eventCaptor.getValue().closedAt()).isEqualTo(room.getEndedAt());
+  }
+
+  @Test
+  void deleteRoom_doesNotPublishEvent_whenRoomIsAlreadyClosed() {
+    LocalDateTime closedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
+    Room room = Room.open(
+        1L,
+        "이미 닫힌 토론방",
+        LocalDateTime.of(2026, 6, 15, 10, 0),
+        closedAt
+    );
+    room.close(closedAt);
+
+    given(roomRepository.findById(10L)).willReturn(Optional.of(room));
+
+    roomService.deleteRoom(10L);
+
+    verify(eventPublisher, never()).publishEvent(any());
   }
 
   @Test
