@@ -7,8 +7,12 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import com.sisibibi.api.domain.speech.dto.event.StageChangedEvent;
+import com.sisibibi.api.domain.speech.dto.event.StageEventType;
+import com.sisibibi.api.domain.speech.dto.event.StageTurnEndReason;
 import com.sisibibi.api.domain.speech.config.SpeakingQueueProperties;
 import com.sisibibi.api.domain.speech.dto.response.StageCurrentSpeakerRes;
 import com.sisibibi.api.domain.speech.dto.response.StageQueueRes;
@@ -31,6 +35,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class SpeakingQueueServiceTest {
@@ -43,6 +48,9 @@ class SpeakingQueueServiceTest {
 
     @Mock
     private SpeakingQueueProperties speakingQueueProperties;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private SpeakingQueueService speakingQueueService;
@@ -74,6 +82,15 @@ class SpeakingQueueServiceTest {
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
         );
+        ArgumentCaptor<StageChangedEvent> eventCaptor =
+                ArgumentCaptor.forClass(StageChangedEvent.class);
+        verify(eventPublisher, times(2)).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getAllValues())
+                .extracting(StageChangedEvent::type)
+                .containsExactly(
+                        StageEventType.SPEAKING_REQUESTED,
+                        StageEventType.SPEAKER_ASSIGNED
+                );
     }
 
     @Test
@@ -94,6 +111,7 @@ class SpeakingQueueServiceTest {
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
         );
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test
@@ -122,6 +140,11 @@ class SpeakingQueueServiceTest {
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
         );
+        ArgumentCaptor<StageChangedEvent> eventCaptor =
+                ArgumentCaptor.forClass(StageChangedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().type())
+                .isEqualTo(StageEventType.SPEAKING_REQUESTED);
     }
 
     @Test
@@ -142,6 +165,11 @@ class SpeakingQueueServiceTest {
         assertThat(response.status()).isEqualTo(SpeakingQueueStatus.WAITING);
         assertThat(response.queueOrder()).isEqualTo(15);
         verify(redisSpeakingQueueRepository).upsert(1L, 7L, 15);
+        ArgumentCaptor<StageChangedEvent> eventCaptor =
+                ArgumentCaptor.forClass(StageChangedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().type())
+                .isEqualTo(StageEventType.SPEAKING_REQUESTED);
     }
 
     @Test
@@ -169,6 +197,7 @@ class SpeakingQueueServiceTest {
                 assignedAtCaptor.getValue(),
                 expiresAtCaptor.getValue()
         )).isEqualTo(Duration.ofSeconds(90));
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test
@@ -194,6 +223,11 @@ class SpeakingQueueServiceTest {
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
         );
+        ArgumentCaptor<StageChangedEvent> eventCaptor =
+                ArgumentCaptor.forClass(StageChangedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().type())
+                .isEqualTo(StageEventType.SPEAKING_CANCELED);
     }
 
     @Test
@@ -222,6 +256,11 @@ class SpeakingQueueServiceTest {
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
         );
+        ArgumentCaptor<StageChangedEvent> eventCaptor =
+                ArgumentCaptor.forClass(StageChangedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().type())
+                .isEqualTo(StageEventType.SPEAKING_CANCELED);
     }
 
     @Test
@@ -320,6 +359,13 @@ class SpeakingQueueServiceTest {
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
         );
+        ArgumentCaptor<StageChangedEvent> eventCaptor =
+                ArgumentCaptor.forClass(StageChangedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().type())
+                .isEqualTo(StageEventType.SPEAKER_COMPLETED);
+        assertThat(eventCaptor.getValue().payload().endReason())
+                .isEqualTo(StageTurnEndReason.COMPLETED);
     }
 
     @Test
@@ -347,6 +393,13 @@ class SpeakingQueueServiceTest {
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
         );
+        ArgumentCaptor<StageChangedEvent> eventCaptor =
+                ArgumentCaptor.forClass(StageChangedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().type())
+                .isEqualTo(StageEventType.SPEAKER_COMPLETED);
+        assertThat(eventCaptor.getValue().payload().endReason())
+                .isEqualTo(StageTurnEndReason.COMPLETED);
     }
 
     @Test
@@ -373,6 +426,15 @@ class SpeakingQueueServiceTest {
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
         );
+        ArgumentCaptor<StageChangedEvent> eventCaptor =
+                ArgumentCaptor.forClass(StageChangedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().type())
+                .isEqualTo(StageEventType.SPEAKER_EXPIRED);
+        assertThat(eventCaptor.getValue().payload().status())
+                .isEqualTo(SpeakingQueueStatus.COMPLETED);
+        assertThat(eventCaptor.getValue().payload().endReason())
+                .isEqualTo(StageTurnEndReason.EXPIRED);
     }
 
     @Test
@@ -390,6 +452,7 @@ class SpeakingQueueServiceTest {
                         org.mockito.ArgumentMatchers.anyLong(),
                         org.mockito.ArgumentMatchers.anyLong()
                 );
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test

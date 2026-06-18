@@ -1,6 +1,10 @@
 package com.sisibibi.api.domain.speech.service;
 
 import com.sisibibi.api.domain.speech.config.SpeakingQueueProperties;
+import com.sisibibi.api.domain.speech.dto.event.StageChangedEvent;
+import com.sisibibi.api.domain.speech.dto.event.StageEventPayload;
+import com.sisibibi.api.domain.speech.dto.event.StageEventType;
+import com.sisibibi.api.domain.speech.dto.event.StageTurnEndReason;
 import com.sisibibi.api.domain.speech.dto.response.StageCurrentSpeakerRes;
 import com.sisibibi.api.domain.speech.dto.response.StageQueueRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
@@ -13,6 +17,7 @@ import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -29,6 +34,7 @@ public class SpeakingQueueService {
     private final RedisSpeakingQueueRepository redisSpeakingQueueRepository;
     private final SpeakingQueuePersistenceService speakingQueuePersistenceService;
     private final SpeakingQueueProperties speakingQueueProperties;
+    private final ApplicationEventPublisher eventPublisher;
 
     public StageRequestRes requestSpeakingTurn(Long roomId, Long userId) {
         SpeakingQueue saved =
@@ -42,6 +48,7 @@ public class SpeakingQueueService {
                 saved.getQueueOrder(),
                 saved.getStatus()
         );
+        publishStageChanged(StageEventType.SPEAKING_REQUESTED, saved);
         return StageRequestRes.from(
                 tryAssignNextSpeaker(roomId)
                         .filter(assigned -> assigned.getUserId().equals(userId))
@@ -65,6 +72,8 @@ public class SpeakingQueueService {
                 speakingQueue.getQueueOrder(),
                 speakingQueue.getExpiresAt()
         ));
+        assigned.ifPresent(speakingQueue ->
+                publishStageChanged(StageEventType.SPEAKER_ASSIGNED, speakingQueue));
         return assigned;
     }
 
@@ -78,6 +87,7 @@ public class SpeakingQueueService {
                 canceled.getUserId(),
                 canceled.getQueueOrder()
         );
+        publishStageChanged(StageEventType.SPEAKING_CANCELED, canceled);
         tryAssignNextSpeaker(roomId);
     }
 
@@ -102,6 +112,11 @@ public class SpeakingQueueService {
                 completed.getRoomId(),
                 completed.getUserId(),
                 completed.getQueueOrder()
+        );
+        publishStageChanged(
+                StageEventType.SPEAKER_COMPLETED,
+                completed,
+                StageTurnEndReason.COMPLETED
         );
         tryAssignNextSpeaker(roomId);
     }
@@ -169,8 +184,32 @@ public class SpeakingQueueService {
                 speakingQueue.getQueueOrder(),
                 now
         ));
+        expired.ifPresent(speakingQueue -> publishStageChanged(
+                StageEventType.SPEAKER_EXPIRED,
+                speakingQueue,
+                StageTurnEndReason.EXPIRED
+        ));
         expired.ifPresent(speakingQueue -> tryAssignNextSpeaker(roomId));
         return expired;
+    }
+
+    private void publishStageChanged(
+            StageEventType type,
+            SpeakingQueue speakingQueue
+    ) {
+        publishStageChanged(type, speakingQueue, null);
+    }
+
+    private void publishStageChanged(
+            StageEventType type,
+            SpeakingQueue speakingQueue,
+            StageTurnEndReason endReason
+    ) {
+        eventPublisher.publishEvent(new StageChangedEvent(
+                type,
+                speakingQueue.getRoomId(),
+                StageEventPayload.from(speakingQueue, endReason)
+        ));
     }
 
     private Optional<SpeakingQueue> tryAssignNextSpeaker(Long roomId) {

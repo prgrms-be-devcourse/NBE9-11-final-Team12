@@ -16,6 +16,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.data.redis.DataRedisTest;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -65,7 +66,8 @@ class SpeakingQueueConsistencyRiskTest {
         SpeakingQueueService service = new SpeakingQueueService(
                 redisSpeakingQueueRepository,
                 failingPersistenceService,
-                mock(SpeakingQueueProperties.class)
+                mock(SpeakingQueueProperties.class),
+                mock(ApplicationEventPublisher.class)
         );
 
         assertThatThrownBy(() -> service.requestSpeakingTurn(ROOM_ID, USER_ID))
@@ -94,7 +96,8 @@ class SpeakingQueueConsistencyRiskTest {
         SpeakingQueueService service = new SpeakingQueueService(
                 failingRedisRepository,
                 persistenceService,
-                mock(SpeakingQueueProperties.class)
+                mock(SpeakingQueueProperties.class),
+                mock(ApplicationEventPublisher.class)
         );
 
         StageRequestRes response = service.requestSpeakingTurn(ROOM_ID, USER_ID);
