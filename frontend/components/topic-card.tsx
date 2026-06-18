@@ -1,20 +1,14 @@
 "use client"
 
 import Link from "next/link"
+import { ArrowRight, CalendarClock, MessageSquare, Radio } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
+import type { RoomSummary, TopicSummary } from "@/lib/api/types"
 import { cn } from "@/lib/utils"
-import {
-  Users,
-  MessageSquare,
-  ThumbsUp,
-  Clock,
-  ArrowRight,
-  Flame,
-} from "lucide-react"
 
-export interface Topic {
+export type Topic = {
   id: string
   title: string
   description: string
@@ -29,106 +23,88 @@ export interface Topic {
   isTrending?: boolean
 }
 
-interface TopicCardProps {
-  topic: Topic
-  className?: string
+type TopicCardProps =
+  | {
+      kind: "room"
+      item: RoomSummary
+      topic?: TopicSummary
+      participantCount?: number
+      className?: string
+    }
+  | {
+      kind: "topic"
+      item: TopicSummary
+      className?: string
+    }
+
+function formatDate(value: string | null | undefined) {
+  if (!value) return "일정 미정"
+  return new Date(value).toLocaleString("ko-KR", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
 }
 
-const categoryConfig: Record<string, { bg: string; text: string; border: string }> = {
-  "AI·기술":  { bg: "bg-violet-50 dark:bg-violet-500/10", text: "text-violet-700 dark:text-violet-400", border: "border-violet-200 dark:border-violet-500/20" },
-  "경제·금융": { bg: "bg-emerald-50 dark:bg-emerald-500/10", text: "text-emerald-700 dark:text-emerald-400", border: "border-emerald-200 dark:border-emerald-500/20" },
-  "사회·복지": { bg: "bg-amber-50 dark:bg-amber-500/10", text: "text-amber-700 dark:text-amber-400", border: "border-amber-200 dark:border-amber-500/20" },
-  "정치·외교": { bg: "bg-red-50 dark:bg-red-500/10", text: "text-red-700 dark:text-red-400", border: "border-red-200 dark:border-red-500/20" },
-  "문화·연예": { bg: "bg-pink-50 dark:bg-pink-500/10", text: "text-pink-700 dark:text-pink-400", border: "border-pink-200 dark:border-pink-500/20" },
-  "스포츠":   { bg: "bg-orange-50 dark:bg-orange-500/10", text: "text-orange-700 dark:text-orange-400", border: "border-orange-200 dark:border-orange-500/20" },
-  "환경·과학": { bg: "bg-teal-50 dark:bg-teal-500/10", text: "text-teal-700 dark:text-teal-400", border: "border-teal-200 dark:border-teal-500/20" },
-}
-
-const defaultCat = { bg: "bg-muted", text: "text-muted-foreground", border: "border-border" }
-
-export function TopicCard({ topic, className }: TopicCardProps) {
-  const cat = categoryConfig[topic.category] ?? defaultCat
+export function TopicCard(props: TopicCardProps) {
+  const isRoom = props.kind === "room"
+  const title = isRoom ? props.item.title : props.item.title
+  const category = isRoom ? props.topic?.category ?? "토론" : props.item.category
+  const description = isRoom ? props.topic?.sourceUrl ?? "입장해서 발언과 채팅에 참여해 보세요." : props.item.sourceUrl ?? "출처 없음"
+  const href = isRoom ? `/rooms/${props.item.roomId}` : "/rooms"
 
   return (
     <Card
       className={cn(
-        "group relative flex flex-col overflow-hidden border-border bg-card shadow-card transition-all duration-200",
-        "hover:-translate-y-px hover:shadow-card-hover hover:border-border/80",
-        className
+        "group relative flex flex-col overflow-hidden border-border bg-card shadow-card transition-all duration-200 hover:-translate-y-px hover:border-border/80 hover:shadow-card-hover",
+        props.className,
       )}
     >
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5">
-            {/* Category badge */}
-            <span
-              className={cn(
-                "rounded-full border px-2 py-0.5 text-[11px] font-medium",
-                cat.bg, cat.text, cat.border
-              )}
-            >
-              {topic.category}
-            </span>
-            {topic.isTrending && (
-              <span className="flex items-center gap-1 rounded-full bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 px-2 py-0.5 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
-                <Flame className="size-2.5" />
-                HOT
+            <Badge variant="outline" className="border-primary/25 text-primary text-[11px]">
+              {category}
+            </Badge>
+            {isRoom && props.item.status === "OPEN" && (
+              <span className="flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-400">
+                <span className="size-1.5 rounded-full bg-emerald-500" />
+                LIVE
               </span>
             )}
           </div>
-          {topic.timeLeft && (
-            <div className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
-              <Clock className="size-3" />
-              {topic.timeLeft}
-            </div>
-          )}
+          <div className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
+            <CalendarClock className="size-3" />
+            {formatDate(isRoom ? props.item.startedAt : props.item.approvedAt ?? props.item.createdAt)}
+          </div>
         </div>
 
         <h3 className="mt-2 line-clamp-2 text-sm font-semibold leading-snug text-foreground transition-colors group-hover:text-primary">
-          {topic.title}
+          {title}
         </h3>
-        <p className="line-clamp-2 text-[12px] leading-relaxed text-muted-foreground">
-          {topic.description}
-        </p>
+        <p className="line-clamp-2 text-[12px] leading-relaxed text-muted-foreground">{description}</p>
       </CardHeader>
 
       <CardContent className="pb-3 pt-0">
-        {topic.tags && topic.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {topic.tags.map((tag) => (
-              <span
-                key={tag}
-                className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
-              >
-                #{tag}
-              </span>
-            ))}
-          </div>
-        )}
+        <div className="flex flex-wrap gap-1">
+          <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">#{category}</span>
+          {isRoom && <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">#{props.item.status}</span>}
+        </div>
       </CardContent>
 
       <CardFooter className="mt-auto flex items-center justify-between border-t border-border pt-3">
         <div className="flex items-center gap-3 text-[12px] text-muted-foreground">
           <span className="flex items-center gap-1">
-            <Users className="size-3.5" />
-            <span className="font-medium text-foreground">{topic.participants.toLocaleString()}</span>
-          </span>
-          <span className="flex items-center gap-1">
-            <MessageSquare className="size-3.5" />
-            <span className="font-medium text-foreground">{topic.messages.toLocaleString()}</span>
-          </span>
-          <span className="flex items-center gap-1">
-            <ThumbsUp className="size-3.5" />
-            <span className="font-medium text-foreground">{topic.likes.toLocaleString()}</span>
+            {isRoom ? <Radio className="size-3.5" /> : <MessageSquare className="size-3.5" />}
+            <span className="font-medium text-foreground">
+              {isRoom ? `${props.participantCount ?? 0}명` : "승인 토픽"}
+            </span>
           </span>
         </div>
-        <Link href={`/rooms/${topic.id}`}>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 gap-1 text-[12px] font-semibold"
-          >
-            입장
+        <Link href={href}>
+          <Button size="sm" variant="outline" className="h-7 gap-1 text-[12px] font-semibold">
+            {isRoom ? "입장" : "방 보기"}
             <ArrowRight className="size-3" />
           </Button>
         </Link>

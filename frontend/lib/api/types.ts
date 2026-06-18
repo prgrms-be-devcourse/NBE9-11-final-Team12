@@ -5,14 +5,22 @@ export type ApiResponse<T> = {
   data?: T
 }
 
-export type ApiErrorData = Record<string, string> | undefined
-
 export type AuthUser = {
   userId: number
   email: string
   nickname: string
   role?: "USER" | "ADMIN"
   status?: "ACTIVE" | "INACTIVE" | "BANNED"
+}
+
+export type SpringPage<T> = {
+  content: T[]
+  totalElements: number
+  totalPages: number
+  number: number
+  size: number
+  first: boolean
+  last: boolean
 }
 
 export type TopicSummary = {
@@ -33,23 +41,34 @@ export type TopicCreateResponse = {
   status: "PENDING" | "APPROVED" | "REJECTED"
 }
 
-export type RoomCreateResponse = {
+export type RoomStatus = "OPEN" | "CLOSED"
+
+export type RoomSummary = {
   roomId: number
   topicId: number
   title: string
-  status: "OPEN" | "CLOSED"
+  status: RoomStatus
   startedAt: string
   createdAt: string
 }
 
-export type SpringPage<T> = {
-  content: T[]
-  totalElements: number
-  totalPages: number
-  number: number
-  size: number
-  first: boolean
-  last: boolean
+export type RoomDetail = RoomSummary & {
+  endedAt: string | null
+}
+
+export type RoomCreateResponse = RoomSummary
+
+export type RoomParticipant = {
+  roomParticipantId: number
+  roomId: number
+  userId: number
+  status: "ACTIVE" | "LEFT"
+  joinedAt: string
+}
+
+export type RoomParticipantCount = {
+  roomId: number
+  participantCount: number
 }
 
 export type SpeechStance = "PRO" | "CON"
@@ -91,3 +110,62 @@ export type SpeechReportReason =
   | "PRIVACY_VIOLATION"
   | "OFF_TOPIC"
   | "OTHER"
+
+export type ChatMessage = {
+  messageId: number
+  roomId: number
+  userId: number
+  nicknameSnapshot: string
+  content: string
+  createdAt: string
+}
+
+export type ChatMessageCursorPage = {
+  items: ChatMessage[]
+  nextCursor: number | null
+  hasNext: boolean
+}
+
+export type StageCurrentSpeaker = {
+  hasCurrentSpeaker: boolean
+  currentSpeaker: {
+    userId: number
+    nickname: string
+    queueOrder: number
+    assignedAt: string
+    expiresAt: string
+  } | null
+}
+
+export type StageQueue = {
+  totalWaitingCount: number
+  offset: number
+  size: number
+  hasNext: boolean
+  items: {
+    rank: number
+    userId: number
+    nickname: string
+  }[]
+}
+
+export type StageRequest = {
+  status: "WAITING" | "SPEAKING" | "COMPLETED" | "CANCELED" | "EXPIRED"
+  roomId: number
+  userId: number
+  queueOrder: number
+  requestedAt: string
+}
+
+export type StageRequestStatus = {
+  hasRequest: boolean
+  status: StageRequest["status"] | null
+  roomId: number | null
+  userId: number | null
+  queueOrder: number | null
+  currentRank: number | null
+  cancelable: boolean
+  requestedAt: string | null
+  assignedAt: string | null
+  expiresAt: string | null
+}

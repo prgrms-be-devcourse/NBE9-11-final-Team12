@@ -1,315 +1,238 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { useEffect, useRef, useState } from "react"
+import { Flag, Loader2, MessageSquare, RefreshCw, Send } from "lucide-react"
+import { chatApi } from "@/lib/api/services"
+import type { ChatMessage } from "@/lib/api/types"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
-import { mockChatMessages } from "@/lib/mock-data"
-import { Send, Heart, MessageSquare, Pin, Flag } from "lucide-react"
 
-interface ChatMessage {
-  id: string
-  userId: string
-  nickname: string
-  content: string
-  timestamp: string
-  isHighlighted: boolean
-  likeCount?: number
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080"
+
+function initials(nickname: string) {
+  return nickname.replace("@", "").slice(0, 2).toUpperCase() || "U"
 }
 
-const avatarColors = [
-  "bg-primary/15 text-primary",
-  "bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-400",
-  "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400",
-  "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400",
-  "bg-red-100 text-red-600 dark:bg-red-500/20 dark:text-red-400",
-  "bg-pink-100 text-pink-700 dark:bg-pink-500/20 dark:text-pink-400",
-]
-
-function getAvatarColor(userId: string) {
-  const idx = userId.charCodeAt(1) % avatarColors.length
-  return avatarColors[idx]
+function toWebSocketUrl(baseUrl: string) {
+  const url = new URL("/api/v1/ws", baseUrl)
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
+  return url.toString()
 }
 
-const REPORT_REASONS = [
-  "욕설 / 혐오 발언",
-  "허위 사실 유포",
-  "광고 / 스팸",
-  "개인정보 노출",
-  "주제 무관 발언",
-  "기타",
-]
+function stompFrame(command: string, headers: Record<string, string> = {}, body = "") {
+  const headerLines = Object.entries(headers).map(([key, value]) => `${key}:${value}`)
+  return `${command}\n${headerLines.join("\n")}\n\n${body}\0`
+}
 
-// seed initial like counts
-const initialMessages: ChatMessage[] = mockChatMessages.map((m, i) => ({
-  ...m,
-  likeCount: [3, 12, 1, 5, 0, 9, 2, 4][i % 8],
-}))
+function parseStompMessages(raw: string) {
+  return raw
+    .split("\0")
+    .map((frame) => frame.trim())
+    .filter(Boolean)
+    .map((frame) => {
+      const [head, body = ""] = frame.split("\n\n")
+      const [command, ...headerLines] = head.split("\n")
+      const headers = Object.fromEntries(
+        headerLines
+          .map((line) => line.split(":"))
+          .filter(([key, value]) => key && value !== undefined)
+          .map(([key, ...rest]) => [key, rest.join(":")]),
+      )
+      return { command, headers, body }
+    })
+}
 
-export function ChatPanel() {
-  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages)
+export function ChatPanel({ roomId }: { roomId: number }) {
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState("")
-  const [likedIds, setLikedIds] = useState<Set<string>>(new Set())
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+  const [connected, setConnected] = useState(false)
+  const socketRef = useRef<WebSocket | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  // Report state
-  const [reportTarget, setReportTarget] = useState<ChatMessage | null>(null)
-  const [reportReason, setReportReason] = useState<string | null>(null)
-  const [reportSubmitted, setReportSubmitted] = useState(false)
+  const loadMessages = async () => {
+    setLoading(true)
+    setError("")
+    try {
+      const response = await chatApi.list(roomId)
+      setMessages(response.items)
+    } catch {
+      setError("채팅 메시지를 불러오지 못했습니다.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadMessages()
+  }, [roomId])
+
+  useEffect(() => {
+    const socket = new WebSocket(toWebSocketUrl(API_BASE_URL))
+    socketRef.current = socket
+
+    socket.onopen = () => {
+      socket.send(stompFrame("CONNECT", { "accept-version": "1.2", "heart-beat": "10000,10000" }))
+    }
+
+    socket.onmessage = (event) => {
+      for (const frame of parseStompMessages(String(event.data))) {
+        if (frame.command === "CONNECTED") {
+          setConnected(true)
+          socket.send(
+            stompFrame("SUBSCRIBE", {
+              id: `chat-${roomId}`,
+              destination: `/topic/rooms/${roomId}/chat/messages`,
+              ack: "auto",
+            }),
+          )
+        }
+
+        if (frame.command === "MESSAGE" && frame.body) {
+          try {
+            const eventPayload = JSON.parse(frame.body) as ChatMessage & { type?: string }
+            if (eventPayload.type === "MESSAGE_DELETED") {
+              setMessages((prev) => prev.filter((message) => message.messageId !== eventPayload.messageId))
+              continue
+            }
+            if (eventPayload.messageId && eventPayload.content) {
+              setMessages((prev) => {
+                if (prev.some((message) => message.messageId === eventPayload.messageId)) return prev
+                return [...prev, eventPayload]
+              })
+            }
+          } catch {
+            // Ignore malformed frames and keep the existing chat stream.
+          }
+        }
+      }
+    }
+
+    socket.onerror = () => {
+      setConnected(false)
+    }
+
+    socket.onclose = () => {
+      setConnected(false)
+    }
+
+    return () => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(stompFrame("DISCONNECT"))
+      }
+      socket.close()
+      socketRef.current = null
+    }
+  }, [roomId])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  const handleSend = () => {
-    if (!input.trim()) return
-    const newMsg: ChatMessage = {
-      id: `m${Date.now()}`,
-      userId: "me",
-      nickname: "@나",
-      content: input.trim(),
-      timestamp: new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }),
-      isHighlighted: false,
-      likeCount: 0,
-    }
-    setMessages((prev) => [...prev, newMsg])
-    setInput("")
-  }
+  const sendMessage = () => {
+    const content = input.trim()
+    const socket = socketRef.current
+    if (!content || !socket || socket.readyState !== WebSocket.OPEN || !connected) return
 
-  const handleLike = (msgId: string) => {
-    const alreadyLiked = likedIds.has(msgId)
-    setLikedIds((prev) => {
-      const next = new Set(prev)
-      alreadyLiked ? next.delete(msgId) : next.add(msgId)
-      return next
-    })
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === msgId
-          ? { ...m, likeCount: (m.likeCount ?? 0) + (alreadyLiked ? -1 : 1) }
-          : m
-      )
+    socket.send(
+      stompFrame(
+        "SEND",
+        {
+          destination: `/app/rooms/${roomId}/chat/messages`,
+          "content-type": "application/json",
+        },
+        JSON.stringify({ content }),
+      ),
     )
-  }
-
-  const handleReportClose = () => {
-    setReportTarget(null)
-    setTimeout(() => {
-      setReportReason(null)
-      setReportSubmitted(false)
-    }, 300)
-  }
-
-  const handleReportSubmit = () => {
-    if (!reportReason) return
-    setReportSubmitted(true)
+    setInput("")
   }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* Header */}
-      <div className="shrink-0 flex items-center justify-between border-b border-border/50 px-4 py-3">
+      <div className="flex shrink-0 items-center justify-between border-b border-border/50 px-4 py-3">
         <div className="flex items-center gap-2">
           <MessageSquare className="size-4 text-primary" />
-          <span className="text-sm font-semibold text-foreground">실시간 채팅</span>
+          <span className="text-sm font-semibold text-foreground">채팅</span>
         </div>
-        <Badge variant="outline" className="border-primary/30 text-primary text-[10px]">
-          {messages.length}개
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="border-primary/30 text-primary text-[10px]">
+            {messages.length}개
+          </Badge>
+          <span className={cn("size-2 rounded-full", connected ? "bg-emerald-500" : "bg-muted-foreground/40")} title={connected ? "연결됨" : "연결 대기"} />
+          <Button variant="ghost" size="icon-sm" onClick={() => void loadMessages()} aria-label="채팅 새로고침">
+            <RefreshCw className="size-3.5" />
+          </Button>
+        </div>
       </div>
 
-      {/* Messages — native scroll so new messages push up correctly */}
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
-        <div className="flex flex-col gap-2">
-          {messages.map((msg) => {
-            const isLiked = likedIds.has(msg.id)
-            return (
-              <div
-                key={msg.id}
-                className={cn(
-                  "group flex gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-muted/40",
-                  msg.isHighlighted && "border border-primary/20 bg-primary/5"
-                )}
-              >
-                <Avatar className="size-6 shrink-0 mt-0.5">
-                  <AvatarFallback
-                    className={cn("text-[9px] font-bold", getAvatarColor(msg.userId))}
-                  >
-                    {msg.nickname.slice(1, 3).toUpperCase()}
+        {loading ? (
+          <div className="flex h-40 items-center justify-center">
+            <Loader2 className="size-5 animate-spin text-primary" />
+          </div>
+        ) : error ? (
+          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>
+        ) : messages.length === 0 ? (
+          <div className="flex h-40 items-center justify-center text-center text-xs text-muted-foreground">
+            아직 채팅 메시지가 없습니다.
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {messages.map((message) => (
+              <div key={message.messageId} className="group flex gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-muted/40">
+                <Avatar className="mt-0.5 size-6 shrink-0">
+                  <AvatarFallback className="bg-primary/10 text-[9px] font-bold text-primary">
+                    {initials(message.nicknameSnapshot)}
                   </AvatarFallback>
                 </Avatar>
 
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline gap-1.5">
-                    <span
-                      className={cn(
-                        "text-[11px] font-semibold",
-                        msg.userId === "me" ? "text-primary" : "text-muted-foreground"
-                      )}
-                    >
-                      {msg.nickname}
+                    <span className="text-[11px] font-semibold text-muted-foreground">{message.nicknameSnapshot}</span>
+                    <span className="text-[10px] text-muted-foreground/50">
+                      {new Date(message.createdAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
                     </span>
-                    <span className="text-[10px] text-muted-foreground/50">{msg.timestamp}</span>
-                    {msg.isHighlighted && (
-                      <Pin className="size-2.5 text-primary" />
-                    )}
                   </div>
-                  <p className="break-words text-xs leading-relaxed text-foreground">
-                    {msg.content}
-                  </p>
+                  <p className="break-words text-xs leading-relaxed text-foreground">{message.content}</p>
                 </div>
 
-                {/* Hover actions: like + report */}
-                <div className="mt-0.5 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                  {/* Like */}
-                  <button
-                    onClick={() => handleLike(msg.id)}
-                    className={cn(
-                      "flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-colors",
-                      isLiked
-                        ? "text-rose-500"
-                        : "text-muted-foreground hover:text-rose-400"
-                    )}
-                    aria-label="좋아요"
-                  >
-                    <Heart
-                      className={cn(
-                        "size-3 transition-transform",
-                        isLiked ? "fill-rose-500 scale-110" : ""
-                      )}
-                    />
-                    {(msg.likeCount ?? 0) > 0 && (
-                      <span className="font-medium">{msg.likeCount}</span>
-                    )}
-                  </button>
-
-                  {/* Report — only show for others' messages */}
-                  {msg.userId !== "me" && (
-                    <button
-                      onClick={() => setReportTarget(msg)}
-                      className="flex size-5 items-center justify-center rounded text-muted-foreground/60 hover:text-destructive hover:bg-muted transition-colors"
-                      aria-label="메시지 신고"
-                    >
-                      <Flag className="size-3" />
-                    </button>
+                <button
+                  className={cn(
+                    "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground/60 opacity-0 transition-opacity hover:bg-muted hover:text-destructive group-hover:opacity-100",
                   )}
-                </div>
+                  aria-label="메시지 신고"
+                >
+                  <Flag className="size-3" />
+                </button>
               </div>
-            )
-          })}
-          <div ref={bottomRef} />
-        </div>
+            ))}
+            <div ref={bottomRef} />
+          </div>
+        )}
       </div>
 
-      {/* Input */}
       <div className="shrink-0 border-t border-border/50 p-3">
         <div className="flex items-center gap-2">
           <Input
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-            placeholder="메시지 입력..."
-            className="h-9 bg-muted border-border/50 text-xs"
+            onChange={(event) => setInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) sendMessage()
+            }}
+            placeholder={connected ? "메시지 입력" : "채팅 연결 중"}
+            className="h-9 bg-muted text-xs"
+            disabled={!connected}
           />
-          <Button
-            size="icon"
-            className="size-9 shrink-0"
-            onClick={handleSend}
-            disabled={!input.trim()}
-          >
+          <Button size="icon" className="size-9 shrink-0" onClick={sendMessage} disabled={!connected || !input.trim()}>
             <Send className="size-4" />
             <span className="sr-only">전송</span>
           </Button>
         </div>
-        <p className="mt-1.5 text-[10px] text-muted-foreground/50 text-center">
-          커뮤니티 규칙을 준수하여 예의 바른 토론에 참여해주세요
-        </p>
       </div>
-
-      {/* Chat report modal */}
-      <Dialog open={!!reportTarget} onOpenChange={handleReportClose}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-sm">
-              <Flag className="size-4 text-destructive" />
-              채팅 메시지 신고
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              <span className="font-semibold text-foreground">{reportTarget?.nickname}</span>
-              의 메시지를 신고합니다. 메시지 내용과 사용자 ID가 함께 접수됩니다.
-            </DialogDescription>
-          </DialogHeader>
-
-          {/* Message preview */}
-          {reportTarget && !reportSubmitted && (
-            <div className="rounded-md border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground italic">
-              &ldquo;{reportTarget.content}&rdquo;
-            </div>
-          )}
-
-          {reportSubmitted ? (
-            <div className="flex flex-col items-center gap-3 py-4">
-              <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
-                <Flag className="size-5 text-primary" />
-              </div>
-              <p className="text-sm font-semibold text-foreground">신고가 접수되었습니다</p>
-              <p className="text-xs text-muted-foreground text-center">
-                검토 후 커뮤니티 가이드라인에 따라 처리됩니다.
-              </p>
-              <Button size="sm" className="mt-1 w-full" onClick={handleReportClose}>
-                확인
-              </Button>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              <p className="text-xs font-medium text-foreground">신고 사유를 선택하세요</p>
-              <div className="flex flex-col gap-1.5">
-                {REPORT_REASONS.map((reason) => (
-                  <button
-                    key={reason}
-                    onClick={() => setReportReason(reason)}
-                    className={`rounded-lg border px-3 py-2.5 text-left text-xs transition-colors ${
-                      reportReason === reason
-                        ? "border-primary/50 bg-primary/10 text-primary font-medium"
-                        : "border-border text-foreground hover:border-border/80 hover:bg-muted/60"
-                    }`}
-                  >
-                    {reason}
-                  </button>
-                ))}
-              </div>
-              <div className="flex gap-2 pt-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 text-xs"
-                  onClick={handleReportClose}
-                >
-                  취소
-                </Button>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  className="flex-1 text-xs"
-                  disabled={!reportReason}
-                  onClick={handleReportSubmit}
-                >
-                  신고하기
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
