@@ -50,6 +50,8 @@ public enum ErrorCode {
     CHAT_MESSAGE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 채팅 메시지입니다."),
     CHAT_MESSAGE_EMPTY(HttpStatus.BAD_REQUEST, "채팅 메시지는 비어 있을 수 없습니다."),
     CHAT_MESSAGE_TOO_LONG(HttpStatus.BAD_REQUEST, "채팅 메시지 길이를 초과했습니다."),
+    CHAT_MESSAGE_CONTAINS_PROFANITY(HttpStatus.BAD_REQUEST, "채팅 메시지에 금칙어가 포함되어 있습니다."),
+    CHAT_RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "채팅 메시지 전송 제한을 초과했습니다."),
 
     // Speaking Queue
     SPEAKING_REQUEST_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 발언권을 신청한 상태입니다."),

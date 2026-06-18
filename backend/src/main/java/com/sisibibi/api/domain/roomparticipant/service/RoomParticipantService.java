@@ -12,11 +12,13 @@ import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantReposit
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -49,6 +51,14 @@ public class RoomParticipantService {
             RoomParticipant.join(roomId, userId)
         ));
 
+    log.info(
+        "Room participant joined. roomId={}, userId={}, participantId={}, status={}",
+        roomId,
+        userId,
+        participant.getId(),
+        participant.getStatus()
+    );
+
     return RoomParticipantRes.from(participant);
   }
 
@@ -63,6 +73,12 @@ public class RoomParticipantService {
         .orElseThrow(() -> new CustomException(ErrorCode.ROOM_PARTICIPANT_NOT_FOUND));
 
     participant.leave();
+    log.info(
+        "Room participant left. roomId={}, userId={}, participantId={}",
+        roomId,
+        userId,
+        participant.getId()
+    );
   }
   public List<RoomParticipantRes> getRoomParticipants(Long roomId) {
     if (!roomRepository.existsById(roomId)) {

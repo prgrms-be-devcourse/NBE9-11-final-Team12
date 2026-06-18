@@ -34,6 +34,7 @@ public class RoomService {
   private final ApplicationEventPublisher eventPublisher;
 
 
+
   @Transactional
   public CreateRoomRes createRoom(CreateRoomReq request) {
     Topic topic = topicRepository.findById(request.topicId())
