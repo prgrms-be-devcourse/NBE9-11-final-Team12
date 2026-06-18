@@ -1,20 +1,21 @@
 package com.sisibibi.api.domain.chat.service;
 
 import com.sisibibi.api.domain.chat.dto.response.ChatEventRes;
+import com.sisibibi.api.global.websocket.RoomWebSocketDestinations;
+import com.sisibibi.api.global.websocket.WebSocketEventPublisher;
 import lombok.RequiredArgsConstructor;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
 public class StompChatMessagePublisher implements ChatMessagePublisher {
 
-    private final SimpMessagingTemplate messagingTemplate;
+    private final WebSocketEventPublisher webSocketEventPublisher;
 
     @Override
     public void publish(ChatEventRes event) {
-        messagingTemplate.convertAndSend(
-                "/topic/rooms/" + event.roomId() + "/chat/messages",
+        webSocketEventPublisher.publish(
+                RoomWebSocketDestinations.chatMessages(event.roomId()),
                 event
         );
     }

@@ -7,15 +7,18 @@ import com.sisibibi.api.domain.room.dto.response.RoomDetailRes;
 import com.sisibibi.api.domain.room.dto.response.RoomSummaryRes;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
-import com.sisibibi.api.domain.room.dto.event.RoomClosedEvent;
+import com.sisibibi.api.domain.room.dto.event.RoomClosedEventPayload;
+import com.sisibibi.api.domain.room.dto.event.RoomEventType;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.topic.entity.Topic;
 import com.sisibibi.api.domain.topic.entity.TopicStatus;
 import com.sisibibi.api.domain.topic.repository.TopicRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
+import com.sisibibi.api.global.websocket.AfterCommitWebSocketEventPublisher;
+import com.sisibibi.api.global.websocket.RoomWebSocketDestinations;
+import com.sisibibi.api.global.websocket.WebSocketEventEnvelope;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,7 +35,7 @@ public class RoomService {
 
   private final RoomRepository roomRepository;
   private final TopicRepository topicRepository;
-  private final ApplicationEventPublisher eventPublisher;
+  private final AfterCommitWebSocketEventPublisher webSocketEventPublisher;
 
 
 
@@ -91,7 +94,7 @@ public class RoomService {
 
     for (Room room : expiredRooms) {
       room.close(now);
-      eventPublisher.publishEvent(new RoomClosedEvent(room.getId()));
+      publishRoomClosedAfterCommit(room);
     }
 
     return expiredRooms.size();
@@ -139,10 +142,23 @@ public class RoomService {
     Room room = roomRepository.findById(roomId)
         .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
 
-    room.close(LocalDateTime.now());
+    if (room.getStatus() == RoomStatus.CLOSED) {
+      return;
+    }
 
-    eventPublisher.publishEvent(new RoomClosedEvent(room.getId()));
+    room.close(LocalDateTime.now());
+    publishRoomClosedAfterCommit(room);
   }
 
+  private void publishRoomClosedAfterCommit(Room room) {
+    webSocketEventPublisher.publishAfterCommit(
+        RoomWebSocketDestinations.roomEvents(room.getId()),
+        WebSocketEventEnvelope.of(
+            RoomEventType.ROOM_CLOSED,
+            room.getId(),
+            RoomClosedEventPayload.from(room)
+        )
+    );
+  }
 
 }

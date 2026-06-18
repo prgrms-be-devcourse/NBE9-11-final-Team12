@@ -90,6 +90,30 @@ class WebSocketAuthChannelInterceptorTest {
     }
 
     @Test
+    void preSend_allowsSubscribeToWhitelistedRoomTopics_whenUserJoinedRoom() {
+        AuthPrincipal principal = new AuthPrincipal(2L, "user@example.com", "USER");
+        Principal user = authenticatedPrincipal(principal);
+        given(roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
+                1L,
+                2L,
+                RoomParticipantStatus.JOINED
+        )).willReturn(true);
+
+        assertThat(interceptor.preSend(
+                message(StompCommand.SUBSCRIBE, "/topic/rooms/1/stage/events", user, null),
+                null
+        )).isNotNull();
+        assertThat(interceptor.preSend(
+                message(StompCommand.SUBSCRIBE, "/topic/rooms/1/participants/events", user, null),
+                null
+        )).isNotNull();
+        assertThat(interceptor.preSend(
+                message(StompCommand.SUBSCRIBE, "/topic/rooms/1/room/events", user, null),
+                null
+        )).isNotNull();
+    }
+
+    @Test
     void preSend_rejectsSubscribe_whenUserHasNotJoinedRoom() {
         AuthPrincipal principal = new AuthPrincipal(2L, "user@example.com", "USER");
         Principal user = authenticatedPrincipal(principal);
@@ -102,6 +126,21 @@ class WebSocketAuthChannelInterceptorTest {
 
         assertThatThrownBy(() -> interceptor.preSend(message, null))
                 .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void preSend_rejectsSubscribeToUnknownRoomTopic() {
+        AuthPrincipal principal = new AuthPrincipal(2L, "user@example.com", "USER");
+        Principal user = authenticatedPrincipal(principal);
+        Message<byte[]> message = message(StompCommand.SUBSCRIBE, "/topic/rooms/1/events", user, null);
+
+        assertThatThrownBy(() -> interceptor.preSend(message, null))
+                .isInstanceOf(AccessDeniedException.class);
+        verify(roomParticipantRepository, never()).existsByRoomIdAndUserIdAndStatus(
+                1L,
+                2L,
+                RoomParticipantStatus.JOINED
+        );
     }
 
     private Message<byte[]> message(

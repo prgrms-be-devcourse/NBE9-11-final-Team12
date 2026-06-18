@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.room.service;
 
-import com.sisibibi.api.domain.room.dto.event.RoomClosedEvent;
+import com.sisibibi.api.domain.room.dto.event.RoomClosedEventPayload;
+import com.sisibibi.api.domain.room.dto.event.RoomEventType;
 import com.sisibibi.api.domain.room.dto.request.CreateRoomReq;
 import com.sisibibi.api.domain.room.dto.request.UpdateRoomReq;
 import com.sisibibi.api.domain.room.dto.response.CreateRoomRes;
@@ -13,7 +14,9 @@ import com.sisibibi.api.domain.topic.entity.Topic;
 import com.sisibibi.api.domain.topic.repository.TopicRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
-import org.springframework.context.ApplicationEventPublisher;
+import com.sisibibi.api.global.websocket.AfterCommitWebSocketEventPublisher;
+import com.sisibibi.api.global.websocket.RoomWebSocketDestinations;
+import com.sisibibi.api.global.websocket.WebSocketEventEnvelope;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -21,6 +24,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Pageable;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -44,7 +48,7 @@ class RoomServiceTest {
   private RoomService roomService;
 
   @Mock
-  private ApplicationEventPublisher eventPublisher;
+  private AfterCommitWebSocketEventPublisher webSocketEventPublisher;
 
   @Test
   void createRoom_savesOpenRoom_whenTopicIsApproved() {
@@ -149,6 +153,8 @@ class RoomServiceTest {
         LocalDateTime.of(2026, 6, 15, 11, 10),
         LocalDateTime.of(2026, 6, 15, 11, 15)
     );
+    ReflectionTestUtils.setField(firstRoom, "id", 10L);
+    ReflectionTestUtils.setField(secondRoom, "id", 20L);
 
     given(roomRepository.findByStatusAndEndedAtLessThanEqual(
         eq(RoomStatus.OPEN),
@@ -169,7 +175,14 @@ class RoomServiceTest {
         eq(now),
         any(Pageable.class)
     );
-    verify(eventPublisher, times(2)).publishEvent(any(RoomClosedEvent.class));
+    verify(webSocketEventPublisher).publishAfterCommit(
+        eq(RoomWebSocketDestinations.roomEvents(10L)),
+        any(WebSocketEventEnvelope.class)
+    );
+    verify(webSocketEventPublisher).publishAfterCommit(
+        eq(RoomWebSocketDestinations.roomEvents(20L)),
+        any(WebSocketEventEnvelope.class)
+    );
   }
 
   @Test
@@ -191,7 +204,7 @@ class RoomServiceTest {
         eq(now),
         any(Pageable.class)
     );
-    verify(eventPublisher, never()).publishEvent(any(RoomClosedEvent.class));
+    verify(webSocketEventPublisher, never()).publishAfterCommit(any(), any());
   }
   @Test
   void getRooms_returnsRoomsOrderedByCreatedAtDesc() {
@@ -352,6 +365,7 @@ class RoomServiceTest {
     LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
     LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
     Room room = Room.open(1L, "삭제 대상 토론방", firstStartedAt, firstEndedAt);
+    ReflectionTestUtils.setField(room, "id", 10L);
 
     given(roomRepository.findById(10L)).willReturn(Optional.of(room));
 
@@ -361,6 +375,16 @@ class RoomServiceTest {
     assertThat(room.getEndedAt()).isNotNull();
 
     verify(roomRepository).findById(10L);
+    ArgumentCaptor<WebSocketEventEnvelope> eventCaptor =
+        ArgumentCaptor.forClass(WebSocketEventEnvelope.class);
+    verify(webSocketEventPublisher).publishAfterCommit(
+        eq(RoomWebSocketDestinations.roomEvents(10L)),
+        eventCaptor.capture()
+    );
+    assertThat(eventCaptor.getValue().eventType()).isEqualTo(RoomEventType.ROOM_CLOSED.name());
+    assertThat(eventCaptor.getValue().roomId()).isEqualTo(10L);
+    assertThat(eventCaptor.getValue().data())
+        .isInstanceOf(RoomClosedEventPayload.class);
   }
 
   @Test

@@ -21,18 +21,10 @@ import java.security.Principal;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Component
 @RequiredArgsConstructor
 public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
-
-    private static final Pattern CHAT_DESTINATION_PATTERN =
-            Pattern.compile("^/topic/rooms/(\\d+)/chat/messages$");
-
-    private static final Pattern ROOM_EVENT_DESTINATION_PATTERN =
-        Pattern.compile("^/topic/rooms/(\\d+)/events$");
 
     private final RoomParticipantRepository roomParticipantRepository;
 
@@ -57,8 +49,7 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
 
         if (command == StompCommand.SUBSCRIBE) {
             AuthPrincipal principal = requirePrincipal(accessor);
-            validateChatDestinationAccess(principal, accessor.getDestination());
-            validateRoomEventDestinationAccess(principal, accessor.getDestination());
+            validateRoomDestinationAccess(principal, accessor.getDestination());
             return MessageBuilder.createMessage(message.getPayload(), accessor.getMessageHeaders());
         }
 
@@ -109,43 +100,24 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
         );
     }
 
-    private void validateChatDestinationAccess(AuthPrincipal principal, String destination) {
+    private void validateRoomDestinationAccess(AuthPrincipal principal, String destination) {
         if (destination == null) {
             return;
         }
 
-        Matcher matcher = CHAT_DESTINATION_PATTERN.matcher(destination);
-        if (!matcher.matches()) {
+        Optional<Long> allowedRoomId =
+                RoomWebSocketDestinations.findAllowedRoomTopicId(destination);
+        if (allowedRoomId.isEmpty()) {
+            if (RoomWebSocketDestinations.isRoomTopic(destination)) {
+                throw new AccessDeniedException(ErrorCode.FORBIDDEN.name());
+            }
             return;
         }
 
-        Long roomId = Long.valueOf(matcher.group(1));
         boolean joined = roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
-                roomId,
+                allowedRoomId.get(),
                 principal.userId(),
                 RoomParticipantStatus.JOINED
-        );
-
-        if (!joined) {
-            throw new AccessDeniedException(ErrorCode.ROOM_PARTICIPATION_REQUIRED.name());
-        }
-    }
-
-    private void validateRoomEventDestinationAccess(AuthPrincipal principal, String destination) {
-        if (destination == null) {
-            return;
-        }
-
-        Matcher matcher = ROOM_EVENT_DESTINATION_PATTERN.matcher(destination);
-        if (!matcher.matches()) {
-            return;
-        }
-
-        Long roomId = Long.valueOf(matcher.group(1));
-        boolean joined = roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
-            roomId,
-            principal.userId(),
-            RoomParticipantStatus.JOINED
         );
 
         if (!joined) {
