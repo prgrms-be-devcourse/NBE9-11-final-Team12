@@ -3,6 +3,7 @@ package com.sisibibi.api.domain.speech.service;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
+import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.domain.user.repository.UserRepository;
@@ -30,7 +31,11 @@ public class SpeakingQueuePersistenceService {
     private final UserRepository userRepository;
 
     @Transactional
-    public SpeakingQueue createWaitingRequest(Long roomId, Long userId) {
+    public SpeakingQueue createWaitingRequest(
+            Long roomId,
+            Long userId,
+            SpeechStance stance
+    ) {
         roomRepository.findByIdForUpdate(roomId)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
 
@@ -48,6 +53,7 @@ public class SpeakingQueuePersistenceService {
                 roomId,
                 userId,
                 nextQueueOrder,
+                stance,
                 LocalDateTime.now()
         );
         return speakingQueueRepository.save(speakingQueue);

@@ -11,6 +11,7 @@ import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.time.LocalDateTime;
+import java.util.Objects;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -28,6 +29,10 @@ import lombok.NoArgsConstructor;
                 @Index(
                         name = "idx_speaking_queue_room_user_status",
                         columnList = "room_id, user_id, status"
+                ),
+                @Index(
+                        name = "idx_speaking_queue_room_status_stance_order",
+                        columnList = "room_id, status, stance, queue_order"
                 ),
                 @Index(
                         name = "idx_speaking_queue_status_expires_at",
@@ -64,6 +69,10 @@ public class SpeakingQueue {
     private Boolean activeRequest;
 
     @Enumerated(EnumType.STRING)
+    @Column(length = 10)
+    private SpeechStance stance;
+
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private SpeakingQueueStatus status;
 
@@ -82,10 +91,12 @@ public class SpeakingQueue {
     private SpeakingQueue(
             Long roomId,
             Long userId,
+            SpeechStance stance,
             LocalDateTime requestedAt
     ) {
         this.roomId = roomId;
         this.userId = userId;
+        this.stance = stance;
         this.activeRequest = true;
         this.status = SpeakingQueueStatus.WAITING;
         this.requestedAt = requestedAt;
@@ -96,7 +107,21 @@ public class SpeakingQueue {
             Long userId,
             LocalDateTime requestedAt
     ) {
-        return new SpeakingQueue(roomId, userId, requestedAt);
+        return new SpeakingQueue(roomId, userId, null, requestedAt);
+    }
+
+    public static SpeakingQueue waiting(
+            Long roomId,
+            Long userId,
+            SpeechStance stance,
+            LocalDateTime requestedAt
+    ) {
+        return new SpeakingQueue(
+                roomId,
+                userId,
+                Objects.requireNonNull(stance, "Speaking stance is required."),
+                requestedAt
+        );
     }
 
     public static SpeakingQueue waiting(
@@ -105,7 +130,19 @@ public class SpeakingQueue {
             int queueOrder,
             LocalDateTime requestedAt
     ) {
-        SpeakingQueue speakingQueue = new SpeakingQueue(roomId, userId, requestedAt);
+        SpeakingQueue speakingQueue = new SpeakingQueue(roomId, userId, null, requestedAt);
+        speakingQueue.queueOrder = queueOrder;
+        return speakingQueue;
+    }
+
+    public static SpeakingQueue waiting(
+            Long roomId,
+            Long userId,
+            int queueOrder,
+            SpeechStance stance,
+            LocalDateTime requestedAt
+    ) {
+        SpeakingQueue speakingQueue = new SpeakingQueue(roomId, userId, stance, requestedAt);
         speakingQueue.queueOrder = queueOrder;
         return speakingQueue;
     }

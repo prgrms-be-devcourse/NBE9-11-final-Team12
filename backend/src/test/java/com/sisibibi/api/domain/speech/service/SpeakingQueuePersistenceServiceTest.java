@@ -12,6 +12,7 @@ import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
+import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import com.sisibibi.api.global.exception.CustomException;
@@ -70,16 +71,18 @@ class SpeakingQueuePersistenceServiceTest {
                 .willAnswer(invocation -> invocation.getArgument(0));
 
         SpeakingQueue saved =
-                speakingQueuePersistenceService.createWaitingRequest(1L, 7L);
+                speakingQueuePersistenceService.createWaitingRequest(1L, 7L, SpeechStance.PRO);
 
         assertThat(saved.getQueueOrder()).isEqualTo(3);
         assertThat(saved.getStatus()).isEqualTo(SpeakingQueueStatus.WAITING);
+        assertThat(saved.getStance()).isEqualTo(SpeechStance.PRO);
 
         ArgumentCaptor<SpeakingQueue> captor =
                 ArgumentCaptor.forClass(SpeakingQueue.class);
         verify(speakingQueueRepository).save(captor.capture());
         assertThat(captor.getValue().getRoomId()).isEqualTo(1L);
         assertThat(captor.getValue().getUserId()).isEqualTo(7L);
+        assertThat(captor.getValue().getStance()).isEqualTo(SpeechStance.PRO);
         assertThat(captor.getValue().getQueueOrder()).isEqualTo(3);
     }
 
@@ -94,7 +97,7 @@ class SpeakingQueuePersistenceServiceTest {
         )).willReturn(true);
 
         assertThatThrownBy(() ->
-                speakingQueuePersistenceService.createWaitingRequest(1L, 7L))
+                speakingQueuePersistenceService.createWaitingRequest(1L, 7L, SpeechStance.PRO))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.SPEAKING_REQUEST_ALREADY_EXISTS);
@@ -108,7 +111,7 @@ class SpeakingQueuePersistenceServiceTest {
         given(roomRepository.findByIdForUpdate(1L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() ->
-                speakingQueuePersistenceService.createWaitingRequest(1L, 7L))
+                speakingQueuePersistenceService.createWaitingRequest(1L, 7L, SpeechStance.PRO))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
@@ -587,6 +590,11 @@ class SpeakingQueuePersistenceServiceTest {
             @Override
             public String getNickname() {
                 return "logic_hunter";
+            }
+
+            @Override
+            public SpeechStance getStance() {
+                return SpeechStance.PRO;
             }
 
             @Override

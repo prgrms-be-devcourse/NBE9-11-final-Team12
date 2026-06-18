@@ -38,6 +38,7 @@ public interface SpeakingQueueRepository extends JpaRepository<SpeakingQueue, Lo
     @Query("""
             select queue.userId as userId,
                    speaker.nickname as nickname,
+                   queue.stance as stance,
                    queue.queueOrder as queueOrder,
                    queue.assignedAt as assignedAt,
                    queue.expiresAt as expiresAt
