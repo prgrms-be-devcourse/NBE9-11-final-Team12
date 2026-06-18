@@ -1,7 +1,7 @@
-package com.sisibibi.api.domain.speech.report.dto.request;
+package com.sisibibi.api.domain.speechreport.dto.request;
 
-import com.sisibibi.api.domain.speech.report.dto.command.SpeechReportCreateCommand;
-import com.sisibibi.api.domain.speech.report.entity.SpeechReportReason;
+import com.sisibibi.api.domain.speechreport.dto.command.SpeechReportCreateCommand;
+import com.sisibibi.api.domain.speechreport.entity.SpeechReportReason;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
