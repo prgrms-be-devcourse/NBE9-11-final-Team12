@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.chat.service;
 
 import com.sisibibi.api.domain.chat.dto.response.ChatEventRes;
+import com.sisibibi.api.domain.chat.dto.response.ChatMessageCursorPageRes;
 import com.sisibibi.api.domain.chat.entity.ChatEventType;
 import com.sisibibi.api.domain.chat.entity.ChatMessage;
 import com.sisibibi.api.domain.chat.repository.ChatMessageRepository;
@@ -16,6 +17,7 @@ import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.moderation.ProfanityDetector;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -206,6 +208,110 @@ class ChatServiceTest {
         verify(userRepository, never()).findById(2L);
     }
 
+    @Test
+    void getMessages_returnsCursorPageAndExcludesExtraItem() {
+        ChatMessage first = message(10L, 1L, 2L, "tester", "latest");
+        ChatMessage second = message(9L, 1L, 3L, "other", "previous");
+        ChatMessage extra = message(8L, 1L, 4L, "next", "extra");
+        given(roomRepository.existsById(1L)).willReturn(true);
+        given(roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
+                1L,
+                2L,
+                RoomParticipantStatus.JOINED
+        )).willReturn(true);
+        given(chatMessageRepository.findVisibleByRoomIdBeforeCursor(
+                org.mockito.ArgumentMatchers.eq(1L),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.any()
+        )).willReturn(List.of(first, second, extra));
+
+        ChatMessageCursorPageRes response = chatService.getMessages(1L, 2L, null, 2);
+
+        assertThat(response.items()).extracting("messageId").containsExactly(10L, 9L);
+        assertThat(response.nextCursor()).isEqualTo(9L);
+        assertThat(response.hasNext()).isTrue();
+    }
+
+    @Test
+    void getMessages_throwsRoomNotFound_whenRoomDoesNotExist() {
+        given(roomRepository.existsById(1L)).willReturn(false);
+
+        assertThatThrownBy(() -> chatService.getMessages(1L, 2L, null, 50))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
+    }
+
+    @Test
+    void getMessages_throwsParticipationRequired_whenUserHasNotJoinedRoom() {
+        given(roomRepository.existsById(1L)).willReturn(true);
+        given(roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
+                1L,
+                2L,
+                RoomParticipantStatus.JOINED
+        )).willReturn(false);
+
+        assertThatThrownBy(() -> chatService.getMessages(1L, 2L, null, 50))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ROOM_PARTICIPATION_REQUIRED);
+    }
+
+    @Test
+    void deleteMessage_softDeletesOwnMessageAndSchedulesDeletedEvent() {
+        ChatMessage message = message(10L, 1L, 2L, "tester", "hello");
+        given(roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
+                1L,
+                2L,
+                RoomParticipantStatus.JOINED
+        )).willReturn(true);
+        given(chatMessageRepository.findByIdAndRoomIdAndDeletedFalse(10L, 1L))
+                .willReturn(Optional.of(message));
+
+        chatService.deleteMessage(1L, 10L, 2L);
+
+        assertThat(message.isDeleted()).isTrue();
+        assertThat(message.getDeletedBy()).isEqualTo(2L);
+        assertThat(message.getDeletedAt()).isNotNull();
+        ArgumentCaptor<ChatEventRes> eventCaptor = ArgumentCaptor.forClass(ChatEventRes.class);
+        verify(afterCommitChatMessagePublisher).publishAfterCommit(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().type()).isEqualTo(ChatEventType.MESSAGE_DELETED);
+        assertThat(eventCaptor.getValue().content()).isNull();
+    }
+
+    @Test
+    void deleteMessage_throwsForbidden_whenUserIsNotAuthor() {
+        ChatMessage message = message(10L, 1L, 9L, "other", "hello");
+        given(roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
+                1L,
+                2L,
+                RoomParticipantStatus.JOINED
+        )).willReturn(true);
+        given(chatMessageRepository.findByIdAndRoomIdAndDeletedFalse(10L, 1L))
+                .willReturn(Optional.of(message));
+
+        assertThatThrownBy(() -> chatService.deleteMessage(1L, 10L, 2L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FORBIDDEN);
+    }
+
+    @Test
+    void deleteMessage_throwsMessageNotFound_whenMessageDoesNotExist() {
+        given(roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
+                1L,
+                2L,
+                RoomParticipantStatus.JOINED
+        )).willReturn(true);
+        given(chatMessageRepository.findByIdAndRoomIdAndDeletedFalse(10L, 1L))
+                .willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> chatService.deleteMessage(1L, 10L, 2L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CHAT_MESSAGE_NOT_FOUND);
+    }
+
     private User user(UserStatus status) {
         User user = org.mockito.Mockito.mock(User.class);
         given(user.getStatus()).willReturn(status);
@@ -216,5 +322,12 @@ class ChatServiceTest {
         Room room = org.mockito.Mockito.mock(Room.class);
         given(room.getStatus()).willReturn(status);
         return room;
+    }
+
+    private ChatMessage message(Long id, Long roomId, Long userId, String nickname, String content) {
+        ChatMessage message = ChatMessage.create(roomId, userId, nickname, content);
+        ReflectionTestUtils.setField(message, "id", id);
+        ReflectionTestUtils.setField(message, "createdAt", LocalDateTime.of(2026, 6, 16, 10, 0));
+        return message;
     }
 }

@@ -73,4 +73,14 @@ public class ChatMessage {
     ) {
         return new ChatMessage(roomId, userId, nicknameSnapshot, content);
     }
+
+    public void softDelete(Long deletedBy, LocalDateTime deletedAt) {
+        if (this.deleted) {
+            return;
+        }
+
+        this.deleted = true;
+        this.deletedBy = deletedBy;
+        this.deletedAt = deletedAt;
+    }
 }

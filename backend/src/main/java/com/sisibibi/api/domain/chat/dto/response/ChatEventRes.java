@@ -27,4 +27,17 @@ public record ChatEventRes(
                 message.getDeletedAt()
         );
     }
+
+    public static ChatEventRes deleted(ChatMessage message) {
+        return new ChatEventRes(
+                ChatEventType.MESSAGE_DELETED,
+                message.getId(),
+                message.getRoomId(),
+                message.getUserId(),
+                message.getNicknameSnapshot(),
+                null,
+                message.getCreatedAt(),
+                message.getDeletedAt()
+        );
+    }
 }
