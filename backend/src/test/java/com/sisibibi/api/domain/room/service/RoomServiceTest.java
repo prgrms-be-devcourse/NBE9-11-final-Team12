@@ -20,6 +20,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -133,8 +134,11 @@ class RoomServiceTest {
         LocalDateTime.of(2026, 6, 15, 11, 15)
     );
 
-    given(roomRepository.findByStatusAndEndedAtLessThanEqual(RoomStatus.OPEN, now))
-        .willReturn(List.of(firstRoom, secondRoom));
+    given(roomRepository.findByStatusAndEndedAtLessThanEqual(
+        eq(RoomStatus.OPEN),
+        eq(now),
+        any(Pageable.class)
+    )).willReturn(List.of(firstRoom, secondRoom));
 
     int closedCount = roomService.closeExpiredRooms(now);
 
@@ -144,7 +148,11 @@ class RoomServiceTest {
     assertThat(secondRoom.getStatus()).isEqualTo(RoomStatus.CLOSED);
     assertThat(secondRoom.getEndedAt()).isEqualTo(now);
 
-    verify(roomRepository).findByStatusAndEndedAtLessThanEqual(RoomStatus.OPEN, now);
+    verify(roomRepository).findByStatusAndEndedAtLessThanEqual(
+        eq(RoomStatus.OPEN),
+        eq(now),
+        any(Pageable.class)
+    );
     verify(eventPublisher, times(2)).publishEvent(any(RoomClosedEvent.class));
   }
 
@@ -152,14 +160,21 @@ class RoomServiceTest {
   void closeExpiredRooms_returnsZeroAndDoesNotPublishEvent_whenExpiredRoomDoesNotExist() {
     LocalDateTime now = LocalDateTime.of(2026, 6, 15, 12, 0);
 
-    given(roomRepository.findByStatusAndEndedAtLessThanEqual(RoomStatus.OPEN, now))
-        .willReturn(List.of());
+    given(roomRepository.findByStatusAndEndedAtLessThanEqual(
+        eq(RoomStatus.OPEN),
+        eq(now),
+        any(Pageable.class)
+    )).willReturn(List.of());
 
     int closedCount = roomService.closeExpiredRooms(now);
 
     assertThat(closedCount).isZero();
 
-    verify(roomRepository).findByStatusAndEndedAtLessThanEqual(RoomStatus.OPEN, now);
+    verify(roomRepository).findByStatusAndEndedAtLessThanEqual(
+        eq(RoomStatus.OPEN),
+        eq(now),
+        any(Pageable.class)
+    );
     verify(eventPublisher, never()).publishEvent(any(RoomClosedEvent.class));
   }
   @Test

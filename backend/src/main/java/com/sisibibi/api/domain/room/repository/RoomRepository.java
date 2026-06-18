@@ -3,6 +3,7 @@ package com.sisibibi.api.domain.room.repository;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
@@ -27,5 +28,9 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
 
   Optional<Room> findByTopicId(Long topicId);
 
-  List<Room> findByStatusAndEndedAtLessThanEqual(RoomStatus status, LocalDateTime now);
+  List<Room> findByStatusAndEndedAtLessThanEqual(
+      RoomStatus status,
+      LocalDateTime now,
+      Pageable pageable
+  );
 }

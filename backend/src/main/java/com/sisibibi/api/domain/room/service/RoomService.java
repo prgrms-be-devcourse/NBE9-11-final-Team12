@@ -16,6 +16,7 @@ import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -84,7 +85,8 @@ public class RoomService {
   public int closeExpiredRooms(LocalDateTime now) {
     List<Room> expiredRooms = roomRepository.findByStatusAndEndedAtLessThanEqual(
         RoomStatus.OPEN,
-        now
+        now,
+        PageRequest.of(0, 100)
     );
 
     for (Room room : expiredRooms) {
