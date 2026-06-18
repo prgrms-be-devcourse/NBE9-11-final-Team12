@@ -2,6 +2,7 @@ package com.sisibibi.api.domain.speech.repository;
 
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
+import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import java.time.LocalDateTime;
 import java.util.Collection;
@@ -28,6 +29,17 @@ public interface SpeakingQueueRepository extends JpaRepository<SpeakingQueue, Lo
     Optional<SpeakingQueue> findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
             Long roomId,
             SpeakingQueueStatus status
+    );
+
+    Optional<SpeakingQueue> findFirstByRoomIdAndStatusAndStanceOrderByQueueOrderAsc(
+            Long roomId,
+            SpeakingQueueStatus status,
+            SpeechStance stance
+    );
+
+    List<SpeakingQueue> findTop3ByRoomIdAndStatusInAndStanceIsNotNullOrderByAssignedAtDesc(
+            Long roomId,
+            Collection<SpeakingQueueStatus> statuses
     );
 
     Optional<SpeakingQueue> findByRoomIdAndStatus(

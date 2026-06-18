@@ -25,6 +25,9 @@ public class SpeakingQueuePersistenceService {
 
     private static final List<SpeakingQueueStatus> ACTIVE_STATUSES =
             List.of(SpeakingQueueStatus.WAITING, SpeakingQueueStatus.ASSIGNED);
+    private static final List<SpeakingQueueStatus> ASSIGNMENT_HISTORY_STATUSES =
+            List.of(SpeakingQueueStatus.COMPLETED);
+    private static final int BALANCE_STREAK_THRESHOLD = 3;
 
     private final SpeakingQueueRepository speakingQueueRepository;
     private final RoomRepository roomRepository;
@@ -132,12 +135,7 @@ public class SpeakingQueuePersistenceService {
             return Optional.empty();
         }
 
-        Optional<SpeakingQueue> waitingRequest =
-                speakingQueueRepository
-                        .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
-                                roomId,
-                                SpeakingQueueStatus.WAITING
-                        );
+        Optional<SpeakingQueue> waitingRequest = findNextWaitingRequest(roomId);
 
         if (waitingRequest.isEmpty()) {
             return Optional.empty();
@@ -146,6 +144,53 @@ public class SpeakingQueuePersistenceService {
         SpeakingQueue nextSpeaker = waitingRequest.get();
         nextSpeaker.assign(assignedAt, expiresAt);
         return Optional.of(nextSpeaker);
+    }
+
+    private Optional<SpeakingQueue> findNextWaitingRequest(Long roomId) {
+        Optional<SpeakingQueue> balancedRequest = findOppositeStanceWaitingRequest(roomId);
+        if (balancedRequest.isPresent()) {
+            return balancedRequest;
+        }
+
+        return speakingQueueRepository
+                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+                        roomId,
+                        SpeakingQueueStatus.WAITING
+                );
+    }
+
+    private Optional<SpeakingQueue> findOppositeStanceWaitingRequest(Long roomId) {
+        List<SpeakingQueue> recentAssignments =
+                speakingQueueRepository
+                        .findTop3ByRoomIdAndStatusInAndStanceIsNotNullOrderByAssignedAtDesc(
+                                roomId,
+                                ASSIGNMENT_HISTORY_STATUSES
+                        );
+
+        if (recentAssignments.size() < BALANCE_STREAK_THRESHOLD) {
+            return Optional.empty();
+        }
+
+        SpeechStance recentStance = recentAssignments.getFirst().getStance();
+        boolean sameStanceStreak = recentAssignments.stream()
+                .allMatch(assignment -> recentStance == assignment.getStance());
+        if (!sameStanceStreak) {
+            return Optional.empty();
+        }
+
+        return speakingQueueRepository
+                .findFirstByRoomIdAndStatusAndStanceOrderByQueueOrderAsc(
+                        roomId,
+                        SpeakingQueueStatus.WAITING,
+                        oppositeOf(recentStance)
+                );
+    }
+
+    private SpeechStance oppositeOf(SpeechStance stance) {
+        if (stance == SpeechStance.PRO) {
+            return SpeechStance.CON;
+        }
+        return SpeechStance.PRO;
     }
 
     @Transactional

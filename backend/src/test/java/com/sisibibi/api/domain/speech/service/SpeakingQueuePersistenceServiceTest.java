@@ -263,6 +263,7 @@ class SpeakingQueuePersistenceServiceTest {
                 1L,
                 7L,
                 15,
+                SpeechStance.PRO,
                 java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
         );
         given(roomRepository.findByIdForUpdate(1L))
@@ -295,9 +296,161 @@ class SpeakingQueuePersistenceServiceTest {
         order.verify(speakingQueueRepository)
                 .existsByRoomIdAndStatus(1L, SpeakingQueueStatus.ASSIGNED);
         order.verify(speakingQueueRepository)
+                .findTop3ByRoomIdAndStatusInAndStanceIsNotNullOrderByAssignedAtDesc(
+                        1L,
+                        List.of(SpeakingQueueStatus.COMPLETED)
+                );
+        order.verify(speakingQueueRepository)
                 .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
                         1L,
                         SpeakingQueueStatus.WAITING
+                );
+    }
+
+    @Test
+    void assignNextSpeaker_prioritizesOppositeStanceAfterThreeSameStanceAssignments() {
+        SpeakingQueue oppositeWaiting = SpeakingQueue.waiting(
+                1L,
+                8L,
+                30,
+                SpeechStance.CON,
+                java.time.LocalDateTime.of(2026, 6, 12, 11, 40)
+        );
+        given(roomRepository.findByIdForUpdate(1L))
+            .willReturn(Optional.of(openRoom(1L, "토론방")));
+        given(speakingQueueRepository.existsByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        )).willReturn(false);
+        given(speakingQueueRepository
+                .findTop3ByRoomIdAndStatusInAndStanceIsNotNullOrderByAssignedAtDesc(
+                        1L,
+                        List.of(SpeakingQueueStatus.COMPLETED)
+                ))
+                .willReturn(List.of(
+                        completedAssignment(10L, 10, SpeechStance.PRO, 11, 35),
+                        completedAssignment(11L, 11, SpeechStance.PRO, 11, 30),
+                        completedAssignment(12L, 12, SpeechStance.PRO, 11, 25)
+                ));
+        given(speakingQueueRepository
+                .findFirstByRoomIdAndStatusAndStanceOrderByQueueOrderAsc(
+                        1L,
+                        SpeakingQueueStatus.WAITING,
+                        SpeechStance.CON
+                ))
+                .willReturn(Optional.of(oppositeWaiting));
+
+        Optional<SpeakingQueue> assigned =
+                speakingQueuePersistenceService.assignNextSpeaker(
+                        1L,
+                        ASSIGNED_AT,
+                        EXPIRES_AT
+                );
+
+        assertThat(assigned).contains(oppositeWaiting);
+        assertThat(oppositeWaiting.getStatus()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
+        verify(speakingQueueRepository, never())
+                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+                        1L,
+                        SpeakingQueueStatus.WAITING
+                );
+    }
+
+    @Test
+    void assignNextSpeaker_fallsBackToFirstWaitingWhenOppositeStanceDoesNotExist() {
+        SpeakingQueue firstWaiting = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                SpeechStance.PRO,
+                java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        given(roomRepository.findByIdForUpdate(1L))
+            .willReturn(Optional.of(openRoom(1L, "토론방")));
+        given(speakingQueueRepository.existsByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        )).willReturn(false);
+        given(speakingQueueRepository
+                .findTop3ByRoomIdAndStatusInAndStanceIsNotNullOrderByAssignedAtDesc(
+                        1L,
+                        List.of(SpeakingQueueStatus.COMPLETED)
+                ))
+                .willReturn(List.of(
+                        completedAssignment(10L, 10, SpeechStance.PRO, 11, 35),
+                        completedAssignment(11L, 11, SpeechStance.PRO, 11, 30),
+                        completedAssignment(12L, 12, SpeechStance.PRO, 11, 25)
+                ));
+        given(speakingQueueRepository
+                .findFirstByRoomIdAndStatusAndStanceOrderByQueueOrderAsc(
+                        1L,
+                        SpeakingQueueStatus.WAITING,
+                        SpeechStance.CON
+                ))
+                .willReturn(Optional.empty());
+        given(speakingQueueRepository
+                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+                        1L,
+                        SpeakingQueueStatus.WAITING
+                ))
+                .willReturn(Optional.of(firstWaiting));
+
+        Optional<SpeakingQueue> assigned =
+                speakingQueuePersistenceService.assignNextSpeaker(
+                        1L,
+                        ASSIGNED_AT,
+                        EXPIRES_AT
+                );
+
+        assertThat(assigned).contains(firstWaiting);
+        assertThat(firstWaiting.getStatus()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
+    }
+
+    @Test
+    void assignNextSpeaker_usesFirstWaitingWhenRecentAssignmentsAreMixed() {
+        SpeakingQueue firstWaiting = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                SpeechStance.PRO,
+                java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        given(roomRepository.findByIdForUpdate(1L))
+            .willReturn(Optional.of(openRoom(1L, "토론방")));
+        given(speakingQueueRepository.existsByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        )).willReturn(false);
+        given(speakingQueueRepository
+                .findTop3ByRoomIdAndStatusInAndStanceIsNotNullOrderByAssignedAtDesc(
+                        1L,
+                        List.of(SpeakingQueueStatus.COMPLETED)
+                ))
+                .willReturn(List.of(
+                        completedAssignment(10L, 10, SpeechStance.PRO, 11, 35),
+                        completedAssignment(11L, 11, SpeechStance.CON, 11, 30),
+                        completedAssignment(12L, 12, SpeechStance.PRO, 11, 25)
+                ));
+        given(speakingQueueRepository
+                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+                        1L,
+                        SpeakingQueueStatus.WAITING
+                ))
+                .willReturn(Optional.of(firstWaiting));
+
+        Optional<SpeakingQueue> assigned =
+                speakingQueuePersistenceService.assignNextSpeaker(
+                        1L,
+                        ASSIGNED_AT,
+                        EXPIRES_AT
+                );
+
+        assertThat(assigned).contains(firstWaiting);
+        verify(speakingQueueRepository, never())
+                .findFirstByRoomIdAndStatusAndStanceOrderByQueueOrderAsc(
+                        1L,
+                        SpeakingQueueStatus.WAITING,
+                        SpeechStance.CON
                 );
     }
 
@@ -307,6 +460,7 @@ class SpeakingQueuePersistenceServiceTest {
                 1L,
                 7L,
                 15,
+                SpeechStance.PRO,
                 java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
         );
         given(roomRepository.findByIdForUpdate(1L))
@@ -578,6 +732,26 @@ class SpeakingQueuePersistenceServiceTest {
                 java.time.LocalDateTime.of(2026, 6, 12, 11, 31),
                 java.time.LocalDateTime.of(2026, 6, 12, 11, 33)
         );
+    }
+
+    private SpeakingQueue completedAssignment(
+            Long userId,
+            int queueOrder,
+            SpeechStance stance,
+            int hour,
+            int minute
+    ) {
+        LocalDateTime assignedAt = LocalDateTime.of(2026, 6, 12, hour, minute);
+        SpeakingQueue speakingQueue = SpeakingQueue.waiting(
+                1L,
+                userId,
+                queueOrder,
+                stance,
+                assignedAt.minusMinutes(1)
+        );
+        speakingQueue.assign(assignedAt, assignedAt.plusMinutes(3));
+        speakingQueue.complete();
+        return speakingQueue;
     }
 
     private CurrentSpeakerProjection currentSpeakerProjection() {
