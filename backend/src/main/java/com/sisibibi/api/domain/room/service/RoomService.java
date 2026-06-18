@@ -1,5 +1,6 @@
 package com.sisibibi.api.domain.room.service;
 
+import com.sisibibi.api.domain.room.dto.event.RoomClosedEvent;
 import com.sisibibi.api.domain.room.dto.request.CreateRoomReq;
 import com.sisibibi.api.domain.room.dto.request.UpdateRoomReq;
 import com.sisibibi.api.domain.room.dto.response.CreateRoomRes;
@@ -7,7 +8,6 @@ import com.sisibibi.api.domain.room.dto.response.RoomDetailRes;
 import com.sisibibi.api.domain.room.dto.response.RoomSummaryRes;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
-import com.sisibibi.api.domain.room.dto.event.RoomClosedEvent;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.topic.entity.Topic;
 import com.sisibibi.api.domain.topic.entity.TopicStatus;
@@ -91,7 +91,7 @@ public class RoomService {
 
     for (Room room : expiredRooms) {
       room.close(now);
-      eventPublisher.publishEvent(new RoomClosedEvent(room.getId()));
+      publishRoomClosedEvent(room);
     }
 
     return expiredRooms.size();
@@ -139,10 +139,16 @@ public class RoomService {
     Room room = roomRepository.findById(roomId)
         .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
 
-    room.close(LocalDateTime.now());
+    if (room.getStatus() == RoomStatus.CLOSED) {
+      return;
+    }
 
-    eventPublisher.publishEvent(new RoomClosedEvent(room.getId()));
+    room.close(LocalDateTime.now());
+    publishRoomClosedEvent(room);
   }
 
+  private void publishRoomClosedEvent(Room room) {
+    eventPublisher.publishEvent(new RoomClosedEvent(room.getId(), room.getEndedAt()));
+  }
 
 }
