@@ -18,12 +18,14 @@ import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.moderation.ProfanityDetector;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.PageRequest;
 
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class SpeechService {
@@ -56,7 +58,7 @@ public class SpeechService {
             throw new CustomException(ErrorCode.ROOM_PARTICIPATION_REQUIRED);
         }
 
-        validateContent(command.content());
+        validateContent(command.content(), "create", roomId, userId, null);
 
         Speech speech = Speech.createMainOpinion(
                 roomId,
@@ -114,7 +116,7 @@ public class SpeechService {
             throw new CustomException(ErrorCode.SPEECH_NOT_EDITABLE);
         }
 
-        validateContent(command.content());
+        validateContent(command.content(), "update", speech.getRoomId(), userId, speechId);
         speech.updateMainOpinion(command.content(), command.stance());
         return SpeechDetailRes.from(speech);
     }
@@ -133,6 +135,12 @@ public class SpeechService {
         }
 
         speech.softDelete();
+        log.info(
+                "Speech soft deleted. speechId={}, roomId={}, userId={}",
+                speechId,
+                speech.getRoomId(),
+                userId
+        );
     }
 
     @Transactional
@@ -152,8 +160,31 @@ public class SpeechService {
         return SpeechDetailRes.from(speech);
     }
 
-    private void validateContent(String content) {
+    private void validateContent(
+            String content,
+            String action,
+            Long roomId,
+            Long userId,
+            Long speechId
+    ) {
         if (profanityDetector.containsProfanity(content)) {
+            if (speechId == null) {
+                log.warn(
+                        "Speech content blocked by profanity detector. action={}, roomId={}, userId={}",
+                        action,
+                        roomId,
+                        userId
+                );
+            } else {
+                log.warn(
+                        "Speech content blocked by profanity detector. "
+                                + "action={}, roomId={}, userId={}, speechId={}",
+                        action,
+                        roomId,
+                        userId,
+                        speechId
+                );
+            }
             throw new CustomException(ErrorCode.SPEECH_CONTENT_CONTAINS_PROFANITY);
         }
     }

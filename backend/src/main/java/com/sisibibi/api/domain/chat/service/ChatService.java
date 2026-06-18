@@ -15,10 +15,12 @@ import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.moderation.ProfanityDetector;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ChatService {
@@ -41,6 +43,7 @@ public class ChatService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
         if (user.getStatus() == UserStatus.BANNED) {
+            log.warn("Chat message blocked for banned user. roomId={}, userId={}", roomId, userId);
             throw new CustomException(ErrorCode.USER_BANNED);
         }
 
@@ -56,10 +59,16 @@ public class ChatService {
                 RoomParticipantStatus.JOINED
         );
         if (!participating) {
+            log.warn(
+                    "Chat message blocked because user is not participating. roomId={}, userId={}",
+                    roomId,
+                    userId
+            );
             throw new CustomException(ErrorCode.ROOM_PARTICIPATION_REQUIRED);
         }
 
         if (profanityDetector.containsProfanity(content)) {
+            log.warn("Chat message blocked by profanity detector. roomId={}, userId={}", roomId, userId);
             throw new CustomException(ErrorCode.CHAT_MESSAGE_CONTAINS_PROFANITY);
         }
 
