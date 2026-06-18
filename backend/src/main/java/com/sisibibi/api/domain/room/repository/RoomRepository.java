@@ -33,4 +33,35 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
       LocalDateTime now,
       Pageable pageable
   );
+
+  @Query("""
+    select room.id
+    from Room room
+    where room.status = :status
+      and room.endedAt <= :now
+    order by room.endedAt asc
+    """)
+  List<Long> findExpiredOpenRoomIds(
+      @Param("status") RoomStatus status,
+      @Param("now") LocalDateTime now,
+      Pageable pageable
+  );
+
+  @Modifying(clearAutomatically = true, flushAutomatically = true)
+  @Query("""
+    update Room room
+    set room.status = :closedStatus,
+        room.endedAt = :closedAt
+    where room.id = :roomId
+      and room.status = :openStatus
+      and room.endedAt <= :now
+    """)
+  int closeExpiredRoomIfOpen(
+      @Param("roomId") Long roomId,
+      @Param("openStatus") RoomStatus openStatus,
+      @Param("closedStatus") RoomStatus closedStatus,
+      @Param("now") LocalDateTime now,
+      @Param("closedAt") LocalDateTime closedAt
+  );
+
 }
