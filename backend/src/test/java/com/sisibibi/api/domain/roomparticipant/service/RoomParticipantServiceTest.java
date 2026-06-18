@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.roomparticipant.service;
 
 import com.sisibibi.api.domain.roomparticipant.dto.response.RoomParticipantRes;
+import com.sisibibi.api.domain.roomparticipant.dto.response.RoomParticipantCountRes;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
@@ -106,6 +107,25 @@ class RoomParticipantServiceTest {
         .extracting("errorCode")
         .isEqualTo(ErrorCode.ROOM_ALREADY_PARTICIPATED);
 
+    verify(roomParticipantRepository, never()).save(any());
+  }
+
+  @Test
+  void joinRoom_rejoinsExistingParticipant_whenParticipantPreviouslyLeft() {
+    Room room = org.mockito.Mockito.mock(Room.class);
+    RoomParticipant participant = RoomParticipant.join(1L, 2L);
+    participant.leave();
+
+    given(room.getStatus()).willReturn(RoomStatus.OPEN);
+    given(roomRepository.findById(1L)).willReturn(Optional.of(room));
+    given(roomParticipantRepository.findByRoomIdAndUserId(1L, 2L))
+        .willReturn(Optional.of(participant));
+
+    RoomParticipantRes response = roomParticipantService.joinRoom(1L, 2L);
+
+    assertThat(participant.getStatus()).isEqualTo(RoomParticipantStatus.JOINED);
+    assertThat(participant.getLeftAt()).isNull();
+    assertThat(response.status()).isEqualTo(RoomParticipantStatus.JOINED);
     verify(roomParticipantRepository, never()).save(any());
   }
 
@@ -218,5 +238,34 @@ class RoomParticipantServiceTest {
     verify(roomRepository).existsById(999L);
     verify(roomParticipantRepository, never())
         .findByRoomIdAndStatusOrderByJoinedAtAsc(any(), any());
+  }
+
+  @Test
+  void getCurrentParticipantCount_returnsJoinedParticipantCount() {
+    given(roomRepository.existsById(1L)).willReturn(true);
+    given(roomParticipantRepository.countByRoomIdAndStatus(
+        1L,
+        RoomParticipantStatus.JOINED
+    )).willReturn(3);
+
+    RoomParticipantCountRes result =
+        roomParticipantService.getCurrentParticipantCount(1L);
+
+    assertThat(result.roomId()).isEqualTo(1L);
+    assertThat(result.participantCount()).isEqualTo(3);
+  }
+
+  @Test
+  void getCurrentParticipantCount_throwsRoomNotFound_whenRoomDoesNotExist() {
+    given(roomRepository.existsById(999L)).willReturn(false);
+
+    assertThatThrownBy(() ->
+        roomParticipantService.getCurrentParticipantCount(999L)
+    )
+        .isInstanceOf(CustomException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
+
+    verify(roomParticipantRepository, never()).countByRoomIdAndStatus(any(), any());
   }
 }
