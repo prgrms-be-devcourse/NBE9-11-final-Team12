@@ -92,6 +92,22 @@ class RoomServiceTest {
   }
 
   @Test
+  void createRoom_throwsTopicNotApproved_whenTopicIsNotApproved() {
+    Topic topic = Topic.approved("토론 주제", "설명", "IT", "https://example.com");
+    ReflectionTestUtils.setField(topic, "status", com.sisibibi.api.domain.topic.entity.TopicStatus.REJECTED);
+
+    given(topicRepository.findById(1L)).willReturn(Optional.of(topic));
+
+    assertThatThrownBy(() -> roomService.createRoom(new CreateRoomReq(1L)))
+        .isInstanceOf(CustomException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.TOPIC_NOT_APPROVED);
+
+    verify(roomRepository, never()).existsByTopicId(any());
+    verify(roomRepository, never()).save(any());
+  }
+
+  @Test
   void getOpenRooms_returnsOnlyOpenRoomsOrderedByCreatedAtDesc() {
     LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
     LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
@@ -256,6 +272,40 @@ class RoomServiceTest {
         .isInstanceOf(CustomException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+  }
+
+  @Test
+  void updateRoom_preservesExistingValues_whenOptionalFieldsAreNull() {
+    LocalDateTime startedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
+    LocalDateTime endedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
+    Room room = Room.open(1L, "기존 제목", startedAt, endedAt);
+
+    given(roomRepository.findById(10L)).willReturn(Optional.of(room));
+
+    RoomDetailRes result = roomService.updateRoom(
+        10L,
+        new UpdateRoomReq(null, null, null)
+    );
+
+    assertThat(result.title()).isEqualTo("기존 제목");
+    assertThat(result.startedAt()).isEqualTo(startedAt);
+    assertThat(result.endedAt()).isEqualTo(endedAt);
+  }
+
+  @Test
+  void updateRoom_acceptsMissingStartedAt_whenEndedAtIsProvided() {
+    LocalDateTime endedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
+    Room room = Room.open(1L, "기존 제목", null, null);
+
+    given(roomRepository.findById(10L)).willReturn(Optional.of(room));
+
+    RoomDetailRes result = roomService.updateRoom(
+        10L,
+        new UpdateRoomReq(null, null, endedAt)
+    );
+
+    assertThat(result.startedAt()).isNull();
+    assertThat(result.endedAt()).isEqualTo(endedAt);
   }
 
   @Test
