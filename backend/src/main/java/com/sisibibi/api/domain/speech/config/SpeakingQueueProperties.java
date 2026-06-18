@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "app.speaking")
 public class SpeakingQueueProperties {
 
-    private Duration turnDuration = Duration.ofMinutes(2);
+    private Duration turnDuration = Duration.ofMinutes(3);
     private Queue queue = new Queue();
 
     @Getter
