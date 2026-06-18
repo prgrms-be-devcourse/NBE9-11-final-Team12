@@ -5,11 +5,15 @@ import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
+import com.sisibibi.api.domain.user.repository.UserRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +27,7 @@ public class SpeakingQueuePersistenceService {
 
     private final SpeakingQueueRepository speakingQueueRepository;
     private final RoomRepository roomRepository;
+    private final UserRepository userRepository;
 
     @Transactional
     public SpeakingQueue createWaitingRequest(Long roomId, Long userId) {
@@ -81,6 +86,28 @@ public class SpeakingQueuePersistenceService {
                 userId,
                 ACTIVE_STATUSES
         );
+    }
+
+    @Transactional(readOnly = true)
+    public void validateRoomExists(Long roomId) {
+        if (!roomRepository.existsById(roomId)) {
+            throw new CustomException(ErrorCode.ROOM_NOT_FOUND);
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public Map<Long, String> findNicknamesByUserIds(Collection<Long> userIds) {
+        if (userIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return userRepository.findAllById(userIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        user -> user.getId(),
+                        user -> user.getNickname(),
+                        (first, second) -> first
+                ));
     }
 
     @Transactional

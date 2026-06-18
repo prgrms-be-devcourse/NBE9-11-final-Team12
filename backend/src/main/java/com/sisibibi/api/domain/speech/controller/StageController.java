@@ -1,12 +1,14 @@
 package com.sisibibi.api.domain.speech.controller;
 
 import com.sisibibi.api.domain.speech.dto.response.StageCurrentSpeakerRes;
+import com.sisibibi.api.domain.speech.dto.response.StageQueueRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestStatusRes;
 import com.sisibibi.api.domain.speech.service.SpeakingQueueService;
 import com.sisibibi.api.global.response.ApiResponse;
 import com.sisibibi.api.global.security.AuthPrincipal;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -33,6 +36,27 @@ public class StageController {
     ) {
         StageCurrentSpeakerRes response =
                 speakingQueueService.getCurrentSpeaker(roomId);
+
+        return ResponseEntity.ok(ApiResponse.ok(response));
+    }
+
+    @GetMapping("/queue/summary")
+    public ResponseEntity<ApiResponse<StageQueueRes>> getQueueSummary(
+            @PathVariable @Positive Long roomId
+    ) {
+        StageQueueRes response = speakingQueueService.getQueueSummary(roomId);
+
+        return ResponseEntity.ok(ApiResponse.ok(response));
+    }
+
+    @GetMapping("/queue")
+    public ResponseEntity<ApiResponse<StageQueueRes>> getWaitingQueue(
+            @PathVariable @Positive Long roomId,
+            @RequestParam(required = false) @PositiveOrZero Integer offset,
+            @RequestParam(required = false) @Positive Integer size
+    ) {
+        StageQueueRes response =
+                speakingQueueService.getWaitingQueue(roomId, offset, size);
 
         return ResponseEntity.ok(ApiResponse.ok(response));
     }

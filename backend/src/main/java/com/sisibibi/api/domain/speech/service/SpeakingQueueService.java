@@ -2,18 +2,24 @@ package com.sisibibi.api.domain.speech.service;
 
 import com.sisibibi.api.domain.speech.config.SpeakingQueueProperties;
 import com.sisibibi.api.domain.speech.dto.response.StageCurrentSpeakerRes;
+import com.sisibibi.api.domain.speech.dto.response.StageQueueRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestStatusRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.repository.RedisSpeakingQueueRepository;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
+import com.sisibibi.api.global.exception.CustomException;
+import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.IntStream;
 
 @Slf4j
 @Service
@@ -105,6 +111,44 @@ public class SpeakingQueueService {
         return StageCurrentSpeakerRes.from(currentSpeaker.get());
     }
 
+    public StageQueueRes getQueueSummary(Long roomId) {
+        return getWaitingQueue(
+                roomId,
+                0,
+                speakingQueueProperties.getQueue().getSummarySize()
+        );
+    }
+
+    public StageQueueRes getWaitingQueue(Long roomId, Integer offset, Integer size) {
+        speakingQueuePersistenceService.validateRoomExists(roomId);
+
+        int resolvedOffset = resolveOffset(offset);
+        int resolvedSize = resolveSize(size);
+        long totalWaitingCount = redisSpeakingQueueRepository.count(roomId);
+        long start = resolvedOffset;
+        long end = resolvedOffset + (long) resolvedSize - 1;
+        List<Long> userIds =
+                redisSpeakingQueueRepository.findWaitingUserIds(roomId, start, end);
+        Map<Long, String> nicknames =
+                speakingQueuePersistenceService.findNicknamesByUserIds(userIds);
+        List<StageQueueRes.WaitingSpeaker> items =
+                IntStream.range(0, userIds.size())
+                        .mapToObj(index -> waitingSpeaker(
+                                resolvedOffset,
+                                index,
+                                userIds.get(index),
+                                nicknames
+                        ))
+                        .toList();
+
+        return StageQueueRes.of(
+                totalWaitingCount,
+                resolvedOffset,
+                resolvedSize,
+                items
+        );
+    }
+
     public Optional<SpeakingQueue> expireCurrentSpeaker(
             Long roomId,
             LocalDateTime now
@@ -131,6 +175,37 @@ public class SpeakingQueueService {
                 speakingQueue.getRoomId(),
                 speakingQueue.getUserId()
         ).orElse(null);
+    }
+
+    private int resolveOffset(Integer offset) {
+        if (offset == null) {
+            return 0;
+        }
+        return offset;
+    }
+
+    private int resolveSize(Integer size) {
+        int resolvedSize = size == null
+                ? speakingQueueProperties.getQueue().getDefaultPageSize()
+                : size;
+
+        if (resolvedSize > speakingQueueProperties.getQueue().getMaxPageSize()) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return resolvedSize;
+    }
+
+    private StageQueueRes.WaitingSpeaker waitingSpeaker(
+            int offset,
+            int index,
+            Long userId,
+            Map<Long, String> nicknames
+    ) {
+        return new StageQueueRes.WaitingSpeaker(
+                offset + index + 1,
+                userId,
+                nicknames.get(userId)
+        );
     }
 
     private void synchronizeWaitingRedisProjection(SpeakingQueue speakingQueue) {
