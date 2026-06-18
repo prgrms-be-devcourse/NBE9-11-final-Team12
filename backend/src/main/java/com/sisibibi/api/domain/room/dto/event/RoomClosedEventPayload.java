@@ -19,4 +19,13 @@ public record RoomClosedEventPayload(
                 room.getEndedAt()
         );
     }
+
+    public static RoomClosedEventPayload from(RoomClosedEvent event) {
+        return new RoomClosedEventPayload(
+                event.roomId(),
+                RoomStatus.CLOSED,
+                "토론이 종료되었습니다.",
+                event.closedAt()
+        );
+    }
 }

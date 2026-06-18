@@ -1,5 +1,6 @@
 package com.sisibibi.api.domain.room.service;
 
+import com.sisibibi.api.domain.room.dto.event.RoomClosedEvent;
 import com.sisibibi.api.domain.room.dto.request.CreateRoomReq;
 import com.sisibibi.api.domain.room.dto.request.UpdateRoomReq;
 import com.sisibibi.api.domain.room.dto.response.CreateRoomRes;
@@ -7,18 +8,14 @@ import com.sisibibi.api.domain.room.dto.response.RoomDetailRes;
 import com.sisibibi.api.domain.room.dto.response.RoomSummaryRes;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
-import com.sisibibi.api.domain.room.dto.event.RoomClosedEventPayload;
-import com.sisibibi.api.domain.room.dto.event.RoomEventType;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.topic.entity.Topic;
 import com.sisibibi.api.domain.topic.entity.TopicStatus;
 import com.sisibibi.api.domain.topic.repository.TopicRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
-import com.sisibibi.api.global.websocket.AfterCommitWebSocketEventPublisher;
-import com.sisibibi.api.global.websocket.RoomWebSocketDestinations;
-import com.sisibibi.api.global.websocket.WebSocketEventEnvelope;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,7 +32,7 @@ public class RoomService {
 
   private final RoomRepository roomRepository;
   private final TopicRepository topicRepository;
-  private final AfterCommitWebSocketEventPublisher webSocketEventPublisher;
+  private final ApplicationEventPublisher eventPublisher;
 
 
 
@@ -94,7 +91,7 @@ public class RoomService {
 
     for (Room room : expiredRooms) {
       room.close(now);
-      publishRoomClosedAfterCommit(room);
+      publishRoomClosedEvent(room);
     }
 
     return expiredRooms.size();
@@ -147,18 +144,11 @@ public class RoomService {
     }
 
     room.close(LocalDateTime.now());
-    publishRoomClosedAfterCommit(room);
+    publishRoomClosedEvent(room);
   }
 
-  private void publishRoomClosedAfterCommit(Room room) {
-    webSocketEventPublisher.publishAfterCommit(
-        RoomWebSocketDestinations.roomEvents(room.getId()),
-        WebSocketEventEnvelope.of(
-            RoomEventType.ROOM_CLOSED,
-            room.getId(),
-            RoomClosedEventPayload.from(room)
-        )
-    );
+  private void publishRoomClosedEvent(Room room) {
+    eventPublisher.publishEvent(new RoomClosedEvent(room.getId(), room.getEndedAt()));
   }
 
 }

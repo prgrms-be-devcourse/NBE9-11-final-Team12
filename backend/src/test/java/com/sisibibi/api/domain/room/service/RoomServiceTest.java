@@ -1,7 +1,6 @@
 package com.sisibibi.api.domain.room.service;
 
-import com.sisibibi.api.domain.room.dto.event.RoomClosedEventPayload;
-import com.sisibibi.api.domain.room.dto.event.RoomEventType;
+import com.sisibibi.api.domain.room.dto.event.RoomClosedEvent;
 import com.sisibibi.api.domain.room.dto.request.CreateRoomReq;
 import com.sisibibi.api.domain.room.dto.request.UpdateRoomReq;
 import com.sisibibi.api.domain.room.dto.response.CreateRoomRes;
@@ -14,9 +13,7 @@ import com.sisibibi.api.domain.topic.entity.Topic;
 import com.sisibibi.api.domain.topic.repository.TopicRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
-import com.sisibibi.api.global.websocket.AfterCommitWebSocketEventPublisher;
-import com.sisibibi.api.global.websocket.RoomWebSocketDestinations;
-import com.sisibibi.api.global.websocket.WebSocketEventEnvelope;
+import org.springframework.context.ApplicationEventPublisher;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -48,7 +45,7 @@ class RoomServiceTest {
   private RoomService roomService;
 
   @Mock
-  private AfterCommitWebSocketEventPublisher webSocketEventPublisher;
+  private ApplicationEventPublisher eventPublisher;
 
   @Test
   void createRoom_savesOpenRoom_whenTopicIsApproved() {
@@ -175,14 +172,15 @@ class RoomServiceTest {
         eq(now),
         any(Pageable.class)
     );
-    verify(webSocketEventPublisher).publishAfterCommit(
-        eq(RoomWebSocketDestinations.roomEvents(10L)),
-        any(WebSocketEventEnvelope.class)
-    );
-    verify(webSocketEventPublisher).publishAfterCommit(
-        eq(RoomWebSocketDestinations.roomEvents(20L)),
-        any(WebSocketEventEnvelope.class)
-    );
+    ArgumentCaptor<RoomClosedEvent> eventCaptor =
+        ArgumentCaptor.forClass(RoomClosedEvent.class);
+    verify(eventPublisher, times(2)).publishEvent(eventCaptor.capture());
+    assertThat(eventCaptor.getAllValues())
+        .extracting(RoomClosedEvent::roomId)
+        .containsExactly(10L, 20L);
+    assertThat(eventCaptor.getAllValues())
+        .extracting(RoomClosedEvent::closedAt)
+        .containsExactly(now, now);
   }
 
   @Test
@@ -204,7 +202,7 @@ class RoomServiceTest {
         eq(now),
         any(Pageable.class)
     );
-    verify(webSocketEventPublisher, never()).publishAfterCommit(any(), any());
+    verify(eventPublisher, never()).publishEvent(any());
   }
   @Test
   void getRooms_returnsRoomsOrderedByCreatedAtDesc() {
@@ -375,16 +373,29 @@ class RoomServiceTest {
     assertThat(room.getEndedAt()).isNotNull();
 
     verify(roomRepository).findById(10L);
-    ArgumentCaptor<WebSocketEventEnvelope> eventCaptor =
-        ArgumentCaptor.forClass(WebSocketEventEnvelope.class);
-    verify(webSocketEventPublisher).publishAfterCommit(
-        eq(RoomWebSocketDestinations.roomEvents(10L)),
-        eventCaptor.capture()
-    );
-    assertThat(eventCaptor.getValue().eventType()).isEqualTo(RoomEventType.ROOM_CLOSED.name());
+    ArgumentCaptor<RoomClosedEvent> eventCaptor =
+        ArgumentCaptor.forClass(RoomClosedEvent.class);
+    verify(eventPublisher).publishEvent(eventCaptor.capture());
     assertThat(eventCaptor.getValue().roomId()).isEqualTo(10L);
-    assertThat(eventCaptor.getValue().data())
-        .isInstanceOf(RoomClosedEventPayload.class);
+    assertThat(eventCaptor.getValue().closedAt()).isEqualTo(room.getEndedAt());
+  }
+
+  @Test
+  void deleteRoom_doesNotPublishEvent_whenRoomIsAlreadyClosed() {
+    LocalDateTime closedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
+    Room room = Room.open(
+        1L,
+        "이미 닫힌 토론방",
+        LocalDateTime.of(2026, 6, 15, 10, 0),
+        closedAt
+    );
+    room.close(closedAt);
+
+    given(roomRepository.findById(10L)).willReturn(Optional.of(room));
+
+    roomService.deleteRoom(10L);
+
+    verify(eventPublisher, never()).publishEvent(any());
   }
 
   @Test
