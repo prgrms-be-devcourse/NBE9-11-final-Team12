@@ -42,7 +42,11 @@ public class SpeakingQueueService {
                 saved.getQueueOrder(),
                 saved.getStatus()
         );
-        return StageRequestRes.from(saved);
+        return StageRequestRes.from(
+                tryAssignNextSpeaker(roomId)
+                        .filter(assigned -> assigned.getUserId().equals(userId))
+                        .orElse(saved)
+        );
     }
 
     public Optional<SpeakingQueue> assignNextSpeaker(Long roomId) {
@@ -74,6 +78,7 @@ public class SpeakingQueueService {
                 canceled.getUserId(),
                 canceled.getQueueOrder()
         );
+        tryAssignNextSpeaker(roomId);
     }
 
     public StageRequestStatusRes getMySpeakingRequestStatus(Long roomId, Long userId) {
@@ -98,6 +103,7 @@ public class SpeakingQueueService {
                 completed.getUserId(),
                 completed.getQueueOrder()
         );
+        tryAssignNextSpeaker(roomId);
     }
 
     public StageCurrentSpeakerRes getCurrentSpeaker(Long roomId) {
@@ -163,7 +169,21 @@ public class SpeakingQueueService {
                 speakingQueue.getQueueOrder(),
                 now
         ));
+        expired.ifPresent(speakingQueue -> tryAssignNextSpeaker(roomId));
         return expired;
+    }
+
+    private Optional<SpeakingQueue> tryAssignNextSpeaker(Long roomId) {
+        try {
+            return assignNextSpeaker(roomId);
+        } catch (RuntimeException assignmentException) {
+            log.error(
+                    "Failed to assign next speaker after stage state change. roomId={}",
+                    roomId,
+                    assignmentException
+            );
+            return Optional.empty();
+        }
     }
 
     private Integer currentWaitingRank(SpeakingQueue speakingQueue) {
