@@ -42,6 +42,27 @@ export type RoomCreateResponse = {
   createdAt: string
 }
 
+export type RoomSummary = RoomCreateResponse
+
+export type RoomDetail = RoomSummary & {
+  endedAt: string | null
+}
+
+export type RoomParticipantStatus = "JOINED" | "LEFT"
+
+export type RoomParticipant = {
+  roomParticipantId: number
+  roomId: number
+  userId: number
+  status: RoomParticipantStatus
+  joinedAt: string
+}
+
+export type RoomParticipantCount = {
+  roomId: number
+  participantCount: number
+}
+
 export type SpringPage<T> = {
   content: T[]
   totalElements: number
@@ -91,3 +112,127 @@ export type SpeechReportReason =
   | "PRIVACY_VIOLATION"
   | "OFF_TOPIC"
   | "OTHER"
+
+export type SpeechReportCreateResponse = {
+  reportId: number
+  speechId: number
+  reason: SpeechReportReason
+  status: "PENDING" | "REVIEWING" | "RESOLVED" | "REJECTED"
+  createdAt: string
+}
+
+export type ChatMessage = {
+  messageId: number
+  roomId: number
+  userId: number
+  nicknameSnapshot: string
+  content: string
+  createdAt: string
+}
+
+export type ChatMessageCursorPage = {
+  items: ChatMessage[]
+  nextCursor: number | null
+  hasNext: boolean
+}
+
+export type ChatEventType = "MESSAGE_CREATED" | "MESSAGE_DELETED"
+
+export type ChatEvent = {
+  type: ChatEventType
+  messageId: number
+  roomId: number
+  userId: number
+  nicknameSnapshot: string
+  content: string | null
+  createdAt: string
+  deletedAt: string | null
+}
+
+export type SpeakingQueueStatus = "WAITING" | "ASSIGNED" | "CANCELED" | "COMPLETED"
+
+export type StageCurrentSpeaker = {
+  hasCurrentSpeaker: boolean
+  currentSpeaker: {
+    userId: number
+    nickname: string
+    queueOrder: number
+    assignedAt: string
+    expiresAt: string
+  } | null
+}
+
+export type StageQueue = {
+  totalWaitingCount: number
+  offset: number
+  size: number
+  hasNext: boolean
+  items: {
+    rank: number
+    userId: number
+    nickname: string
+  }[]
+}
+
+export type StageRequest = {
+  status: SpeakingQueueStatus
+  roomId: number
+  userId: number
+  queueOrder: number
+  requestedAt: string
+}
+
+export type StageRequestStatus = {
+  hasRequest: boolean
+  status: SpeakingQueueStatus | null
+  roomId: number | null
+  userId: number | null
+  queueOrder: number | null
+  currentRank: number | null
+  cancelable: boolean
+  requestedAt: string | null
+  assignedAt: string | null
+  expiresAt: string | null
+}
+
+export type WebSocketEventEnvelope<TData, TEventType extends string = string> = {
+  eventId: string
+  eventType: TEventType
+  roomId: number
+  data: TData
+  occurredAt: string
+}
+
+export type RoomParticipantEvent = WebSocketEventEnvelope<
+  {
+    roomId: number
+    userId: number
+    participantCount: number
+    occurredAt: string
+  },
+  "PARTICIPANT_JOINED" | "PARTICIPANT_LEFT"
+>
+
+export type StageEvent = WebSocketEventEnvelope<
+  {
+    roomId: number
+    userId: number
+    queueOrder: number | null
+    status: SpeakingQueueStatus
+    assignedAt: string | null
+    expiresAt: string | null
+    endReason: "COMPLETED" | "EXPIRED" | null
+    occurredAt: string
+  },
+  "SPEAKING_REQUESTED" | "SPEAKING_CANCELED" | "SPEAKER_ASSIGNED" | "SPEAKER_COMPLETED" | "SPEAKER_EXPIRED"
+>
+
+export type RoomEvent = WebSocketEventEnvelope<
+  {
+    roomId: number
+    status: "OPEN" | "CLOSED"
+    message: string
+    closedAt: string
+  },
+  "ROOM_CLOSED"
+>
