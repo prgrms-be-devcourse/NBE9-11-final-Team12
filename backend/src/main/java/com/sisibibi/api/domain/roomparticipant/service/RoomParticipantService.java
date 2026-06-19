@@ -53,14 +53,14 @@ public class RoomParticipantService {
       throw new CustomException(ErrorCode.ROOM_CLOSED);
     }
 
+    validateRoomCapacity(roomId, room);
+
     RoomParticipant participant = roomParticipantRepository
         .findByRoomIdAndUserId(roomId, userId)
         .map(existingParticipant -> {
           if (existingParticipant.getStatus() == RoomParticipantStatus.JOINED) {
             throw new CustomException(ErrorCode.ROOM_ALREADY_PARTICIPATED);
           }
-
-          validateRoomCapacity(roomId, room);
 
           existingParticipant.rejoin();
           return existingParticipant;
@@ -85,6 +85,7 @@ public class RoomParticipantService {
 
     return RoomParticipantRes.from(participant);
   }
+
 
   @Transactional
   public void leaveRoom(Long roomId, Long userId) {
