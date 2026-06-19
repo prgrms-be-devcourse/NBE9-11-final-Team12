@@ -56,6 +56,8 @@ public class RoomParticipantService {
             throw new CustomException(ErrorCode.ROOM_ALREADY_PARTICIPATED);
           }
 
+          validateRoomCapacity(roomId, room);
+
           existingParticipant.rejoin();
           return existingParticipant;
         })
@@ -146,6 +148,17 @@ public class RoomParticipantService {
         roomId,
         RoomParticipantEventPayload.of(roomId, userId, participantCount)
     ));
+  }
+
+  private void validateRoomCapacity(Long roomId, Room room) {
+    int participantCount = roomParticipantRepository.countByRoomIdAndStatus(
+        roomId,
+        RoomParticipantStatus.JOINED
+    );
+
+    if (participantCount >= room.getMaxParticipants()) {
+      throw new CustomException(ErrorCode.ROOM_FULL);
+    }
   }
 
 }

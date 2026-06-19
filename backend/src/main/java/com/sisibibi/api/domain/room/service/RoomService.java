@@ -54,8 +54,9 @@ public class RoomService {
     }
     LocalDateTime startedAt = LocalDateTime.now();
     LocalDateTime endedAt = startedAt.plusMinutes(5);
+    int maxParticipants = resolveMaxParticipants(request.maxParticipants());
 
-    Room room = Room.open(topic.getId(), topic.getTitle(), startedAt, endedAt);
+    Room room = Room.open(topic.getId(), topic.getTitle(), startedAt, endedAt, maxParticipants);
 
     try {
       Room savedRoom = roomRepository.save(room);
@@ -76,7 +77,8 @@ public class RoomService {
     room.update(
         request.title(),
         request.startedAt(),
-        request.endedAt()
+        request.endedAt(),
+        request.maxParticipants()
     );
 
     return RoomDetailRes.from(room);
@@ -134,6 +136,10 @@ public class RoomService {
       throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
     }
 
+    if (request.maxParticipants() != null && request.maxParticipants() <= 0) {
+      throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+    }
+
     LocalDateTime nextStartedAt = request.startedAt() != null
         ? request.startedAt()
         : room.getStartedAt();
@@ -163,6 +169,19 @@ public class RoomService {
 
   private void publishRoomClosedEvent(Room room) {
     eventPublisher.publishEvent(new RoomClosedEvent(room.getId(), room.getEndedAt()));
+  }
+
+  // 방 정원 검증 로직
+  private int resolveMaxParticipants(Integer maxParticipants) {
+    if (maxParticipants == null) {
+      return 100;
+    }
+
+    if (maxParticipants <= 0) {
+      throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+    }
+
+    return maxParticipants;
   }
 
 }
