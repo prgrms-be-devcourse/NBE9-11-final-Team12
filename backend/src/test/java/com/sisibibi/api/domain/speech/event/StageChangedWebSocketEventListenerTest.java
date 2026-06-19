@@ -4,6 +4,7 @@ import com.sisibibi.api.domain.speech.dto.event.StageChangedEvent;
 import com.sisibibi.api.domain.speech.dto.event.StageEventPayload;
 import com.sisibibi.api.domain.speech.dto.event.StageEventType;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
+import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.global.websocket.RoomWebSocketDestinations;
 import com.sisibibi.api.global.websocket.WebSocketEventEnvelope;
 import com.sisibibi.api.global.websocket.WebSocketEventPublisher;
@@ -27,6 +28,7 @@ class StageChangedWebSocketEventListenerTest {
         StageEventPayload payload = new StageEventPayload(
                 1L,
                 7L,
+                SpeechStance.PRO,
                 15,
                 SpeakingQueueStatus.ASSIGNED,
                 LocalDateTime.of(2026, 6, 18, 12, 0),
@@ -59,6 +61,7 @@ class StageChangedWebSocketEventListenerTest {
         StageEventPayload payload = new StageEventPayload(
                 1L,
                 7L,
+                SpeechStance.PRO,
                 15,
                 SpeakingQueueStatus.WAITING,
                 null,

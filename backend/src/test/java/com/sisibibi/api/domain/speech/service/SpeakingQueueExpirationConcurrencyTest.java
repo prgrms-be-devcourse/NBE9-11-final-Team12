@@ -6,6 +6,7 @@ import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
+import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
@@ -63,6 +64,7 @@ class SpeakingQueueExpirationConcurrencyTest {
                 roomId,
                 USER_ID,
                 1,
+                SpeechStance.PRO,
                 LocalDateTime.of(2026, 6, 15, 10, 0)
         );
         assigned.assign(

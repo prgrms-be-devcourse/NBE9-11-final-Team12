@@ -11,6 +11,7 @@ import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestStatusRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
+import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.RedisSpeakingQueueRepository;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import com.sisibibi.api.global.exception.CustomException;
@@ -36,9 +37,13 @@ public class SpeakingQueueService {
     private final SpeakingQueueProperties speakingQueueProperties;
     private final ApplicationEventPublisher eventPublisher;
 
-    public StageRequestRes requestSpeakingTurn(Long roomId, Long userId) {
+    public StageRequestRes requestSpeakingTurn(
+            Long roomId,
+            Long userId,
+            SpeechStance stance
+    ) {
         SpeakingQueue saved =
-                speakingQueuePersistenceService.createWaitingRequest(roomId, userId);
+                speakingQueuePersistenceService.createWaitingRequest(roomId, userId, stance);
 
         synchronizeWaitingRedisProjection(saved);
         log.info(
