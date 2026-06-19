@@ -105,9 +105,12 @@ public class Speech {
         this.linkUrl = linkUrl;
     }
 
-    public void softDelete() {
-        LocalDateTime now = LocalDateTime.now();
+    public void softDelete(LocalDateTime deletedAt) {
+        if (this.deleted) {
+            return;
+        }
+
         this.deleted = true;
-        this.deletedAt = now;
+        this.deletedAt = deletedAt;
     }
 }

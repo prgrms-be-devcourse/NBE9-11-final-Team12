@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.PageRequest;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Slf4j
@@ -105,16 +106,7 @@ public class SpeechService {
             Long userId,
             SpeechUpdateCommand command
     ) {
-        Speech speech = speechRepository.findByIdAndDeletedFalse(speechId)
-                .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_NOT_FOUND));
-
-        if (!speech.getUserId().equals(userId)) {
-            throw new CustomException(ErrorCode.SPEECH_ACCESS_DENIED);
-        }
-
-        if (speech.getStatus() == SpeechStatus.COMPLETED) {
-            throw new CustomException(ErrorCode.SPEECH_NOT_EDITABLE);
-        }
+        Speech speech = findEditableOwnedSpeech(speechId, userId);
 
         validateContent(command.content(), "update", speech.getRoomId(), userId, speechId);
         speech.updateMainOpinion(command.content(), command.stance());
@@ -123,18 +115,9 @@ public class SpeechService {
 
     @Transactional
     public void deleteSpeech(Long speechId, Long userId) {
-        Speech speech = speechRepository.findByIdAndDeletedFalse(speechId)
-                .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_NOT_FOUND));
+        Speech speech = findEditableOwnedSpeech(speechId, userId);
 
-        if (!speech.getUserId().equals(userId)) {
-            throw new CustomException(ErrorCode.SPEECH_ACCESS_DENIED);
-        }
-
-        if (speech.getStatus() == SpeechStatus.COMPLETED) {
-            throw new CustomException(ErrorCode.SPEECH_NOT_EDITABLE);
-        }
-
-        speech.softDelete();
+        speech.softDelete(LocalDateTime.now());
         log.info(
                 "Speech soft deleted. speechId={}, roomId={}, userId={}",
                 speechId,
@@ -145,6 +128,13 @@ public class SpeechService {
 
     @Transactional
     public SpeechDetailRes updateSpeechLink(Long speechId, Long userId, String linkUrl) {
+        Speech speech = findEditableOwnedSpeech(speechId, userId);
+
+        speech.updateLink(linkUrl);
+        return SpeechDetailRes.from(speech);
+    }
+
+    private Speech findEditableOwnedSpeech(Long speechId, Long userId) {
         Speech speech = speechRepository.findByIdAndDeletedFalse(speechId)
                 .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_NOT_FOUND));
 
@@ -156,8 +146,7 @@ public class SpeechService {
             throw new CustomException(ErrorCode.SPEECH_NOT_EDITABLE);
         }
 
-        speech.updateLink(linkUrl);
-        return SpeechDetailRes.from(speech);
+        return speech;
     }
 
     private void validateContent(
