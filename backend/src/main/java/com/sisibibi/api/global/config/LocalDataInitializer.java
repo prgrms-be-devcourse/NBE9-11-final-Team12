@@ -56,7 +56,9 @@ public class LocalDataInitializer implements ApplicationRunner {
                 )));
 
         Room room = roomRepository.findByTopicId(topic.getId())
-                .orElseGet(() -> roomRepository.save(Room.open(topic.getId(), topic.getTitle(), startedAt, endedAt)));
+            .orElseGet(() -> roomRepository.save(
+                Room.open(topic.getId(), topic.getTitle(), startedAt, endedAt, 100)
+            ));
 
         if (!speechRepository.existsByRoomIdAndUserIdAndDeletedFalse(room.getId(), author.getId())) {
             speechRepository.save(Speech.createMainOpinion(
