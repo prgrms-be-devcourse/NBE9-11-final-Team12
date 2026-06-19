@@ -1,10 +1,20 @@
 "use client"
 
 import { FormEvent, useCallback, useEffect, useState } from "react"
-import { Flag, History, Loader2, MessageSquarePlus } from "lucide-react"
+import { Flag, History, Loader2, MessageSquarePlus, Mic, MicOff, Users } from "lucide-react"
 import { ApiError } from "@/lib/api/client"
-import { speechApi } from "@/lib/api/services"
-import type { SpeechReportReason, SpeechStance, SpeechSummary } from "@/lib/api/types"
+import { speechApi, stageApi } from "@/lib/api/services"
+import { subscribeRoomEvents } from "@/lib/api/stomp"
+import { useAuth } from "@/components/auth-provider"
+import type {
+  SpeechReportReason,
+  SpeechStance,
+  SpeechSummary,
+  StageCurrentSpeaker,
+  StageEvent,
+  StageQueue,
+  StageRequestStatus,
+} from "@/lib/api/types"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -26,10 +36,16 @@ function messageOf(error: unknown) {
   return error instanceof ApiError ? error.message : "요청 처리 중 오류가 발생했습니다."
 }
 
-export function MainStage({ roomId }: { roomId: number }) {
+export function MainStage({ roomId, liveEnabled = true }: { roomId: number; liveEnabled?: boolean }) {
+  const { user } = useAuth()
   const [speeches, setSpeeches] = useState<SpeechSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [stageLoading, setStageLoading] = useState(true)
+  const [stageError, setStageError] = useState("")
+  const [currentSpeaker, setCurrentSpeaker] = useState<StageCurrentSpeaker | null>(null)
+  const [queueSummary, setQueueSummary] = useState<StageQueue | null>(null)
+  const [requestStatus, setRequestStatus] = useState<StageRequestStatus | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [content, setContent] = useState("")
   const [stance, setStance] = useState<SpeechStance>("PRO")
@@ -53,9 +69,55 @@ export function MainStage({ roomId }: { roomId: number }) {
     }
   }, [roomId])
 
+  const loadStage = useCallback(async () => {
+    if (!liveEnabled) {
+      setStageLoading(false)
+      setStageError("")
+      return
+    }
+
+    setStageLoading(true)
+    setStageError("")
+    const [speakerResult, queueResult, statusResult] = await Promise.allSettled([
+      stageApi.current(roomId),
+      stageApi.queueSummary(roomId),
+      stageApi.myRequestStatus(roomId),
+    ])
+
+    if (speakerResult.status === "fulfilled") setCurrentSpeaker(speakerResult.value)
+    if (queueResult.status === "fulfilled") setQueueSummary(queueResult.value)
+    if (statusResult.status === "fulfilled") setRequestStatus(statusResult.value)
+
+    const rejected = [speakerResult, queueResult, statusResult].find(
+      (result) => result.status === "rejected",
+    )
+    if (rejected?.status === "rejected") {
+      setStageError(messageOf(rejected.reason))
+    }
+    setStageLoading(false)
+  }, [liveEnabled, roomId])
+
   useEffect(() => {
     void loadSpeeches()
   }, [loadSpeeches])
+
+  useEffect(() => {
+    void loadStage()
+  }, [loadStage])
+
+  useEffect(() => {
+    if (!liveEnabled) return
+
+    const subscription = subscribeRoomEvents<StageEvent>(roomId, {
+      destinations: [`/topic/rooms/${roomId}/stage/events`],
+      onEvent: () => {
+        void loadStage()
+      },
+      onError: (message) => setStageError(message),
+    })
+
+    return () => subscription.disconnect()
+  }, [liveEnabled, loadStage, roomId])
 
   const createSpeech = async (event: FormEvent) => {
     event.preventDefault()
@@ -102,6 +164,48 @@ export function MainStage({ roomId }: { roomId: number }) {
     setReportTarget(speech)
   }
 
+  const requestTurn = async () => {
+    setSubmitting(true)
+    setStageError("")
+    try {
+      await stageApi.requestTurn(roomId)
+      await loadStage()
+    } catch (requestError) {
+      setStageError(messageOf(requestError))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const cancelRequest = async () => {
+    setSubmitting(true)
+    setStageError("")
+    try {
+      await stageApi.cancelMyRequest(roomId)
+      await loadStage()
+    } catch (requestError) {
+      setStageError(messageOf(requestError))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const completeTurn = async () => {
+    setSubmitting(true)
+    setStageError("")
+    try {
+      await stageApi.completeTurn(roomId)
+      await loadStage()
+    } catch (requestError) {
+      setStageError(messageOf(requestError))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const isCurrentUserSpeaking =
+    Boolean(user && currentSpeaker?.currentSpeaker?.userId === user.userId)
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center justify-between border-b border-border/50 px-4 py-3">
@@ -112,6 +216,60 @@ export function MainStage({ roomId }: { roomId: number }) {
         <Button size="sm" className="gap-1.5 text-xs" onClick={() => setCreateOpen(true)}>
           <MessageSquarePlus className="size-3.5" /> 의견 작성
         </Button>
+      </div>
+
+      <div className="border-b border-border/50 bg-muted/20 px-4 py-3">
+        {stageError && <p className="mb-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{stageError}</p>}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0 flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <Mic className="size-4 text-primary" />
+              <span className="text-xs font-semibold text-foreground">
+                {!liveEnabled
+                  ? "입장 완료 후 발언권을 신청할 수 있습니다"
+                  : stageLoading
+                  ? "발언권 상태 확인 중..."
+                  : currentSpeaker?.hasCurrentSpeaker && currentSpeaker.currentSpeaker
+                    ? `${currentSpeaker.currentSpeaker.nickname}님 발언 중`
+                    : "현재 발언자가 없습니다"}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Users className="size-3" />
+                대기 {queueSummary?.totalWaitingCount ?? 0}명
+              </span>
+              {requestStatus?.hasRequest && (
+                <span>
+                  내 상태: {requestStatus.status === "WAITING" ? `대기 ${requestStatus.currentRank ?? "-"}순위` : requestStatus.status}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            {isCurrentUserSpeaking ? (
+              <Button size="sm" variant="outline" className="gap-1.5 text-xs" disabled={submitting} onClick={completeTurn}>
+                <MicOff className="size-3.5" />
+                발언 종료
+              </Button>
+            ) : requestStatus?.hasRequest ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 text-xs"
+                disabled={submitting || !requestStatus.cancelable}
+                onClick={cancelRequest}
+              >
+                신청 취소
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" className="gap-1.5 text-xs" disabled={submitting || !liveEnabled} onClick={requestTurn}>
+                <Mic className="size-3.5" />
+                발언권 신청
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">

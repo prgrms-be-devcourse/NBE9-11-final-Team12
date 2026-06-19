@@ -8,51 +8,41 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog"
 import { Navbar } from "@/components/navbar"
 import { MainStage } from "@/components/main-stage"
 import { ChatPanel } from "@/components/chat-panel"
-import { mockTopics } from "@/lib/mock-data"
 import { useAuth } from "@/components/auth-provider"
-import { roomApi } from "@/lib/api/services"
+import { roomApi, topicApi } from "@/lib/api/services"
 import { ApiError } from "@/lib/api/client"
+import { subscribeRoomEvents } from "@/lib/api/stomp"
+import type { RoomEvent, RoomParticipant, RoomParticipantEvent } from "@/lib/api/types"
 import {
   ArrowLeft,
   Users,
   MessageSquare,
-  ThumbsUp,
-  Share2,
-  Flag,
-  Clock,
   Zap,
-  TrendingUp,
-  Eye,
+  LogOut,
 } from "lucide-react"
 
-const topic = mockTopics[0]
+type RoomView = {
+  id: string
+  title: string
+  description: string
+  category: string
+  status: "OPEN" | "CLOSED"
+  tags: string[]
+  isLive: boolean
+}
 
-const participantAvatars = [
-  { id: "p1", initial: "LH" },
-  { id: "p2", initial: "MC" },
-  { id: "p3", initial: "TS" },
-  { id: "p4", initial: "JK" },
-  { id: "p5", initial: "PW" },
-]
-
-const ROOM_REPORT_REASONS = [
-  "불법 / 유해 콘텐츠",
-  "스팸 / 반복 도배",
-  "허위 정보 확산",
-  "특정 집단 혐오",
-  "주제 부적절",
-  "기타",
-]
+function ChatUnavailable() {
+  return (
+    <div className="flex h-full min-h-0 flex-col items-center justify-center gap-2 px-4 text-center text-muted-foreground">
+      <MessageSquare className="size-6" />
+      <p className="text-sm font-medium text-foreground">채팅 연결 대기 중</p>
+      <p className="text-xs">토론방 입장이 완료되면 실시간 채팅이 연결됩니다.</p>
+    </div>
+  )
+}
 
 export default function RoomDetailPage() {
   const params = useParams<{ id: string }>()
@@ -60,38 +50,112 @@ export default function RoomDetailPage() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
   const [joinError, setJoinError] = useState("")
-  const [liked, setLiked] = useState(false)
-  const [likeCount, setLikeCount] = useState(topic.likes)
-
-  // Room report modal
-  const [roomReportOpen, setRoomReportOpen] = useState(false)
-  const [roomReportReason, setRoomReportReason] = useState<string | null>(null)
-  const [roomReportSubmitted, setRoomReportSubmitted] = useState(false)
+  const [joined, setJoined] = useState(false)
+  const [roomView, setRoomView] = useState<RoomView | null>(null)
+  const [participantCount, setParticipantCount] = useState(0)
+  const [participants, setParticipants] = useState<RoomParticipant[]>([])
+  const [leaving, setLeaving] = useState(false)
 
   useEffect(() => {
     if (!Number.isSafeInteger(roomId) || roomId <= 0) {
       router.replace("/rooms")
       return
     }
-    if (authLoading || !user) return
+    if (authLoading) return
+    if (!user) {
+      setJoined(false)
+      setJoinError("로그인 후 토론방에 참여할 수 있습니다.")
+      return
+    }
 
-    roomApi.join(roomId).catch((error) => {
-      if (error instanceof ApiError && error.code === "ROOM_ALREADY_PARTICIPATED") return
-      setJoinError(error instanceof ApiError ? error.message : "토론방 입장에 실패했습니다.")
-    })
+    async function loadRoom() {
+      setJoinError("")
+      try {
+        const room = await roomApi.detail(roomId)
+        const topicDetail = await topicApi.detail(room.topicId)
+        setRoomView({
+          id: String(room.roomId),
+          title: room.title,
+          description: topicDetail.description ?? "승인된 토픽으로 개설된 실시간 토론방입니다.",
+          category: topicDetail.category,
+          status: room.status,
+          tags: [topicDetail.category],
+          isLive: room.status === "OPEN",
+        })
+      } catch (error) {
+        setJoinError(error instanceof ApiError ? error.message : "토론방 정보를 불러오지 못했습니다.")
+      }
+    }
+
+    async function joinRoom() {
+      try {
+        await roomApi.join(roomId)
+        setJoined(true)
+      } catch (error) {
+        if (error instanceof ApiError && error.code === "ROOM_ALREADY_PARTICIPATED") {
+          setJoined(true)
+          return
+        }
+        setJoined(false)
+        setJoinError(error instanceof ApiError ? error.message : "토론방 입장에 실패했습니다.")
+      }
+    }
+
+    async function loadParticipantCount() {
+      try {
+        const [countResponse, participantResponse] = await Promise.all([
+          roomApi.participantCount(roomId),
+          roomApi.participants(roomId),
+        ])
+        setParticipantCount(countResponse.participantCount)
+        setParticipants(participantResponse)
+      } catch {
+      }
+    }
+
+    void loadRoom()
+    void joinRoom().then(loadParticipantCount)
   }, [authLoading, roomId, router, user])
 
-  const handleLike = () => {
-    setLiked(!liked)
-    setLikeCount((c) => (liked ? c - 1 : c + 1))
-  }
+  useEffect(() => {
+    if (!joined) return
 
-  const handleRoomReportClose = () => {
-    setRoomReportOpen(false)
-    setTimeout(() => {
-      setRoomReportReason(null)
-      setRoomReportSubmitted(false)
-    }, 300)
+    const subscription = subscribeRoomEvents<RoomParticipantEvent | RoomEvent>(roomId, {
+      destinations: [
+        `/topic/rooms/${roomId}/participants/events`,
+        `/topic/rooms/${roomId}/room/events`,
+      ],
+      onEvent: (event) => {
+        if (event.eventType === "PARTICIPANT_JOINED" || event.eventType === "PARTICIPANT_LEFT") {
+          setParticipantCount(event.data.participantCount)
+          return
+        }
+
+        if (event.eventType === "ROOM_CLOSED") {
+          setRoomView((prev) => prev && ({
+            ...prev,
+            status: "CLOSED",
+            isLive: false,
+          }))
+        }
+      },
+      onError: (message) => setJoinError(message),
+    })
+
+    return () => subscription.disconnect()
+  }, [joined, roomId])
+
+  const leaveRoom = async () => {
+    setLeaving(true)
+    setJoinError("")
+    try {
+      await roomApi.leave(roomId)
+      router.push("/rooms")
+    } catch (error) {
+      setJoinError(error instanceof ApiError ? error.message : "토론방 나가기에 실패했습니다.")
+    } finally {
+      setLeaving(false)
+    }
   }
 
   return (
@@ -109,46 +173,26 @@ export default function RoomDetailPage() {
           </Link>
 
           <div className="flex min-w-0 flex-1 items-center gap-2">
-            <Badge className="gap-1.5 shrink-0 bg-primary/20 text-primary border-primary/30 text-[11px]">
-              <span className="size-1.5 rounded-full bg-primary animate-live-pulse" />
-              LIVE
+            <Badge className={`gap-1.5 shrink-0 text-[11px] ${roomView?.status === "OPEN"
+              ? "bg-primary/20 text-primary border-primary/30"
+              : "bg-muted text-muted-foreground border-border"
+              }`}>
+              <span className={`size-1.5 rounded-full ${roomView?.status === "OPEN" ? "bg-primary animate-live-pulse" : "bg-muted-foreground"}`} />
+              {roomView?.status === "OPEN" ? "LIVE" : "CLOSED"}
             </Badge>
             <h1 className="truncate text-sm font-semibold text-foreground">
-              {topic.title}
+              {roomView?.title ?? "토론방"}
             </h1>
           </div>
 
           <div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
             <span className="hidden items-center gap-1 sm:flex">
               <Users className="size-3.5" />
-              {topic.participants.toLocaleString()}
+              {participantCount.toLocaleString()}
             </span>
-            <span className="hidden items-center gap-1 sm:flex">
-              <Eye className="size-3.5" />
-              실시간 24
-            </span>
-            <div className="flex items-center gap-1">
-              <Clock className="size-3.5" />
-              <span className="font-mono">01:18</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1">
-            <button
-              onClick={handleLike}
-              className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs transition-colors ${liked
-                ? "text-primary bg-primary/10"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                }`}
-            >
-              <ThumbsUp
-                className={`size-4 ${liked ? "fill-primary text-primary" : ""}`}
-              />
-              <span className="font-medium hidden sm:inline">{likeCount}</span>
-            </button>
-            <Button variant="ghost" size="icon" className="size-8">
-              <Share2 className="size-4 text-muted-foreground" />
-              <span className="sr-only">공유</span>
+            <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" disabled={!joined || leaving} onClick={leaveRoom}>
+              <LogOut className="size-3.5" />
+              나가기
             </Button>
           </div>
         </div>
@@ -170,36 +214,28 @@ export default function RoomDetailPage() {
                     variant="outline"
                     className="mb-2 border-primary/30 text-primary text-[10px]"
                   >
-                    {topic.category}
+                    {roomView?.category ?? "토론"}
                   </Badge>
                   <h2 className="mb-2 text-sm font-semibold leading-snug text-foreground">
-                    {topic.title}
+                    {roomView?.title ?? "토론방 정보를 불러오는 중..."}
                   </h2>
                   <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
-                    {topic.description}
+                    {roomView?.description ?? "잠시만 기다려 주세요."}
                   </p>
 
                   <Separator className="mb-3" />
 
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    {[
-                      { label: "참여자", value: `${(topic.participants / 1000).toFixed(1)}k`, icon: Users },
-                      { label: "메시지", value: `${(topic.messages / 1000).toFixed(1)}k`, icon: MessageSquare },
-                      { label: "공감", value: likeCount.toString(), icon: ThumbsUp },
-                    ].map(({ label, value, icon: Icon }) => (
-                      <div key={label} className="flex flex-col items-center gap-0.5">
-                        <Icon className="size-3.5 text-muted-foreground" />
-                        <span className="text-sm font-bold text-foreground">{value}</span>
-                        <span className="text-[10px] text-muted-foreground">{label}</span>
-                      </div>
-                    ))}
+                  <div className="flex items-center justify-center gap-2 text-center">
+                    <Users className="size-3.5 text-muted-foreground" />
+                    <span className="text-sm font-bold text-foreground">{participantCount.toLocaleString()}</span>
+                    <span className="text-[10px] text-muted-foreground">참여자</span>
                   </div>
 
-                  {topic.tags && topic.tags.length > 0 && (
+                  {roomView?.tags && roomView.tags.length > 0 && (
                     <>
                       <Separator className="my-3" />
                       <div className="flex flex-wrap gap-1">
-                        {topic.tags.map((tag) => (
+                        {roomView.tags.map((tag) => (
                           <span
                             key={tag}
                             className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground"
@@ -217,43 +253,27 @@ export default function RoomDetailPage() {
                   <div className="mb-3 flex items-center justify-between">
                     <span className="text-xs font-semibold text-foreground">참여자</span>
                     <span className="text-[11px] text-muted-foreground">
-                      {topic.participants.toLocaleString()}명
+                      {participantCount.toLocaleString()}명
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
-                    {participantAvatars.map((p, idx) => (
+                    {participants.slice(0, 5).map((participant, idx) => (
                       <Avatar
-                        key={p.id}
+                        key={participant.roomParticipantId}
                         className="size-7 border-2 border-background"
                         style={{ marginLeft: idx > 0 ? "-8px" : "0" }}
                       >
                         <AvatarFallback className="bg-muted text-[9px] font-bold text-muted-foreground">
-                          {p.initial}
+                          U{participant.userId}
                         </AvatarFallback>
                       </Avatar>
                     ))}
-                    <span className="ml-2 text-[11px] text-muted-foreground">
-                      +{(topic.participants - 5).toLocaleString()}명
-                    </span>
+                    {participantCount > 5 && (
+                      <span className="ml-2 text-[11px] text-muted-foreground">
+                        +{(participantCount - 5).toLocaleString()}명
+                      </span>
+                    )}
                   </div>
-                </div>
-
-                {/* Actions */}
-                <div className="flex flex-col gap-2">
-                  <Button variant="outline" size="sm" className="w-full gap-2 text-xs">
-                    <TrendingUp className="size-3.5" />
-                    관련 토픽 보기
-                  </Button>
-                  {/* Room-level report — distinct from speaker/chat report */}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full gap-2 text-xs text-muted-foreground hover:text-destructive"
-                    onClick={() => setRoomReportOpen(true)}
-                  >
-                    <Flag className="size-3.5" />
-                    토론방 신고
-                  </Button>
                 </div>
               </div>
             </aside>
@@ -280,10 +300,10 @@ export default function RoomDetailPage() {
                       </TabsTrigger>
                     </TabsList>
                     <TabsContent value="stage" className="m-0 h-[70vh] min-h-[500px]">
-                      <MainStage roomId={roomId} />
+                      <MainStage roomId={roomId} liveEnabled={joined} />
                     </TabsContent>
                     <TabsContent value="chat" className="m-0 h-[70vh] min-h-[500px]">
-                      <ChatPanel />
+                      {joined ? <ChatPanel roomId={roomId} /> : <ChatUnavailable />}
                     </TabsContent>
                   </Tabs>
                 </div>
@@ -291,123 +311,17 @@ export default function RoomDetailPage() {
                 {/* Desktop: Side by side, fills remaining height */}
                 <div className="hidden min-h-0 lg:flex lg:flex-1">
                   <div className="min-h-0 flex-1 border-r border-border/50">
-                    <MainStage roomId={roomId} />
+                    <MainStage roomId={roomId} liveEnabled={joined} />
                   </div>
                   <div className="min-h-0 w-80 xl:w-96">
-                    <ChatPanel />
+                    {joined ? <ChatPanel roomId={roomId} /> : <ChatUnavailable />}
                   </div>
                 </div>
               </div>
             </div>
           </div>
-
-          {/* Bottom related rooms — only visible on mobile scroll / desktop overflow area */}
-          <section className="mt-8 pb-6 lg:hidden">
-            <div className="mb-4 flex items-center gap-2">
-              <TrendingUp className="size-4 text-primary" />
-              <h2 className="text-sm font-semibold text-foreground">관련 토의방</h2>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {mockTopics.slice(1, 4).map((t) => (
-                <Link
-                  key={t.id}
-                  href={`/rooms/${t.id}`}
-                  className="group flex items-start gap-3 rounded-xl border border-border/50 bg-card p-4 transition-colors hover:border-primary/30"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="mb-1 flex items-center gap-1.5">
-                      <Badge
-                        variant="outline"
-                        className="border-border/50 text-[10px] text-muted-foreground"
-                      >
-                        {t.category}
-                      </Badge>
-                      {t.isLive && (
-                        <span className="size-1.5 rounded-full bg-primary animate-live-pulse" />
-                      )}
-                    </div>
-                    <p className="line-clamp-2 text-xs font-medium text-foreground group-hover:text-primary transition-colors">
-                      {t.title}
-                    </p>
-                    <p className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
-                      <Users className="size-3" />
-                      {t.participants.toLocaleString()}명
-                    </p>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </section>
-
         </div>{/* max-w-7xl inner */}
       </div>{/* body scroll wrapper */}
-
-      {/* Room report modal */}
-      <Dialog open={roomReportOpen} onOpenChange={handleRoomReportClose}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-sm">
-              <Flag className="size-4 text-destructive" />
-              토론방 신고
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              이 토론방 전체를 신고합니다. 신고 내용은 운영팀이 검토합니다.
-            </DialogDescription>
-          </DialogHeader>
-
-          {roomReportSubmitted ? (
-            <div className="flex flex-col items-center gap-3 py-4">
-              <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
-                <Flag className="size-5 text-primary" />
-              </div>
-              <p className="text-sm font-semibold text-foreground">신고가 접수되었습니다</p>
-              <p className="text-xs text-muted-foreground text-center">
-                검토 후 커뮤니티 가이드라인에 따라 처리됩니다.
-              </p>
-              <Button size="sm" className="mt-1 w-full" onClick={handleRoomReportClose}>
-                확인
-              </Button>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              <p className="text-xs font-medium text-foreground">신고 사유를 선택하세요</p>
-              <div className="flex flex-col gap-1.5">
-                {ROOM_REPORT_REASONS.map((reason) => (
-                  <button
-                    key={reason}
-                    onClick={() => setRoomReportReason(reason)}
-                    className={`rounded-lg border px-3 py-2.5 text-left text-xs transition-colors ${roomReportReason === reason
-                      ? "border-primary/50 bg-primary/10 text-primary font-medium"
-                      : "border-border text-foreground hover:border-border/80 hover:bg-muted/60"
-                      }`}
-                  >
-                    {reason}
-                  </button>
-                ))}
-              </div>
-              <div className="flex gap-2 pt-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 text-xs"
-                  onClick={handleRoomReportClose}
-                >
-                  취소
-                </Button>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  className="flex-1 text-xs"
-                  disabled={!roomReportReason}
-                  onClick={() => setRoomReportSubmitted(true)}
-                >
-                  신고하기
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
