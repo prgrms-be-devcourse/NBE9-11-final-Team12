@@ -11,7 +11,6 @@ import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.time.LocalDateTime;
-import java.util.Objects;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -108,12 +107,7 @@ public class SpeakingQueue {
             SpeechStance stance,
             LocalDateTime requestedAt
     ) {
-        return new SpeakingQueue(
-                roomId,
-                userId,
-                Objects.requireNonNull(stance, "Speaking stance is required."),
-                requestedAt
-        );
+        return new SpeakingQueue(roomId, userId, stance, requestedAt);
     }
 
     public static SpeakingQueue waiting(

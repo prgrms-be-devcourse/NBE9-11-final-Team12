@@ -29,6 +29,21 @@ class SpeakingQueueTest {
     }
 
     @Test
+    void waiting_allowsNeutralRequestWhenStanceIsNull() {
+        LocalDateTime requestedAt = LocalDateTime.of(2026, 6, 12, 11, 30);
+
+        SpeakingQueue speakingQueue = SpeakingQueue.waiting(
+                1L,
+                7L,
+                null,
+                requestedAt
+        );
+
+        assertThat(speakingQueue.getStance()).isNull();
+        assertThat(speakingQueue.getStatus()).isEqualTo(SpeakingQueueStatus.WAITING);
+    }
+
+    @Test
     void waitingWithQueueOrder_createsWaitingRequestWithRoomScopedOrder() {
         SpeakingQueue speakingQueue = SpeakingQueue.waiting(
                 1L,
