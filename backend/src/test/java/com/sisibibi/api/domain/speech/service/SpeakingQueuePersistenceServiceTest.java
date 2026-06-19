@@ -131,6 +131,7 @@ class SpeakingQueuePersistenceServiceTest {
                 1L,
                 7L,
                 15,
+                SpeechStance.PRO,
                 java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
         );
         given(roomRepository.findByIdForUpdate(1L))
@@ -181,6 +182,7 @@ class SpeakingQueuePersistenceServiceTest {
                 1L,
                 7L,
                 15,
+                SpeechStance.PRO,
                 java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
         );
         assign(assigned);
@@ -209,6 +211,7 @@ class SpeakingQueuePersistenceServiceTest {
                 1L,
                 7L,
                 3,
+                SpeechStance.PRO,
                 java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
         );
         given(roomRepository.existsById(1L)).willReturn(true);
@@ -540,6 +543,7 @@ class SpeakingQueuePersistenceServiceTest {
                 1L,
                 7L,
                 15,
+                SpeechStance.PRO,
                 java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
         );
         assign(assigned);
@@ -587,6 +591,7 @@ class SpeakingQueuePersistenceServiceTest {
                 1L,
                 7L,
                 15,
+                SpeechStance.PRO,
                 java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
         );
         assign(assigned);
@@ -655,6 +660,7 @@ class SpeakingQueuePersistenceServiceTest {
                 1L,
                 7L,
                 15,
+                SpeechStance.PRO,
                 java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
         );
         assign(assigned);
@@ -689,6 +695,7 @@ class SpeakingQueuePersistenceServiceTest {
                 1L,
                 7L,
                 15,
+                SpeechStance.PRO,
                 java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
         );
         assign(assigned);

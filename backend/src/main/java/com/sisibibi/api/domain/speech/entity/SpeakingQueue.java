@@ -105,14 +105,6 @@ public class SpeakingQueue {
     public static SpeakingQueue waiting(
             Long roomId,
             Long userId,
-            LocalDateTime requestedAt
-    ) {
-        return new SpeakingQueue(roomId, userId, null, requestedAt);
-    }
-
-    public static SpeakingQueue waiting(
-            Long roomId,
-            Long userId,
             SpeechStance stance,
             LocalDateTime requestedAt
     ) {
@@ -122,17 +114,6 @@ public class SpeakingQueue {
                 Objects.requireNonNull(stance, "Speaking stance is required."),
                 requestedAt
         );
-    }
-
-    public static SpeakingQueue waiting(
-            Long roomId,
-            Long userId,
-            int queueOrder,
-            LocalDateTime requestedAt
-    ) {
-        SpeakingQueue speakingQueue = new SpeakingQueue(roomId, userId, null, requestedAt);
-        speakingQueue.queueOrder = queueOrder;
-        return speakingQueue;
     }
 
     public static SpeakingQueue waiting(

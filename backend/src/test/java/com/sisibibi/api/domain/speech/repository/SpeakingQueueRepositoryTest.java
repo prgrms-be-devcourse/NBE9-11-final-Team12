@@ -28,6 +28,7 @@ class SpeakingQueueRepositoryTest {
                 1L,
                 7L,
                 1,
+                SpeechStance.PRO,
                 LocalDateTime.of(2026, 6, 12, 11, 30)
         );
         SpeakingQueue saved = speakingQueueRepository.saveAndFlush(request);
@@ -48,19 +49,22 @@ class SpeakingQueueRepositoryTest {
                         1L,
                         10L,
                         1,
-                        LocalDateTime.of(2026, 6, 12, 11, 30)
+                        SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
                 ),
                 SpeakingQueue.waiting(
                         1L,
                         20L,
                         3,
-                        LocalDateTime.of(2026, 6, 12, 11, 31)
+                        SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 31)
                 ),
                 SpeakingQueue.waiting(
                         2L,
                         30L,
                         9,
-                        LocalDateTime.of(2026, 6, 12, 11, 32)
+                        SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 32)
                 )
         ));
 
@@ -83,7 +87,8 @@ class SpeakingQueueRepositoryTest {
                         1L,
                         10L,
                         1,
-                        LocalDateTime.of(2026, 6, 12, 11, 30)
+                        SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
                 )
         );
 
@@ -107,7 +112,8 @@ class SpeakingQueueRepositoryTest {
                         1L,
                         7L,
                         1,
-                        LocalDateTime.of(2026, 6, 12, 11, 30)
+                        SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
                 )
         );
 
@@ -116,7 +122,8 @@ class SpeakingQueueRepositoryTest {
                         1L,
                         7L,
                         2,
-                        LocalDateTime.of(2026, 6, 12, 11, 31)
+                        SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 31)
                 )
         )).isInstanceOf(DataIntegrityViolationException.class);
     }
@@ -128,7 +135,8 @@ class SpeakingQueueRepositoryTest {
                         1L,
                         10L,
                         20,
-                        LocalDateTime.of(2026, 6, 12, 11, 31)
+                        SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 31)
                 )
         );
         SpeakingQueue first = speakingQueueRepository.saveAndFlush(
@@ -136,7 +144,8 @@ class SpeakingQueueRepositoryTest {
                         1L,
                         20L,
                         15,
-                        LocalDateTime.of(2026, 6, 12, 11, 30)
+                        SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
                 )
         );
 
@@ -253,6 +262,7 @@ class SpeakingQueueRepositoryTest {
                 1L,
                 10L,
                 15,
+                SpeechStance.PRO,
                 LocalDateTime.of(2026, 6, 12, 11, 30)
         );
         assign(assigned);
@@ -271,13 +281,15 @@ class SpeakingQueueRepositoryTest {
                         1L,
                         10L,
                         1,
-                        LocalDateTime.of(2026, 6, 12, 11, 30)
+                        SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
                 )
         );
         SpeakingQueue assigned = SpeakingQueue.waiting(
                 2L,
                 20L,
                 2,
+                SpeechStance.PRO,
                 LocalDateTime.of(2026, 6, 12, 11, 31)
         );
         assign(assigned);
@@ -287,7 +299,8 @@ class SpeakingQueueRepositoryTest {
                         2L,
                         21L,
                         3,
-                        LocalDateTime.of(2026, 6, 12, 11, 32)
+                        SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 32)
                 )
         );
 
@@ -304,6 +317,7 @@ class SpeakingQueueRepositoryTest {
                 1L,
                 10L,
                 1,
+                SpeechStance.PRO,
                 LocalDateTime.of(2026, 6, 12, 11, 30)
         );
         expired.assign(
@@ -316,6 +330,7 @@ class SpeakingQueueRepositoryTest {
                 2L,
                 20L,
                 2,
+                SpeechStance.PRO,
                 LocalDateTime.of(2026, 6, 12, 11, 32)
         );
         notExpired.assign(
@@ -329,7 +344,8 @@ class SpeakingQueueRepositoryTest {
                         3L,
                         30L,
                         3,
-                        LocalDateTime.of(2026, 6, 12, 11, 30)
+                        SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
                 )
         );
 

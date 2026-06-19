@@ -12,7 +12,12 @@ class SpeakingQueueTest {
     void waiting_createsWaitingRequest() {
         LocalDateTime requestedAt = LocalDateTime.of(2026, 6, 12, 11, 30);
 
-        SpeakingQueue speakingQueue = SpeakingQueue.waiting(1L, 7L, requestedAt);
+        SpeakingQueue speakingQueue = SpeakingQueue.waiting(
+                1L,
+                7L,
+                SpeechStance.PRO,
+                requestedAt
+        );
 
         assertThat(speakingQueue.getRoomId()).isEqualTo(1L);
         assertThat(speakingQueue.getUserId()).isEqualTo(7L);
@@ -29,6 +34,7 @@ class SpeakingQueueTest {
                 1L,
                 7L,
                 3,
+                SpeechStance.PRO,
                 LocalDateTime.of(2026, 6, 12, 11, 30)
         );
 
@@ -40,6 +46,7 @@ class SpeakingQueueTest {
         SpeakingQueue speakingQueue = SpeakingQueue.waiting(
                 1L,
                 7L,
+                SpeechStance.PRO,
                 LocalDateTime.of(2026, 6, 12, 11, 30)
         );
         LocalDateTime canceledAt = LocalDateTime.of(2026, 6, 12, 11, 35);
@@ -57,6 +64,7 @@ class SpeakingQueueTest {
                 1L,
                 7L,
                 15,
+                SpeechStance.PRO,
                 LocalDateTime.of(2026, 6, 12, 11, 30)
         );
         speakingQueue.assign(
@@ -76,6 +84,7 @@ class SpeakingQueueTest {
                 1L,
                 7L,
                 15,
+                SpeechStance.PRO,
                 LocalDateTime.of(2026, 6, 12, 11, 30)
         );
         LocalDateTime assignedAt = LocalDateTime.of(2026, 6, 12, 11, 31);
@@ -95,6 +104,7 @@ class SpeakingQueueTest {
                 1L,
                 7L,
                 15,
+                SpeechStance.PRO,
                 LocalDateTime.of(2026, 6, 12, 11, 30)
         );
         speakingQueue.cancel(LocalDateTime.of(2026, 6, 12, 11, 35));
@@ -113,6 +123,7 @@ class SpeakingQueueTest {
                 1L,
                 7L,
                 15,
+                SpeechStance.PRO,
                 LocalDateTime.of(2026, 6, 12, 11, 30)
         );
         LocalDateTime assignedAt = LocalDateTime.of(2026, 6, 12, 11, 31);
@@ -128,6 +139,7 @@ class SpeakingQueueTest {
                 1L,
                 7L,
                 15,
+                SpeechStance.PRO,
                 LocalDateTime.of(2026, 6, 12, 11, 30)
         );
         speakingQueue.assign(
@@ -147,6 +159,7 @@ class SpeakingQueueTest {
                 1L,
                 7L,
                 15,
+                SpeechStance.PRO,
                 LocalDateTime.of(2026, 6, 12, 11, 30)
         );
 
