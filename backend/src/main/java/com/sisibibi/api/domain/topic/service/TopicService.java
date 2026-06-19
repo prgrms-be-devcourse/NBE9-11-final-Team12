@@ -33,6 +33,7 @@ public class TopicService {
     return TopicDetailRes.from(topic);
   }
 
+  // 토픽 승인
   @Transactional
   public TopicCreateRes createApprovedTopic(CreateTopicReq request) {
     Topic topic = Topic.approved(
