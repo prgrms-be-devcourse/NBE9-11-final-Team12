@@ -75,4 +75,9 @@ public class Room {
             this.endedAt = endedAt;
         }
     }
+
+    public boolean isJoinableAt(LocalDateTime now) {
+        return status == RoomStatus.OPEN
+            && (endedAt == null || endedAt.isAfter(now));
+    }
 }

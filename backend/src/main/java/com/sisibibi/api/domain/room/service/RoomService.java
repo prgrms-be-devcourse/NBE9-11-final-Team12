@@ -41,7 +41,7 @@ public class RoomService {
 
   @Transactional
   public CreateRoomRes createRoom(CreateRoomReq request) {
-    Topic topic = topicRepository.findById(request.topicId())
+    Topic topic = topicRepository.findByIdForUpdate(request.topicId())
         .orElseThrow(() -> new CustomException(ErrorCode.TOPIC_NOT_FOUND));
 
 

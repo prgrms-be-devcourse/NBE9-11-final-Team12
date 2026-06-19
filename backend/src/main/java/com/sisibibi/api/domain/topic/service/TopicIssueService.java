@@ -1,12 +1,10 @@
 package com.sisibibi.api.domain.topic.service;
 
-import com.sisibibi.api.domain.topic.dto.response.issueRes.NewsSearchRes;
-import com.sisibibi.api.domain.topic.dto.response.issueRes.TrendingSearchRes;
+import com.sisibibi.api.domain.topic.dto.response.issueRes.*;
 import com.sisibibi.api.global.client.serpApi.GoogleTrendsClient;
 import com.sisibibi.api.global.client.naverApi.NewsClient;
 import com.sisibibi.api.domain.topic.dto.request.NewsSearchCommand;
-import com.sisibibi.api.domain.topic.dto.response.issueRes.IssueCandidateRes;
-import com.sisibibi.api.domain.topic.dto.response.issueRes.IssueNewsRes;
+import com.sisibibi.api.global.exception.CustomException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -26,13 +24,9 @@ public class TopicIssueService {
   private final NewsClient naverNewsClient;
 
   public List<IssueCandidateRes> createIssue() {
-    List<TrendingSearchRes> trends = googleTrendsClient.getTrendingNow().trendingSearches();
+    List<TrendingSearchRes> trends = getTrendingSearchesOrEmpty();
 
     List<IssueCandidateRes> result = new ArrayList<>();
-
-    if (trends == null) {
-      return result;
-    }
 
     for (TrendingSearchRes trend : trends) {
       if (result.size() >= TREND_KEYWORD_LIMIT) {
@@ -45,7 +39,7 @@ public class TopicIssueService {
         continue;
       }
 
-      List<IssueNewsRes> news = searchRecentNews(keyword);
+      List<IssueNewsRes> news = searchRecentNewsOrEmpty(keyword);
 
       if (news.size() < NEWS_PER_KEYWORD) {
         continue;
@@ -60,6 +54,28 @@ public class TopicIssueService {
     }
 
     return result;
+  }
+
+  private List<TrendingSearchRes> getTrendingSearchesOrEmpty() {
+    try {
+      GoogleTrendsRes response = googleTrendsClient.getTrendingNow();
+
+      if (response == null || response.trendingSearches() == null) {
+        return List.of();
+      }
+
+      return response.trendingSearches();
+    } catch (CustomException e) {
+      return List.of();
+    }
+  }
+
+  private List<IssueNewsRes> searchRecentNewsOrEmpty(String keyword) {
+    try {
+      return searchRecentNews(keyword);
+    } catch (CustomException e) {
+      return List.of();
+    }
   }
 
   private List<IssueNewsRes> searchRecentNews(String keyword) {
