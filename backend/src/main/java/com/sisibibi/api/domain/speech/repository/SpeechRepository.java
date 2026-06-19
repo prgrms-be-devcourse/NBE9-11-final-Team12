@@ -13,6 +13,8 @@ public interface SpeechRepository extends JpaRepository<Speech, Long> {
 
     Optional<Speech> findByIdAndDeletedFalse(Long id);
 
+    boolean existsByIdAndDeletedFalse(Long id);
+
     boolean existsByRoomIdAndUserIdAndDeletedFalse(Long roomId, Long userId);
 
     @Query("""
