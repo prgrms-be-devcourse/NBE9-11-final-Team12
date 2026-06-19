@@ -19,15 +19,12 @@ public interface SpeechReactionRepository extends JpaRepository<SpeechReaction, 
     @Query("""
             select reaction.speechId as speechId,
                    count(reaction.id) as reactionCount
-            from SpeechReaction reaction
-            where reaction.speechId in (
-                select speech.id
-                from Speech speech
-                where speech.roomId = :roomId
-                  and speech.deleted = false
-            )
-            group by reaction.speechId
-            order by count(reaction.id) desc, reaction.speechId desc
+            from SpeechReaction reaction, Speech speech
+            where reaction.speechId = speech.id
+              and speech.roomId = :roomId
+              and speech.deleted = false
+            group by reaction.speechId, speech.createdAt
+            order by count(reaction.id) desc, speech.createdAt asc, reaction.speechId asc
             """)
     List<BestSpeechReactionProjection> findBestSpeechReactions(
             @Param("roomId") Long roomId,

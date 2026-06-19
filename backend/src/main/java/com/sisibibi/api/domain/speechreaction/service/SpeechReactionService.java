@@ -1,6 +1,8 @@
 package com.sisibibi.api.domain.speechreaction.service;
 
 import com.sisibibi.api.domain.room.repository.RoomRepository;
+import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
+import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
 import com.sisibibi.api.domain.speech.entity.Speech;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speechreaction.dto.response.BestSpeechRes;
@@ -22,24 +24,30 @@ import java.util.List;
 public class SpeechReactionService {
 
     private final RoomRepository roomRepository;
+    private final RoomParticipantRepository roomParticipantRepository;
     private final SpeechRepository speechRepository;
     private final SpeechReactionRepository speechReactionRepository;
 
     @Transactional
     public SpeechReactionCreateRes createReaction(Long speechId, Long userId) {
-        validateSpeechExists(speechId);
+        Speech speech = getActiveSpeech(speechId);
+        validateJoinedParticipant(speech.getRoomId(), userId);
+
+        if (speech.getUserId().equals(userId)) {
+            throw new CustomException(ErrorCode.SPEECH_REACTION_SELF_NOT_ALLOWED);
+        }
 
         if (speechReactionRepository.existsBySpeechIdAndUserId(speechId, userId)) {
             throw new CustomException(ErrorCode.SPEECH_REACTION_ALREADY_EXISTS);
         }
 
         SpeechReaction reaction = SpeechReaction.create(speechId, userId);
-        return SpeechReactionCreateRes.from(speechReactionRepository.save(reaction));
+        return SpeechReactionCreateRes.from(speechReactionRepository.saveAndFlush(reaction));
     }
 
     @Transactional
     public void deleteReaction(Long speechId, Long userId) {
-        validateSpeechExists(speechId);
+        getActiveSpeech(speechId);
 
         SpeechReaction reaction = speechReactionRepository
                 .findBySpeechIdAndUserId(speechId, userId)
@@ -71,9 +79,18 @@ public class SpeechReactionService {
         return BestSpeechRes.from(speech, bestReaction.getReactionCount());
     }
 
-    private void validateSpeechExists(Long speechId) {
-        if (!speechRepository.existsByIdAndDeletedFalse(speechId)) {
-            throw new CustomException(ErrorCode.SPEECH_NOT_FOUND);
+    private Speech getActiveSpeech(Long speechId) {
+        return speechRepository.findByIdAndDeletedFalse(speechId)
+                .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_NOT_FOUND));
+    }
+
+    private void validateJoinedParticipant(Long roomId, Long userId) {
+        if (!roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
+                roomId,
+                userId,
+                RoomParticipantStatus.JOINED
+        )) {
+            throw new CustomException(ErrorCode.ROOM_PARTICIPATION_REQUIRED);
         }
     }
 }

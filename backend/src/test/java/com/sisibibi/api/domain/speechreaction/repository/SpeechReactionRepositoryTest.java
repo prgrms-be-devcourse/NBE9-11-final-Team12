@@ -56,7 +56,7 @@ class SpeechReactionRepositoryTest {
     }
 
     @Test
-    void findBestSpeechReactions_ordersByReactionCountThenLatestSpeechId() {
+    void findBestSpeechReactions_ordersByReactionCountThenCreatedOrder() {
         Speech mostReacted = speechRepository.saveAndFlush(
                 Speech.createMainOpinion(1L, 10L, "공감 2개", SpeechStance.PRO)
         );
@@ -90,8 +90,8 @@ class SpeechReactionRepositoryTest {
         assertThat(results).extracting(BestSpeechReactionProjection::getSpeechId)
                 .containsExactly(
                         mostReacted.getId(),
-                        tiedLatest.getId(),
-                        tiedOlder.getId()
+                        tiedOlder.getId(),
+                        tiedLatest.getId()
                 );
         assertThat(results).extracting(BestSpeechReactionProjection::getReactionCount)
                 .containsExactly(2L, 1L, 1L);
