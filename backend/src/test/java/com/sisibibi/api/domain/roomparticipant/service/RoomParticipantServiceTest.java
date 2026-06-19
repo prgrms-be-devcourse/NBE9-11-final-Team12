@@ -1,5 +1,7 @@
 package com.sisibibi.api.domain.roomparticipant.service;
 
+import com.sisibibi.api.domain.roomparticipant.dto.event.RoomParticipantChangedEvent;
+import com.sisibibi.api.domain.roomparticipant.dto.event.RoomParticipantEventType;
 import com.sisibibi.api.domain.roomparticipant.dto.response.RoomParticipantRes;
 import com.sisibibi.api.domain.roomparticipant.dto.response.RoomParticipantCountRes;
 import com.sisibibi.api.domain.room.entity.Room;
@@ -16,6 +18,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.List;
 import java.util.Optional;
@@ -36,6 +39,9 @@ class RoomParticipantServiceTest {
   @Mock
   private RoomParticipantRepository roomParticipantRepository;
 
+  @Mock
+  private ApplicationEventPublisher eventPublisher;
+
   @InjectMocks
   private RoomParticipantService roomParticipantService;
 
@@ -47,13 +53,21 @@ class RoomParticipantServiceTest {
     given(roomParticipantRepository.findByRoomIdAndUserId(1L, 2L)).willReturn(Optional.empty());
     given(roomParticipantRepository.save(any(RoomParticipant.class)))
         .willAnswer(invocation -> invocation.getArgument(0));
+    given(roomParticipantRepository.countByRoomIdAndStatus(
+        1L,
+        RoomParticipantStatus.JOINED
+    )).willReturn(3);
 
     RoomParticipantRes response = roomParticipantService.joinRoom(1L, 2L);
 
     ArgumentCaptor<RoomParticipant> captor = ArgumentCaptor.forClass(RoomParticipant.class);
+    ArgumentCaptor<RoomParticipantChangedEvent> eventCaptor =
+        ArgumentCaptor.forClass(RoomParticipantChangedEvent.class);
     verify(roomParticipantRepository).save(captor.capture());
+    verify(eventPublisher).publishEvent(eventCaptor.capture());
 
     RoomParticipant savedParticipant = captor.getValue();
+    RoomParticipantChangedEvent event = eventCaptor.getValue();
 
     assertThat(savedParticipant.getRoomId()).isEqualTo(1L);
     assertThat(savedParticipant.getUserId()).isEqualTo(2L);
@@ -63,6 +77,13 @@ class RoomParticipantServiceTest {
     assertThat(response.roomId()).isEqualTo(1L);
     assertThat(response.userId()).isEqualTo(2L);
     assertThat(response.status()).isEqualTo(RoomParticipantStatus.JOINED);
+
+    assertThat(event.type()).isEqualTo(RoomParticipantEventType.PARTICIPANT_JOINED);
+    assertThat(event.roomId()).isEqualTo(1L);
+    assertThat(event.payload().roomId()).isEqualTo(1L);
+    assertThat(event.payload().userId()).isEqualTo(2L);
+    assertThat(event.payload().participantCount()).isEqualTo(3);
+    assertThat(event.payload().occurredAt()).isNotNull();
   }
 
   @Test
@@ -75,6 +96,7 @@ class RoomParticipantServiceTest {
         .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
 
     verify(roomParticipantRepository, never()).save(any());
+    verify(eventPublisher, never()).publishEvent(any());
   }
 
   @Test
@@ -89,6 +111,7 @@ class RoomParticipantServiceTest {
         .isEqualTo(ErrorCode.ROOM_CLOSED);
 
     verify(roomParticipantRepository, never()).save(any());
+    verify(eventPublisher, never()).publishEvent(any());
   }
 
   @Test
@@ -108,6 +131,7 @@ class RoomParticipantServiceTest {
         .isEqualTo(ErrorCode.ROOM_ALREADY_PARTICIPATED);
 
     verify(roomParticipantRepository, never()).save(any());
+    verify(eventPublisher, never()).publishEvent(any());
   }
 
   @Test
@@ -120,12 +144,23 @@ class RoomParticipantServiceTest {
     given(roomRepository.findById(1L)).willReturn(Optional.of(room));
     given(roomParticipantRepository.findByRoomIdAndUserId(1L, 2L))
         .willReturn(Optional.of(participant));
+    given(roomParticipantRepository.countByRoomIdAndStatus(
+        1L,
+        RoomParticipantStatus.JOINED
+    )).willReturn(2);
 
     RoomParticipantRes response = roomParticipantService.joinRoom(1L, 2L);
+
+    ArgumentCaptor<RoomParticipantChangedEvent> eventCaptor =
+        ArgumentCaptor.forClass(RoomParticipantChangedEvent.class);
+    verify(eventPublisher).publishEvent(eventCaptor.capture());
 
     assertThat(participant.getStatus()).isEqualTo(RoomParticipantStatus.JOINED);
     assertThat(participant.getLeftAt()).isNull();
     assertThat(response.status()).isEqualTo(RoomParticipantStatus.JOINED);
+    assertThat(eventCaptor.getValue().type())
+        .isEqualTo(RoomParticipantEventType.PARTICIPANT_JOINED);
+    assertThat(eventCaptor.getValue().payload().participantCount()).isEqualTo(2);
     verify(roomParticipantRepository, never()).save(any());
   }
 
@@ -136,11 +171,26 @@ class RoomParticipantServiceTest {
     given(roomRepository.existsById(1L)).willReturn(true);
     given(roomParticipantRepository.findByRoomIdAndUserId(1L, 2L))
         .willReturn(Optional.of(participant));
+    given(roomParticipantRepository.countByRoomIdAndStatus(
+        1L,
+        RoomParticipantStatus.JOINED
+    )).willReturn(1);
 
     roomParticipantService.leaveRoom(1L, 2L);
 
+    ArgumentCaptor<RoomParticipantChangedEvent> eventCaptor =
+        ArgumentCaptor.forClass(RoomParticipantChangedEvent.class);
+    verify(eventPublisher).publishEvent(eventCaptor.capture());
+
     assertThat(participant.getStatus()).isEqualTo(RoomParticipantStatus.LEFT);
     assertThat(participant.getLeftAt()).isNotNull();
+    assertThat(eventCaptor.getValue().type())
+        .isEqualTo(RoomParticipantEventType.PARTICIPANT_LEFT);
+    assertThat(eventCaptor.getValue().roomId()).isEqualTo(1L);
+    assertThat(eventCaptor.getValue().payload().roomId()).isEqualTo(1L);
+    assertThat(eventCaptor.getValue().payload().userId()).isEqualTo(2L);
+    assertThat(eventCaptor.getValue().payload().participantCount()).isEqualTo(1);
+    assertThat(eventCaptor.getValue().payload().occurredAt()).isNotNull();
   }
 
   @Test
@@ -157,6 +207,8 @@ class RoomParticipantServiceTest {
 
     assertThat(participant.getStatus()).isEqualTo(RoomParticipantStatus.LEFT);
     assertThat(participant.getLeftAt()).isEqualTo(firstLeftAt);
+    verify(eventPublisher, never()).publishEvent(any());
+    verify(roomParticipantRepository, never()).countByRoomIdAndStatus(any(), any());
   }
 
   @Test
@@ -167,6 +219,8 @@ class RoomParticipantServiceTest {
         .isInstanceOf(CustomException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
+
+    verify(eventPublisher, never()).publishEvent(any());
   }
 
   @Test
@@ -179,6 +233,8 @@ class RoomParticipantServiceTest {
         .isInstanceOf(CustomException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.ROOM_PARTICIPANT_NOT_FOUND);
+
+    verify(eventPublisher, never()).publishEvent(any());
   }
 
   @Test

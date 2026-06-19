@@ -1,11 +1,14 @@
 package com.sisibibi.api.domain.roomparticipant.service;
 
 
-import com.sisibibi.api.domain.roomparticipant.dto.response.RoomParticipantCountRes;
-import com.sisibibi.api.domain.roomparticipant.dto.response.RoomParticipantRes;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
+import com.sisibibi.api.domain.roomparticipant.dto.event.RoomParticipantChangedEvent;
+import com.sisibibi.api.domain.roomparticipant.dto.event.RoomParticipantEventPayload;
+import com.sisibibi.api.domain.roomparticipant.dto.event.RoomParticipantEventType;
+import com.sisibibi.api.domain.roomparticipant.dto.response.RoomParticipantCountRes;
+import com.sisibibi.api.domain.roomparticipant.dto.response.RoomParticipantRes;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipant;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
@@ -17,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import org.springframework.context.ApplicationEventPublisher;
 
 @Slf4j
 @Service
@@ -26,6 +30,7 @@ public class RoomParticipantService {
 
   private final RoomRepository roomRepository;
   private final RoomParticipantRepository roomParticipantRepository;
+  private final ApplicationEventPublisher eventPublisher;
 
   //test cicd
   @Transactional
@@ -59,6 +64,12 @@ public class RoomParticipantService {
         participant.getStatus()
     );
 
+    publishRoomParticipantChangedEvent(
+        RoomParticipantEventType.PARTICIPANT_JOINED,
+        roomId,
+        userId
+    );
+
     return RoomParticipantRes.from(participant);
   }
 
@@ -72,6 +83,7 @@ public class RoomParticipantService {
         .findByRoomIdAndUserId(roomId, userId)
         .orElseThrow(() -> new CustomException(ErrorCode.ROOM_PARTICIPANT_NOT_FOUND));
 
+    boolean wasJoined = participant.getStatus() == RoomParticipantStatus.JOINED;
     participant.leave();
     log.info(
         "Room participant left. roomId={}, userId={}, participantId={}",
@@ -79,6 +91,14 @@ public class RoomParticipantService {
         userId,
         participant.getId()
     );
+
+    if (wasJoined) {
+      publishRoomParticipantChangedEvent(
+          RoomParticipantEventType.PARTICIPANT_LEFT,
+          roomId,
+          userId
+      );
+    }
   }
   public List<RoomParticipantRes> getRoomParticipants(Long roomId) {
     if (!roomRepository.existsById(roomId)) {
@@ -105,5 +125,20 @@ public class RoomParticipantService {
     return new RoomParticipantCountRes(roomId, participantCount);
   }
 
+  private void publishRoomParticipantChangedEvent(
+      RoomParticipantEventType type,
+      Long roomId,
+      Long userId
+  ) {
+    int participantCount = roomParticipantRepository.countByRoomIdAndStatus(
+        roomId,
+        RoomParticipantStatus.JOINED
+    );
+    eventPublisher.publishEvent(new RoomParticipantChangedEvent(
+        type,
+        roomId,
+        RoomParticipantEventPayload.of(roomId, userId, participantCount)
+    ));
+  }
 
 }
