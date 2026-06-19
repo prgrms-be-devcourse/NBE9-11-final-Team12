@@ -39,17 +39,21 @@ public class Room {
     @Column(name = "ended_at")
     private LocalDateTime endedAt;
 
+    @Column(name = "max_participants", nullable = false)
+    private int maxParticipants;
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    public static Room open(Long topicId, String title, LocalDateTime startedAt, LocalDateTime endedAt) {
+    public static Room open(Long topicId, String title, LocalDateTime startedAt, LocalDateTime endedAt, int maxParticipants) {
         Room room = new Room();
         room.topicId = topicId;
         room.title = title;
         room.status = RoomStatus.OPEN;
         room.startedAt = startedAt;
         room.endedAt = endedAt;
+        room.maxParticipants = maxParticipants;
         return room;
     }
 
@@ -62,7 +66,7 @@ public class Room {
         this.endedAt = closedAt;
     }
 
-    public void update(String title, LocalDateTime startedAt, LocalDateTime endedAt) {
+    public void update(String title, LocalDateTime startedAt, LocalDateTime endedAt, Integer maxParticipants) {
         if (title != null) {
             this.title = title;
         }
@@ -73,6 +77,10 @@ public class Room {
 
         if (endedAt != null) {
             this.endedAt = endedAt;
+        }
+
+        if (maxParticipants != null) {
+            this.maxParticipants = maxParticipants;
         }
     }
 

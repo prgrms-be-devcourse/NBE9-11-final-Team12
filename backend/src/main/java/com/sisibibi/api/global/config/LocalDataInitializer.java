@@ -200,7 +200,8 @@ public class LocalDataInitializer implements ApplicationRunner {
                         topic.getId(),
                         topic.getTitle(),
                         startedAt,
-                        endedAt
+                        endedAt,
+                    100
                 )));
     }
 

@@ -50,7 +50,8 @@ class SpeakingQueuePersistenceServiceTest {
             topicId,
             title,
             LocalDateTime.of(2026, 6, 15, 10, 0),
-            LocalDateTime.of(2026, 6, 15, 12, 0)
+            LocalDateTime.of(2026, 6, 15, 12, 0),
+            100
         );
     }
 
@@ -183,7 +184,7 @@ class SpeakingQueuePersistenceServiceTest {
         LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
         LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
         given(roomRepository.findByIdForUpdate(1L))
-            .willReturn(Optional.of(Room.open(1L, "토론방",firstStartedAt, firstEndedAt)));
+            .willReturn(Optional.of(Room.open(1L, "토론방", firstStartedAt, firstEndedAt, 100)));
         given(speakingQueueRepository.findByRoomIdAndUserIdAndStatusIn(
                 1L,
                 7L,

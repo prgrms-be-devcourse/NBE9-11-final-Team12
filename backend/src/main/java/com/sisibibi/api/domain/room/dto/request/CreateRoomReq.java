@@ -6,6 +6,9 @@ import jakarta.validation.constraints.Positive;
 public record CreateRoomReq(
     @NotNull
     @Positive
-    Long topicId
+    Long topicId,
+
+    @Positive
+    Integer maxParticipants
 ) {
 }

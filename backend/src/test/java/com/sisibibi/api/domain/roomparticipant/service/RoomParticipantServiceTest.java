@@ -50,6 +50,7 @@ class RoomParticipantServiceTest {
   void joinRoom_savesParticipant_whenRoomIsOpen() {
     Room room = org.mockito.Mockito.mock(Room.class);
     given(room.getStatus()).willReturn(RoomStatus.OPEN);
+    given(room.getMaxParticipants()).willReturn(100);
     given(room.isJoinableAt(any(LocalDateTime.class))).willReturn(true);
     given(roomRepository.findByIdForUpdate(1L)).willReturn(Optional.of(room));
     given(roomParticipantRepository.findByRoomIdAndUserId(1L, 2L)).willReturn(Optional.empty());
@@ -122,8 +123,13 @@ class RoomParticipantServiceTest {
     RoomParticipant participant = org.mockito.Mockito.mock(RoomParticipant.class);
 
     given(room.getStatus()).willReturn(RoomStatus.OPEN);
+    given(room.getMaxParticipants()).willReturn(100);
     given(room.isJoinableAt(any(LocalDateTime.class))).willReturn(true);
     given(participant.getStatus()).willReturn(RoomParticipantStatus.JOINED);
+    given(roomParticipantRepository.countByRoomIdAndStatus(
+        1L,
+        RoomParticipantStatus.JOINED
+    )).willReturn(3);
     given(roomRepository.findByIdForUpdate(1L)).willReturn(Optional.of(room));
     given(roomParticipantRepository.findByRoomIdAndUserId(1L, 2L))
         .willReturn(Optional.of(participant));
@@ -144,6 +150,7 @@ class RoomParticipantServiceTest {
     participant.leave();
 
     given(room.getStatus()).willReturn(RoomStatus.OPEN);
+    given(room.getMaxParticipants()).willReturn(100);
     given(room.isJoinableAt(any(LocalDateTime.class))).willReturn(true);
     given(roomRepository.findByIdForUpdate(1L)).willReturn(Optional.of(room));
     given(roomParticipantRepository.findByRoomIdAndUserId(1L, 2L))

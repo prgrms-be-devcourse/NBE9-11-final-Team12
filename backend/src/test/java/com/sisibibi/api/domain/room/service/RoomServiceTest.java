@@ -59,7 +59,7 @@ class RoomServiceTest {
     given(roomRepository.existsByTopicId(topic.getId())).willReturn(false);
     given(roomRepository.save(any(Room.class))).willAnswer(invocation -> invocation.getArgument(0));
 
-    CreateRoomRes result = roomService.createRoom(new CreateRoomReq(1L));
+    CreateRoomRes result = roomService.createRoom(new CreateRoomReq(1L, null));
 
     ArgumentCaptor<Room> captor = ArgumentCaptor.forClass(Room.class);
     verify(roomRepository).save(captor.capture());
@@ -78,7 +78,7 @@ class RoomServiceTest {
   void createRoom_throwsTopicNotFound_whenTopicDoesNotExist() {
     given(topicRepository.findByIdForUpdate(999L)).willReturn(Optional.empty());
 
-    assertThatThrownBy(() -> roomService.createRoom(new CreateRoomReq(999L)))
+    assertThatThrownBy(() -> roomService.createRoom(new CreateRoomReq(999L, null)))
         .isInstanceOf(CustomException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.TOPIC_NOT_FOUND);
@@ -93,7 +93,7 @@ class RoomServiceTest {
     given(topicRepository.findByIdForUpdate(1L)).willReturn(Optional.of(topic));
     given(roomRepository.existsByTopicId(topic.getId())).willReturn(true);
 
-    assertThatThrownBy(() -> roomService.createRoom(new CreateRoomReq(1L)))
+    assertThatThrownBy(() -> roomService.createRoom(new CreateRoomReq(1L, null)))
         .isInstanceOf(CustomException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.ROOM_ALREADY_EXISTS);
@@ -108,7 +108,7 @@ class RoomServiceTest {
 
     given(topicRepository.findByIdForUpdate(1L)).willReturn(Optional.of(topic));
 
-    assertThatThrownBy(() -> roomService.createRoom(new CreateRoomReq(1L)))
+    assertThatThrownBy(() -> roomService.createRoom(new CreateRoomReq(1L, null)))
         .isInstanceOf(CustomException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.TOPIC_NOT_APPROVED);
@@ -124,8 +124,8 @@ class RoomServiceTest {
     LocalDateTime secondStartedAt = LocalDateTime.of(2026, 6, 15, 13, 0);
     LocalDateTime secondEndedAt = LocalDateTime.of(2026, 6, 15, 15, 0);
 
-    Room firstRoom = Room.open(1L, "첫 번째 토론방", firstStartedAt, firstEndedAt);
-    Room secondRoom = Room.open(2L, "두 번째 토론방", secondStartedAt, secondEndedAt);
+    Room firstRoom = Room.open(1L, "첫 번째 토론방", firstStartedAt, firstEndedAt, 100);
+    Room secondRoom = Room.open(2L, "두 번째 토론방", secondStartedAt, secondEndedAt, 100);
 
     given(roomRepository.findByStatusOrderByCreatedAtDesc(RoomStatus.OPEN))
         .willReturn(List.of(secondRoom, firstRoom));
@@ -193,8 +193,8 @@ class RoomServiceTest {
     LocalDateTime secondStartedAt = LocalDateTime.of(2026, 6, 15, 13, 0);
     LocalDateTime secondEndedAt = LocalDateTime.of(2026, 6, 15, 15, 0);
 
-    Room firstRoom = Room.open(1L, "첫 번째 토론방", firstStartedAt, firstEndedAt);
-    Room secondRoom = Room.open(2L, "두 번째 토론방", secondStartedAt, secondEndedAt);
+    Room firstRoom = Room.open(1L, "첫 번째 토론방", firstStartedAt, firstEndedAt, 100);
+    Room secondRoom = Room.open(2L, "두 번째 토론방", secondStartedAt, secondEndedAt, 100);
 
     given(roomRepository.findAllByOrderByCreatedAtDesc())
         .willReturn(List.of(secondRoom, firstRoom));
@@ -212,7 +212,7 @@ class RoomServiceTest {
   void getRoom_returnsRoomDetail_whenRoomExists() {
     LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
     LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
-    Room room = Room.open(1L, "상세 조회 토론방", firstStartedAt, firstEndedAt);
+    Room room = Room.open(1L, "상세 조회 토론방", firstStartedAt, firstEndedAt, 100);
 
     given(roomRepository.findById(10L)).willReturn(Optional.of(room));
 
@@ -239,13 +239,13 @@ class RoomServiceTest {
   void updateRoom_updatesRoom_whenRoomExists() {
     LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
     LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
-    Room room = Room.open(1L, "수정 전 제목", firstStartedAt, firstEndedAt);
+    Room room = Room.open(1L, "수정 전 제목", firstStartedAt, firstEndedAt, 100);
 
     given(roomRepository.findById(10L)).willReturn(Optional.of(room));
 
     RoomDetailRes result = roomService.updateRoom(
         10L,
-        new UpdateRoomReq("수정 후 제목", firstStartedAt, firstEndedAt)
+        new UpdateRoomReq("수정 후 제목", firstStartedAt, firstEndedAt, null)
     );
 
     assertThat(result.title()).isEqualTo("수정 후 제목");
@@ -261,7 +261,7 @@ class RoomServiceTest {
 
     assertThatThrownBy(() -> roomService.updateRoom(
         999L,
-        new UpdateRoomReq("수정 후 제목", null, null)
+        new UpdateRoomReq("수정 후 제목", null, null, null)
     ))
         .isInstanceOf(CustomException.class)
         .extracting("errorCode")
@@ -272,13 +272,13 @@ class RoomServiceTest {
   void updateRoom_throwsInvalidInput_whenTitleIsBlank() {
     LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
     LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
-    Room room = Room.open(1L, "수정 전 제목", firstStartedAt, firstEndedAt);
+    Room room = Room.open(1L, "수정 전 제목", firstStartedAt, firstEndedAt, 100);
 
     given(roomRepository.findById(10L)).willReturn(Optional.of(room));
 
     assertThatThrownBy(() -> roomService.updateRoom(
         10L,
-        new UpdateRoomReq("   ", null, null)
+        new UpdateRoomReq("   ", null, null, null)
     ))
         .isInstanceOf(CustomException.class)
         .extracting("errorCode")
@@ -289,7 +289,7 @@ class RoomServiceTest {
   void updateRoom_throwsInvalidInput_whenEndedAtIsBeforeStartedAt() {
     LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
     LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
-    Room room = Room.open(1L, "수정 후 제목", firstStartedAt, firstEndedAt);
+    Room room = Room.open(1L, "수정 후 제목", firstStartedAt, firstEndedAt, 100);
 
     given(roomRepository.findById(10L)).willReturn(Optional.of(room));
 
@@ -298,7 +298,8 @@ class RoomServiceTest {
         new UpdateRoomReq(
             "수정 후 제목",
             LocalDateTime.of(2026, 6, 15, 12, 0),
-            LocalDateTime.of(2026, 6, 15, 10, 0)
+            LocalDateTime.of(2026, 6, 15, 10, 0),
+            null
         )
     ))
         .isInstanceOf(CustomException.class)
@@ -310,13 +311,13 @@ class RoomServiceTest {
   void updateRoom_preservesExistingValues_whenOptionalFieldsAreNull() {
     LocalDateTime startedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
     LocalDateTime endedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
-    Room room = Room.open(1L, "기존 제목", startedAt, endedAt);
+    Room room = Room.open(1L, "기존 제목", startedAt, endedAt, 100);
 
     given(roomRepository.findById(10L)).willReturn(Optional.of(room));
 
     RoomDetailRes result = roomService.updateRoom(
         10L,
-        new UpdateRoomReq(null, null, null)
+        new UpdateRoomReq(null, null, null, null)
     );
 
     assertThat(result.title()).isEqualTo("기존 제목");
@@ -327,13 +328,13 @@ class RoomServiceTest {
   @Test
   void updateRoom_acceptsMissingStartedAt_whenEndedAtIsProvided() {
     LocalDateTime endedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
-    Room room = Room.open(1L, "기존 제목", null, null);
+    Room room = Room.open(1L, "기존 제목", null, null, 100);
 
     given(roomRepository.findById(10L)).willReturn(Optional.of(room));
 
     RoomDetailRes result = roomService.updateRoom(
         10L,
-        new UpdateRoomReq(null, null, endedAt)
+        new UpdateRoomReq(null, null, endedAt, null)
     );
 
     assertThat(result.startedAt()).isNull();
@@ -344,7 +345,7 @@ class RoomServiceTest {
   void deleteRoom_closesRoom_whenRoomExists() {
     LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
     LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
-    Room room = Room.open(1L, "삭제 대상 토론방", firstStartedAt, firstEndedAt);
+    Room room = Room.open(1L, "삭제 대상 토론방", firstStartedAt, firstEndedAt, 100);
     ReflectionTestUtils.setField(room, "id", 10L);
 
     given(roomRepository.findById(10L)).willReturn(Optional.of(room));
@@ -369,7 +370,8 @@ class RoomServiceTest {
         1L,
         "이미 닫힌 토론방",
         LocalDateTime.of(2026, 6, 15, 10, 0),
-        closedAt
+        closedAt,
+        100
     );
     room.close(closedAt);
 

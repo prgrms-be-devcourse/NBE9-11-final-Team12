@@ -13,7 +13,7 @@ class RoomTest {
     LocalDateTime scheduledEndAt = startedAt.plusHours(2);
     LocalDateTime firstClosedAt = startedAt.plusMinutes(30);
     LocalDateTime secondClosedAt = startedAt.plusMinutes(40);
-    Room room = Room.open(1L, "토론방", startedAt, scheduledEndAt);
+    Room room = Room.open(1L, "토론방", startedAt, scheduledEndAt, 100);
 
     room.close(firstClosedAt);
     room.close(secondClosedAt);
@@ -26,9 +26,9 @@ class RoomTest {
   void update_preservesExistingValues_whenAllInputsAreNull() {
     LocalDateTime startedAt = LocalDateTime.of(2026, 6, 18, 10, 0);
     LocalDateTime endedAt = startedAt.plusHours(2);
-    Room room = Room.open(1L, "기존 제목", startedAt, endedAt);
+    Room room = Room.open(1L, "기존 제목", startedAt, endedAt, 100);
 
-    room.update(null, null, null);
+    room.update(null, null, null, null);
 
     assertThat(room.getTitle()).isEqualTo("기존 제목");
     assertThat(room.getStartedAt()).isEqualTo(startedAt);

@@ -53,6 +53,8 @@ public class RoomParticipantService {
       throw new CustomException(ErrorCode.ROOM_CLOSED);
     }
 
+    validateRoomCapacity(roomId, room);
+
     RoomParticipant participant = roomParticipantRepository
         .findByRoomIdAndUserId(roomId, userId)
         .map(existingParticipant -> {
@@ -83,6 +85,7 @@ public class RoomParticipantService {
 
     return RoomParticipantRes.from(participant);
   }
+
 
   @Transactional
   public void leaveRoom(Long roomId, Long userId) {
@@ -150,6 +153,17 @@ public class RoomParticipantService {
         roomId,
         RoomParticipantEventPayload.of(roomId, userId, participantCount)
     ));
+  }
+
+  private void validateRoomCapacity(Long roomId, Room room) {
+    int participantCount = roomParticipantRepository.countByRoomIdAndStatus(
+        roomId,
+        RoomParticipantStatus.JOINED
+    );
+
+    if (participantCount >= room.getMaxParticipants()) {
+      throw new CustomException(ErrorCode.ROOM_FULL);
+    }
   }
 
 }
