@@ -17,7 +17,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class RoomClosedWebSocketEventListener {
+public class RoomClosedEventListener {
 
     private final WebSocketEventPublisher webSocketEventPublisher;
 

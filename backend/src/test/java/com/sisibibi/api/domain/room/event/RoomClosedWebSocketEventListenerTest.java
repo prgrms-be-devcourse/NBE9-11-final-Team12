@@ -19,8 +19,8 @@ class RoomClosedWebSocketEventListenerTest {
 
     private final WebSocketEventPublisher webSocketEventPublisher =
             mock(WebSocketEventPublisher.class);
-    private final RoomClosedWebSocketEventListener listener =
-            new RoomClosedWebSocketEventListener(webSocketEventPublisher);
+    private final RoomClosedEventListener listener =
+            new RoomClosedEventListener(webSocketEventPublisher);
 
     @Test
     void handle_publishesRoomClosedEnvelopeToRoomEventTopic() {

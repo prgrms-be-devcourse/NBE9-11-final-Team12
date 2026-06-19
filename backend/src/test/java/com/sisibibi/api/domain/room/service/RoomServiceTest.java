@@ -13,6 +13,7 @@ import com.sisibibi.api.domain.topic.entity.Topic;
 import com.sisibibi.api.domain.topic.repository.TopicRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.context.ApplicationEventPublisher;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -46,6 +47,9 @@ class RoomServiceTest {
 
   @Mock
   private ApplicationEventPublisher eventPublisher;
+
+  @Mock
+  private RoomCloseCommandService roomCloseCommandService;
 
   @Test
   void createRoom_savesOpenRoom_whenTopicIsApproved() {
@@ -136,58 +140,36 @@ class RoomServiceTest {
   }
 
   @Test
-  void closeExpiredRooms_closesExpiredRoomsAndPublishesEvents() {
+  void closeExpiredRooms_closesExpiredRooms() {
     LocalDateTime now = LocalDateTime.of(2026, 6, 15, 12, 0);
-    Room firstRoom = Room.open(
-        1L,
-        "첫 번째 토론방",
-        LocalDateTime.of(2026, 6, 15, 11, 0),
-        LocalDateTime.of(2026, 6, 15, 11, 5)
-    );
-    Room secondRoom = Room.open(
-        2L,
-        "두 번째 토론방",
-        LocalDateTime.of(2026, 6, 15, 11, 10),
-        LocalDateTime.of(2026, 6, 15, 11, 15)
-    );
-    ReflectionTestUtils.setField(firstRoom, "id", 10L);
-    ReflectionTestUtils.setField(secondRoom, "id", 20L);
 
-    given(roomRepository.findByStatusAndEndedAtLessThanEqual(
+    given(roomRepository.findExpiredOpenRoomIds(
         eq(RoomStatus.OPEN),
         eq(now),
         any(Pageable.class)
-    )).willReturn(List.of(firstRoom, secondRoom));
+    )).willReturn(List.of(10L, 20L));
+
+    given(roomCloseCommandService.closeExpiredRoom(10L, now)).willReturn(true);
+    given(roomCloseCommandService.closeExpiredRoom(20L, now)).willReturn(true);
 
     int closedCount = roomService.closeExpiredRooms(now);
 
     assertThat(closedCount).isEqualTo(2);
-    assertThat(firstRoom.getStatus()).isEqualTo(RoomStatus.CLOSED);
-    assertThat(firstRoom.getEndedAt()).isEqualTo(now);
-    assertThat(secondRoom.getStatus()).isEqualTo(RoomStatus.CLOSED);
-    assertThat(secondRoom.getEndedAt()).isEqualTo(now);
 
-    verify(roomRepository).findByStatusAndEndedAtLessThanEqual(
+    verify(roomRepository).findExpiredOpenRoomIds(
         eq(RoomStatus.OPEN),
         eq(now),
         any(Pageable.class)
     );
-    ArgumentCaptor<RoomClosedEvent> eventCaptor =
-        ArgumentCaptor.forClass(RoomClosedEvent.class);
-    verify(eventPublisher, times(2)).publishEvent(eventCaptor.capture());
-    assertThat(eventCaptor.getAllValues())
-        .extracting(RoomClosedEvent::roomId)
-        .containsExactly(10L, 20L);
-    assertThat(eventCaptor.getAllValues())
-        .extracting(RoomClosedEvent::closedAt)
-        .containsExactly(now, now);
+    verify(roomCloseCommandService).closeExpiredRoom(10L, now);
+    verify(roomCloseCommandService).closeExpiredRoom(20L, now);
   }
 
   @Test
-  void closeExpiredRooms_returnsZeroAndDoesNotPublishEvent_whenExpiredRoomDoesNotExist() {
+  void closeExpiredRooms_returnsZero_whenExpiredRoomDoesNotExist() {
     LocalDateTime now = LocalDateTime.of(2026, 6, 15, 12, 0);
 
-    given(roomRepository.findByStatusAndEndedAtLessThanEqual(
+    given(roomRepository.findExpiredOpenRoomIds(
         eq(RoomStatus.OPEN),
         eq(now),
         any(Pageable.class)
@@ -197,12 +179,12 @@ class RoomServiceTest {
 
     assertThat(closedCount).isZero();
 
-    verify(roomRepository).findByStatusAndEndedAtLessThanEqual(
+    verify(roomRepository).findExpiredOpenRoomIds(
         eq(RoomStatus.OPEN),
         eq(now),
         any(Pageable.class)
     );
-    verify(eventPublisher, never()).publishEvent(any());
+    verify(roomCloseCommandService, never()).closeExpiredRoom(anyLong(), any());
   }
   @Test
   void getRooms_returnsRoomsOrderedByCreatedAtDesc() {

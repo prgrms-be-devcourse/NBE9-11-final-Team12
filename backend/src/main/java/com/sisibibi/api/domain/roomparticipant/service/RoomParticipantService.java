@@ -19,6 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.context.ApplicationEventPublisher;
 
@@ -32,13 +33,19 @@ public class RoomParticipantService {
   private final RoomParticipantRepository roomParticipantRepository;
   private final ApplicationEventPublisher eventPublisher;
 
-  //test cicd
   @Transactional
   public RoomParticipantRes joinRoom(Long roomId, Long userId) {
+
+    LocalDateTime now = LocalDateTime.now();
+
     Room room = roomRepository.findById(roomId)
         .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
 
     if (room.getStatus() != RoomStatus.OPEN) {
+      throw new CustomException(ErrorCode.ROOM_CLOSED);
+    }
+
+    if (room.getEndedAt() != null && !room.getEndedAt().isAfter(now)) {
       throw new CustomException(ErrorCode.ROOM_CLOSED);
     }
 

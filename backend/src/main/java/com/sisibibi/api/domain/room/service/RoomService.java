@@ -15,7 +15,9 @@ import com.sisibibi.api.domain.topic.repository.TopicRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,7 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 
-
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -32,6 +34,7 @@ public class RoomService {
 
   private final RoomRepository roomRepository;
   private final TopicRepository topicRepository;
+  private final RoomCloseCommandService roomCloseCommandService;
   private final ApplicationEventPublisher eventPublisher;
 
 
@@ -40,6 +43,7 @@ public class RoomService {
   public CreateRoomRes createRoom(CreateRoomReq request) {
     Topic topic = topicRepository.findById(request.topicId())
         .orElseThrow(() -> new CustomException(ErrorCode.TOPIC_NOT_FOUND));
+
 
     if (topic.getStatus() != TopicStatus.APPROVED) {
       throw new CustomException(ErrorCode.TOPIC_NOT_APPROVED);
@@ -52,9 +56,13 @@ public class RoomService {
     LocalDateTime endedAt = startedAt.plusMinutes(5);
 
     Room room = Room.open(topic.getId(), topic.getTitle(), startedAt, endedAt);
-    Room savedRoom = roomRepository.save(room);
 
-    return CreateRoomRes.from(savedRoom);
+    try {
+      Room savedRoom = roomRepository.save(room);
+      return CreateRoomRes.from(savedRoom);
+    } catch (DataIntegrityViolationException e) {
+      throw new CustomException(ErrorCode.ROOM_ALREADY_EXISTS);
+    }
   }
 
   // 관리자 방 수정
@@ -81,20 +89,26 @@ public class RoomService {
         .toList();
   }
 
-  @Transactional
   public int closeExpiredRooms(LocalDateTime now) {
-    List<Room> expiredRooms = roomRepository.findByStatusAndEndedAtLessThanEqual(
+    List<Long> expiredRoomIds = roomRepository.findExpiredOpenRoomIds(
         RoomStatus.OPEN,
         now,
         PageRequest.of(0, 100)
     );
 
-    for (Room room : expiredRooms) {
-      room.close(now);
-      publishRoomClosedEvent(room);
+    int closedCount = 0;
+
+    for (Long roomId : expiredRoomIds) {
+      try {
+        if (roomCloseCommandService.closeExpiredRoom(roomId, now)) {
+          closedCount++;
+        }
+      } catch (Exception e) {
+        log.error("Failed to close expired room. roomId={}", roomId, e);
+      }
     }
 
-    return expiredRooms.size();
+    return closedCount;
   }
 
   // 하나의 토론방 상세 조회
