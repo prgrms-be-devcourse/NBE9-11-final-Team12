@@ -1,13 +1,23 @@
 import { api } from "@/lib/api/client"
 import type {
   AuthUser,
+  ChatMessageCursorPage,
+  RoomDetail,
+  RoomParticipant,
+  RoomParticipantCount,
   RoomCreateResponse,
+  RoomSummary,
   SpeechCursorPage,
   SpeechCreateResponse,
   SpeechDetail,
+  SpeechReportCreateResponse,
   SpeechReportReason,
   SpeechStance,
   SpringPage,
+  StageCurrentSpeaker,
+  StageQueue,
+  StageRequest,
+  StageRequestStatus,
   TopicDetail,
   TopicCreateResponse,
   TopicSummary,
@@ -30,13 +40,29 @@ export const topicApi = {
 }
 
 export const roomApi = {
+  list: () => api.get<RoomSummary[]>("/api/v1/rooms"),
+  open: () => api.get<RoomSummary[]>("/api/v1/rooms/open"),
+  detail: (roomId: number) => api.get<RoomDetail>(`/api/v1/rooms/${roomId}`),
   join: (roomId: number) => api.post(`/api/v1/rooms/${roomId}/participants`),
+  leave: (roomId: number) => api.post<void>(`/api/v1/rooms/${roomId}/participants/out`),
+  participants: (roomId: number) =>
+    api.get<RoomParticipant[]>(`/api/v1/rooms/${roomId}/participants`),
+  participantCount: (roomId: number) =>
+    api.get<RoomParticipantCount>(`/api/v1/rooms/${roomId}/participants/count`),
 }
 
 export const adminApi = {
   createTopic: (body: { title: string; description?: string; category: string; sourceUrl?: string }) =>
     api.post<TopicCreateResponse>("/api/v1/admin/topics", body),
+  updateTopic: (
+    topicId: number,
+    body: { title: string; description?: string; category: string; sourceUrl?: string },
+  ) => api.patch<TopicDetail>(`/api/v1/admin/topics/${topicId}`, body),
+  deleteTopic: (topicId: number) => api.delete<void>(`/api/v1/admin/topics/${topicId}`),
   createRoom: (topicId: number) => api.post<RoomCreateResponse>("/api/v1/admin/rooms", { topicId }),
+  updateRoom: (roomId: number, body: { title?: string; startedAt?: string; endedAt?: string }) =>
+    api.patch<RoomDetail>(`/api/v1/admin/rooms/${roomId}`, body),
+  deleteRoom: (roomId: number) => api.delete<void>(`/api/v1/admin/rooms/${roomId}`),
 }
 
 export const speechApi = {
@@ -53,5 +79,29 @@ export const speechApi = {
   updateLink: (speechId: number, linkUrl: string) =>
     api.patch<SpeechDetail>(`/api/v1/speeches/${speechId}/link`, { linkUrl }),
   report: (speechId: number, reason: SpeechReportReason, description?: string) =>
-    api.post(`/api/v1/speeches/${speechId}/reports`, { reason, description: description || null }),
+    api.post<SpeechReportCreateResponse>(`/api/v1/speeches/${speechId}/reports`, { reason, description: description || null }),
+}
+
+export const chatApi = {
+  messages: (roomId: number, cursor?: number, limit = 50) =>
+    api.get<ChatMessageCursorPage>(
+      `/api/v1/rooms/${roomId}/chat/messages?limit=${limit}${cursor ? `&cursor=${cursor}` : ""}`,
+    ),
+  delete: (roomId: number, messageId: number) =>
+    api.delete<void>(`/api/v1/rooms/${roomId}/chat/messages/${messageId}`),
+}
+
+export const stageApi = {
+  current: (roomId: number) => api.get<StageCurrentSpeaker>(`/api/v1/rooms/${roomId}/stage`),
+  queueSummary: (roomId: number) =>
+    api.get<StageQueue>(`/api/v1/rooms/${roomId}/stage/queue/summary`),
+  queue: (roomId: number, offset = 0, size = 20) =>
+    api.get<StageQueue>(`/api/v1/rooms/${roomId}/stage/queue?offset=${offset}&size=${size}`),
+  myRequestStatus: (roomId: number) =>
+    api.get<StageRequestStatus>(`/api/v1/rooms/${roomId}/stage/requests/me`),
+  requestTurn: (roomId: number) =>
+    api.post<StageRequest>(`/api/v1/rooms/${roomId}/stage/requests`),
+  cancelMyRequest: (roomId: number) =>
+    api.delete<void>(`/api/v1/rooms/${roomId}/stage/requests/me`),
+  completeTurn: (roomId: number) => api.post<void>(`/api/v1/rooms/${roomId}/stage/complete`),
 }

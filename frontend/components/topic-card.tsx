@@ -1,17 +1,13 @@
 "use client"
 
 import Link from "next/link"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import {
   Users,
-  MessageSquare,
-  ThumbsUp,
   Clock,
   ArrowRight,
-  Flame,
 } from "lucide-react"
 
 export interface Topic {
@@ -19,14 +15,13 @@ export interface Topic {
   title: string
   description: string
   category: string
-  status: "OPEN" | "CLOSED" | "HOT"
+  status: "OPEN" | "CLOSED"
   participants: number
-  messages: number
-  likes: number
+  messages?: number
+  likes?: number
   timeLeft?: string
   tags?: string[]
   isLive?: boolean
-  isTrending?: boolean
 }
 
 interface TopicCardProps {
@@ -69,12 +64,14 @@ export function TopicCard({ topic, className }: TopicCardProps) {
             >
               {topic.category}
             </span>
-            {topic.isTrending && (
-              <span className="flex items-center gap-1 rounded-full bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 px-2 py-0.5 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
-                <Flame className="size-2.5" />
-                HOT
-              </span>
-            )}
+            <span className={cn(
+              "rounded-full border px-2 py-0.5 text-[11px] font-semibold",
+              topic.status === "OPEN"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-400"
+                : "border-border bg-muted text-muted-foreground",
+            )}>
+              {topic.status === "OPEN" ? "진행 중" : "종료"}
+            </span>
           </div>
           {topic.timeLeft && (
             <div className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
@@ -112,14 +109,6 @@ export function TopicCard({ topic, className }: TopicCardProps) {
           <span className="flex items-center gap-1">
             <Users className="size-3.5" />
             <span className="font-medium text-foreground">{topic.participants.toLocaleString()}</span>
-          </span>
-          <span className="flex items-center gap-1">
-            <MessageSquare className="size-3.5" />
-            <span className="font-medium text-foreground">{topic.messages.toLocaleString()}</span>
-          </span>
-          <span className="flex items-center gap-1">
-            <ThumbsUp className="size-3.5" />
-            <span className="font-medium text-foreground">{topic.likes.toLocaleString()}</span>
           </span>
         </div>
         <Link href={`/rooms/${topic.id}`}>
