@@ -55,7 +55,7 @@ class RoomServiceTest {
   void createRoom_savesOpenRoom_whenTopicIsApproved() {
     Topic topic = Topic.approved("토론 주제", "설명", "IT", "https://example.com");
 
-    given(topicRepository.findById(1L)).willReturn(Optional.of(topic));
+    given(topicRepository.findByIdForUpdate(1L)).willReturn(Optional.of(topic));
     given(roomRepository.existsByTopicId(topic.getId())).willReturn(false);
     given(roomRepository.save(any(Room.class))).willAnswer(invocation -> invocation.getArgument(0));
 
@@ -76,7 +76,7 @@ class RoomServiceTest {
 
   @Test
   void createRoom_throwsTopicNotFound_whenTopicDoesNotExist() {
-    given(topicRepository.findById(999L)).willReturn(Optional.empty());
+    given(topicRepository.findByIdForUpdate(999L)).willReturn(Optional.empty());
 
     assertThatThrownBy(() -> roomService.createRoom(new CreateRoomReq(999L)))
         .isInstanceOf(CustomException.class)
@@ -90,7 +90,7 @@ class RoomServiceTest {
   void createRoom_throwsRoomAlreadyExists_whenTopicAlreadyHasRoom() {
     Topic topic = Topic.approved("토론 주제", "설명", "IT", "https://example.com");
 
-    given(topicRepository.findById(1L)).willReturn(Optional.of(topic));
+    given(topicRepository.findByIdForUpdate(1L)).willReturn(Optional.of(topic));
     given(roomRepository.existsByTopicId(topic.getId())).willReturn(true);
 
     assertThatThrownBy(() -> roomService.createRoom(new CreateRoomReq(1L)))
@@ -106,7 +106,7 @@ class RoomServiceTest {
     Topic topic = Topic.approved("토론 주제", "설명", "IT", "https://example.com");
     ReflectionTestUtils.setField(topic, "status", com.sisibibi.api.domain.topic.entity.TopicStatus.REJECTED);
 
-    given(topicRepository.findById(1L)).willReturn(Optional.of(topic));
+    given(topicRepository.findByIdForUpdate(1L)).willReturn(Optional.of(topic));
 
     assertThatThrownBy(() -> roomService.createRoom(new CreateRoomReq(1L)))
         .isInstanceOf(CustomException.class)

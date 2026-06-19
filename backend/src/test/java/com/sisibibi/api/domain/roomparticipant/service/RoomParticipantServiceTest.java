@@ -17,6 +17,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import java.time.LocalDateTime;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 
@@ -49,7 +50,8 @@ class RoomParticipantServiceTest {
   void joinRoom_savesParticipant_whenRoomIsOpen() {
     Room room = org.mockito.Mockito.mock(Room.class);
     given(room.getStatus()).willReturn(RoomStatus.OPEN);
-    given(roomRepository.findById(1L)).willReturn(Optional.of(room));
+    given(room.isJoinableAt(any(LocalDateTime.class))).willReturn(true);
+    given(roomRepository.findByIdForUpdate(1L)).willReturn(Optional.of(room));
     given(roomParticipantRepository.findByRoomIdAndUserId(1L, 2L)).willReturn(Optional.empty());
     given(roomParticipantRepository.save(any(RoomParticipant.class)))
         .willAnswer(invocation -> invocation.getArgument(0));
@@ -88,7 +90,7 @@ class RoomParticipantServiceTest {
 
   @Test
   void joinRoom_throwsRoomNotFound_whenRoomDoesNotExist() {
-    given(roomRepository.findById(999L)).willReturn(Optional.empty());
+    given(roomRepository.findByIdForUpdate(999L)).willReturn(Optional.empty());
 
     assertThatThrownBy(() -> roomParticipantService.joinRoom(999L, 2L))
         .isInstanceOf(CustomException.class)
@@ -103,7 +105,7 @@ class RoomParticipantServiceTest {
   void joinRoom_throwsRoomClosed_whenRoomIsClosed() {
     Room room = org.mockito.Mockito.mock(Room.class);
     given(room.getStatus()).willReturn(RoomStatus.CLOSED);
-    given(roomRepository.findById(1L)).willReturn(Optional.of(room));
+    given(roomRepository.findByIdForUpdate(1L)).willReturn(Optional.of(room));
 
     assertThatThrownBy(() -> roomParticipantService.joinRoom(1L, 2L))
         .isInstanceOf(CustomException.class)
@@ -120,8 +122,9 @@ class RoomParticipantServiceTest {
     RoomParticipant participant = org.mockito.Mockito.mock(RoomParticipant.class);
 
     given(room.getStatus()).willReturn(RoomStatus.OPEN);
+    given(room.isJoinableAt(any(LocalDateTime.class))).willReturn(true);
     given(participant.getStatus()).willReturn(RoomParticipantStatus.JOINED);
-    given(roomRepository.findById(1L)).willReturn(Optional.of(room));
+    given(roomRepository.findByIdForUpdate(1L)).willReturn(Optional.of(room));
     given(roomParticipantRepository.findByRoomIdAndUserId(1L, 2L))
         .willReturn(Optional.of(participant));
 
@@ -141,7 +144,8 @@ class RoomParticipantServiceTest {
     participant.leave();
 
     given(room.getStatus()).willReturn(RoomStatus.OPEN);
-    given(roomRepository.findById(1L)).willReturn(Optional.of(room));
+    given(room.isJoinableAt(any(LocalDateTime.class))).willReturn(true);
+    given(roomRepository.findByIdForUpdate(1L)).willReturn(Optional.of(room));
     given(roomParticipantRepository.findByRoomIdAndUserId(1L, 2L))
         .willReturn(Optional.of(participant));
     given(roomParticipantRepository.countByRoomIdAndStatus(
