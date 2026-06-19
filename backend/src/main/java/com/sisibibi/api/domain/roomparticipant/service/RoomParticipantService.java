@@ -38,7 +38,7 @@ public class RoomParticipantService {
 
     LocalDateTime now = LocalDateTime.now();
 
-    Room room = roomRepository.findById(roomId)
+    Room room = roomRepository.findByIdForUpdate(roomId)
         .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
 
     if (room.getStatus() != RoomStatus.OPEN) {
@@ -46,6 +46,10 @@ public class RoomParticipantService {
     }
 
     if (room.getEndedAt() != null && !room.getEndedAt().isAfter(now)) {
+      throw new CustomException(ErrorCode.ROOM_CLOSED);
+    }
+
+    if (!room.isJoinableAt(LocalDateTime.now())) {
       throw new CustomException(ErrorCode.ROOM_CLOSED);
     }
 

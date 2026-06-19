@@ -87,7 +87,7 @@ class SpeechRepositoryTest {
     void findByRoomIdBeforeCursor_excludesSoftDeletedSpeeches() {
         Speech visible = Speech.createMainOpinion(1L, 10L, "보이는 의견", SpeechStance.CON);
         Speech deleted = Speech.createMainOpinion(1L, 20L, "삭제된 의견", SpeechStance.PRO);
-        deleted.softDelete();
+        deleted.softDelete(LocalDateTime.of(2026, 6, 12, 12, 0));
         speechRepository.saveAllAndFlush(List.of(visible, deleted));
 
         List<Speech> speeches = speechRepository.findByRoomIdBeforeCursor(

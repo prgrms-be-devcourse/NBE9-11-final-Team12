@@ -64,7 +64,7 @@ public class TopicService {
 
   @Transactional
   public void deleteTopic(Long topicId) {
-    Topic topic = topicRepository.findById(topicId)
+    Topic topic = topicRepository.findByIdForUpdate(topicId)
         .orElseThrow(() -> new CustomException(ErrorCode.TOPIC_NOT_FOUND));
 
     if (roomRepository.existsByTopicId(topicId)) {

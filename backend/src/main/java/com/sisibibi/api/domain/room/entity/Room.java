@@ -83,4 +83,9 @@ public class Room {
             this.maxParticipants = maxParticipants;
         }
     }
+
+    public boolean isJoinableAt(LocalDateTime now) {
+        return status == RoomStatus.OPEN
+            && (endedAt == null || endedAt.isAfter(now));
+    }
 }
