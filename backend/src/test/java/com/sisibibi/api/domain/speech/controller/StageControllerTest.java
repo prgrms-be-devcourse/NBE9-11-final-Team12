@@ -5,6 +5,7 @@ import com.sisibibi.api.domain.speech.dto.response.StageQueueRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestStatusRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
+import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.service.SpeakingQueueService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -53,6 +55,7 @@ class StageControllerTest {
                 new StageCurrentSpeakerRes.CurrentSpeaker(
                         10L,
                         "logic_hunter",
+                        SpeechStance.PRO,
                         3,
                         LocalDateTime.of(2026, 6, 16, 14, 20),
                         LocalDateTime.of(2026, 6, 16, 14, 22)
@@ -70,6 +73,7 @@ class StageControllerTest {
                 .andExpect(jsonPath("$.data.currentSpeaker.userId").value(10))
                 .andExpect(jsonPath("$.data.currentSpeaker.nickname")
                         .value("logic_hunter"))
+                .andExpect(jsonPath("$.data.currentSpeaker.stance").value("PRO"))
                 .andExpect(jsonPath("$.data.currentSpeaker.queueOrder").value(3))
                 .andExpect(jsonPath("$.data.currentSpeaker.assignedAt").exists())
                 .andExpect(jsonPath("$.data.currentSpeaker.expiresAt").exists())
@@ -200,20 +204,28 @@ class StageControllerTest {
                 SpeakingQueueStatus.ASSIGNED,
                 1L,
                 10L,
+                SpeechStance.PRO,
                 1,
                 LocalDateTime.of(2026, 6, 12, 10, 0)
         );
 
-        given(speakingQueueService.requestSpeakingTurn(1L, 10L))
+        given(speakingQueueService.requestSpeakingTurn(1L, 10L, SpeechStance.PRO))
                 .willReturn(response);
 
         mockMvc.perform(post("/api/v1/rooms/1/stage/requests")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "stance": "PRO"
+                                }
+                                """)
                         .with(authPrincipal(10L)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.message").value("발언권 신청이 완료되었습니다."))
                 .andExpect(jsonPath("$.data.roomId").value(1))
                 .andExpect(jsonPath("$.data.userId").value(10))
+                .andExpect(jsonPath("$.data.stance").value("PRO"))
                 .andExpect(jsonPath("$.data.queueOrder").value(1))
                 .andExpect(jsonPath("$.data.status").value("ASSIGNED"))
                 .andExpect(jsonPath("$.data.requestedAt").exists())
@@ -223,10 +235,16 @@ class StageControllerTest {
 
     @Test
     void requestSpeakingTurn_returnsConflictWhenDuplicateActiveRequestExists() throws Exception {
-        given(speakingQueueService.requestSpeakingTurn(1L, 10L))
+        given(speakingQueueService.requestSpeakingTurn(1L, 10L, SpeechStance.PRO))
                 .willThrow(new CustomException(ErrorCode.SPEAKING_REQUEST_ALREADY_EXISTS));
 
         mockMvc.perform(post("/api/v1/rooms/1/stage/requests")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "stance": "PRO"
+                                }
+                                """)
                         .with(authPrincipal(10L)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("SPEAKING_REQUEST_ALREADY_EXISTS"))
@@ -236,6 +254,12 @@ class StageControllerTest {
     @Test
     void requestSpeakingTurn_returnsBadRequestWhenRoomIdIsNotPositive() throws Exception {
         mockMvc.perform(post("/api/v1/rooms/0/stage/requests")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "stance": "PRO"
+                                }
+                                """)
                         .with(authPrincipal(10L)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
@@ -274,6 +298,7 @@ class StageControllerTest {
                 SpeakingQueueStatus.WAITING,
                 1L,
                 10L,
+                SpeechStance.PRO,
                 3,
                 2,
                 true,
@@ -293,6 +318,7 @@ class StageControllerTest {
                 .andExpect(jsonPath("$.data.status").value("WAITING"))
                 .andExpect(jsonPath("$.data.roomId").value(1))
                 .andExpect(jsonPath("$.data.userId").value(10))
+                .andExpect(jsonPath("$.data.stance").value("PRO"))
                 .andExpect(jsonPath("$.data.queueOrder").value(3))
                 .andExpect(jsonPath("$.data.currentRank").value(2))
                 .andExpect(jsonPath("$.data.cancelable").value(true))

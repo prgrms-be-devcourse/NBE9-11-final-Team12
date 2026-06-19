@@ -318,20 +318,22 @@ public class LocalDataInitializer implements ApplicationRunner {
                 room.getId(),
                 currentSpeaker.getId(),
                 1,
+                SpeechStance.PRO,
                 now.minusMinutes(3)
         );
         assigned.assign(now.minusMinutes(1), now.plusMinutes(4));
         speakingQueueRepository.save(assigned);
         assignCurrentSpeakerInRedis(room, currentSpeaker);
 
-        saveWaitingQueue(room, waitingOne, 2, now.minusMinutes(2));
-        saveWaitingQueue(room, waitingTwo, 3, now.minusMinutes(1));
+        saveWaitingQueue(room, waitingOne, 2, SpeechStance.CON, now.minusMinutes(2));
+        saveWaitingQueue(room, waitingTwo, 3, SpeechStance.PRO, now.minusMinutes(1));
     }
 
     private void saveWaitingQueue(
             Room room,
             User user,
             int queueOrder,
+            SpeechStance stance,
             LocalDateTime requestedAt
     ) {
         boolean exists = speakingQueueRepository.existsByRoomIdAndUserIdAndStatusIn(
@@ -347,6 +349,7 @@ public class LocalDataInitializer implements ApplicationRunner {
                 room.getId(),
                 user.getId(),
                 queueOrder,
+                stance,
                 requestedAt
         ));
         upsertWaitingQueueInRedis(room, user, queueOrder);

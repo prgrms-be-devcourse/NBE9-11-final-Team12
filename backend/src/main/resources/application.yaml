@@ -47,7 +47,7 @@ app:
   frontend:
     url: ${FRONTEND_URL:http://localhost:3000}
   speaking:
-    turn-duration: ${SPEAKING_TURN_DURATION:2m}
+    turn-duration: ${SPEAKING_TURN_DURATION:3m}
     queue:
       summary-size: ${SPEAKING_QUEUE_SUMMARY_SIZE:5}
       default-page-size: ${SPEAKING_QUEUE_DEFAULT_PAGE_SIZE:20}
