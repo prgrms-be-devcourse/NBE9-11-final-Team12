@@ -25,8 +25,8 @@ import java.time.LocalDateTime;
 @Table(
         name = "speeches",
         indexes = @Index(
-                name = "idx_speeches_room_id_id",
-                columnList = "room_id, id"
+                name = "idx_speeches_room_deleted_id",
+                columnList = "room_id, is_deleted, id"
         )
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
