@@ -106,6 +106,23 @@ class SpeechControllerTest {
     }
 
     @Test
+    void createMainOpinion_returnsBadRequest_whenContentExceedsLimit() throws Exception {
+        mockMvc.perform(post("/api/v1/rooms/{roomId}/speeches", 1L)
+                        .with(authPrincipal(2L))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "content": "%s",
+                                  "stance": "PRO"
+                                }
+                                """.formatted("가".repeat(2001))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"))
+                .andExpect(jsonPath("$.data.content")
+                        .value("의견 내용은 2000자를 초과할 수 없습니다."));
+    }
+
+    @Test
     void createMainOpinion_returnsBadRequest_whenStanceIsInvalid() throws Exception {
         mockMvc.perform(post("/api/v1/rooms/{roomId}/speeches", 1L)
                         .with(authPrincipal(2L))
@@ -247,6 +264,23 @@ class SpeechControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"))
                 .andExpect(jsonPath("$.data.content").value("의견 내용은 비어 있을 수 없습니다."));
+    }
+
+    @Test
+    void updateSpeech_returnsBadRequest_whenContentExceedsLimit() throws Exception {
+        mockMvc.perform(patch("/api/v1/speeches/{speechId}", 10L)
+                        .with(authPrincipal(2L))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "content": "%s",
+                                  "stance": "CON"
+                                }
+                                """.formatted("가".repeat(2001))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"))
+                .andExpect(jsonPath("$.data.content")
+                        .value("의견 내용은 2000자를 초과할 수 없습니다."));
     }
 
     @Test
