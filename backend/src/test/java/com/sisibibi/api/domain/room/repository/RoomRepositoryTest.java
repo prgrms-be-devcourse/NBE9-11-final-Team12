@@ -24,7 +24,7 @@ class RoomRepositoryTest {
     void save_assignsCreatedAtByJpaAuditing() {
         LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
         LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
-        Room room = Room.open(1L, "토론방",firstStartedAt, firstEndedAt);
+        Room room = Room.open(1L, "토론방", firstStartedAt, firstEndedAt, 100);
 
         assertThat(room.getCreatedAt()).isNull();
         assertThat(room.getStartedAt()).isNotNull();
