@@ -144,6 +144,7 @@ class RoomParticipantServiceTest {
     participant.leave();
 
     given(room.getStatus()).willReturn(RoomStatus.OPEN);
+    given(room.getMaxParticipants()).willReturn(100);
     given(room.isJoinableAt(any(LocalDateTime.class))).willReturn(true);
     given(roomRepository.findByIdForUpdate(1L)).willReturn(Optional.of(room));
     given(roomParticipantRepository.findByRoomIdAndUserId(1L, 2L))
