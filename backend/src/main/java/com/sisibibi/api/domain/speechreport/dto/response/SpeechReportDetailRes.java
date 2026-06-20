@@ -15,6 +15,9 @@ public record SpeechReportDetailRes(
         SpeechReportReason reason,
         String description,
         SpeechReportStatus status,
+        Long reviewedBy,
+        LocalDateTime reviewedAt,
+        String resolutionNote,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {
@@ -29,6 +32,9 @@ public record SpeechReportDetailRes(
                 report.getReason(),
                 report.getDescription(),
                 report.getStatus(),
+                report.getReviewedBy(),
+                report.getReviewedAt(),
+                report.getResolutionNote(),
                 report.getCreatedAt(),
                 report.getUpdatedAt()
         );

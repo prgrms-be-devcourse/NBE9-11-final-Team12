@@ -110,4 +110,19 @@ class SpeechReportRepositoryTest {
         assertThat(reports.getContent().getFirst().getReason())
                 .isEqualTo(SpeechReportReason.SPAM);
     }
+
+    @Test
+    void findByIdForUpdate_returnsReport() {
+        SpeechReport savedReport = speechReportRepository.saveAndFlush(SpeechReport.create(
+                10L,
+                30L,
+                20L,
+                "신고 대상 의견",
+                SpeechReportReason.SPAM,
+                null
+        ));
+
+        assertThat(speechReportRepository.findByIdForUpdate(savedReport.getId()))
+                .contains(savedReport);
+    }
 }

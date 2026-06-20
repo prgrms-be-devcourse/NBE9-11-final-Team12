@@ -6,8 +6,10 @@ import com.sisibibi.api.domain.speechreport.dto.command.SpeechReportCreateComman
 import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportCreateRes;
 import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportDetailRes;
 import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportSummaryRes;
+import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportReviewRes;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReport;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportReason;
+import com.sisibibi.api.domain.speechreport.entity.SpeechReportReviewAction;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportStatus;
 import com.sisibibi.api.domain.speechreport.repository.SpeechReportRepository;
 import com.sisibibi.api.global.exception.CustomException;
@@ -18,6 +20,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
 
 @Slf4j
 @Service
@@ -43,6 +47,28 @@ public class SpeechReportService {
                 .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_REPORT_NOT_FOUND));
 
         return SpeechReportDetailRes.from(report);
+    }
+
+    @Transactional
+    public SpeechReportReviewRes reviewReport(
+            Long reportId,
+            Long reviewerUserId,
+            SpeechReportReviewAction action,
+            String resolutionNote
+    ) {
+        SpeechReport report = speechReportRepository.findByIdForUpdate(reportId)
+                .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_REPORT_NOT_FOUND));
+
+        report.review(action, reviewerUserId, resolutionNote, LocalDateTime.now());
+        log.info(
+                "Speech report reviewed. reportId={}, reviewerUserId={}, action={}, status={}",
+                reportId,
+                reviewerUserId,
+                action,
+                report.getStatus()
+        );
+
+        return SpeechReportReviewRes.from(report);
     }
 
     @Transactional

@@ -14,6 +14,8 @@ import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import com.sisibibi.api.global.exception.CustomException;
+import com.sisibibi.api.global.exception.ErrorCode;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -64,6 +66,15 @@ public class SpeechReport {
     @Column(nullable = false, length = 20)
     private SpeechReportStatus status;
 
+    @Column(name = "reviewed_by")
+    private Long reviewedBy;
+
+    @Column(name = "reviewed_at")
+    private LocalDateTime reviewedAt;
+
+    @Column(name = "resolution_note", length = 500)
+    private String resolutionNote;
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -105,6 +116,57 @@ public class SpeechReport {
                 reason,
                 description
         );
+    }
+
+    public void review(
+            SpeechReportReviewAction action,
+            Long reviewerUserId,
+            String resolutionNote,
+            LocalDateTime now
+    ) {
+        switch (action) {
+            case START_REVIEW -> startReview(reviewerUserId);
+            case RESOLVE -> completeReview(
+                    SpeechReportStatus.RESOLVED,
+                    reviewerUserId,
+                    resolutionNote,
+                    now
+            );
+            case REJECT -> completeReview(
+                    SpeechReportStatus.REJECTED,
+                    reviewerUserId,
+                    resolutionNote,
+                    now
+            );
+        }
+    }
+
+    private void startReview(Long reviewerUserId) {
+        if (status != SpeechReportStatus.PENDING) {
+            throw new CustomException(ErrorCode.SPEECH_REPORT_INVALID_STATUS_TRANSITION);
+        }
+
+        status = SpeechReportStatus.REVIEWING;
+        reviewedBy = reviewerUserId;
+    }
+
+    private void completeReview(
+            SpeechReportStatus targetStatus,
+            Long reviewerUserId,
+            String resolutionNote,
+            LocalDateTime now
+    ) {
+        if (status != SpeechReportStatus.REVIEWING) {
+            throw new CustomException(ErrorCode.SPEECH_REPORT_INVALID_STATUS_TRANSITION);
+        }
+        if (resolutionNote == null || resolutionNote.isBlank()) {
+            throw new CustomException(ErrorCode.SPEECH_REPORT_RESOLUTION_NOTE_REQUIRED);
+        }
+
+        status = targetStatus;
+        reviewedBy = reviewerUserId;
+        reviewedAt = now;
+        this.resolutionNote = resolutionNote.trim();
     }
 
     private String normalizeDescription(String description) {

@@ -4,10 +4,14 @@ import com.sisibibi.api.ApiApplication;
 import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportDetailRes;
 import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportSummaryRes;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportReason;
+import com.sisibibi.api.domain.speechreport.entity.SpeechReportReviewAction;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportStatus;
+import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportReviewRes;
 import com.sisibibi.api.domain.speechreport.service.SpeechReportService;
 import com.sisibibi.api.global.exception.GlobalExceptionHandler;
+import com.sisibibi.api.global.security.AuthPrincipal;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -15,6 +19,10 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -23,6 +31,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -40,6 +49,11 @@ class AdminSpeechReportControllerTest {
 
     @MockitoBean
     private SpeechReportService speechReportService;
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
 
     @Test
     void getReports_returnsFilteredReportPage() throws Exception {
@@ -77,6 +91,9 @@ class AdminSpeechReportControllerTest {
                         SpeechReportReason.SPAM,
                         null,
                         SpeechReportStatus.PENDING,
+                        null,
+                        null,
+                        null,
                         LocalDateTime.of(2026, 6, 21, 12, 0),
                         LocalDateTime.of(2026, 6, 21, 12, 0)
                 ));
@@ -92,5 +109,62 @@ class AdminSpeechReportControllerTest {
         mockMvc.perform(get("/api/v1/admin/reports/{reportId}", 0L))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
+    }
+
+    @Test
+    void reviewReport_returnsReviewResult() throws Exception {
+        given(speechReportService.reviewReport(
+                eq(100L),
+                eq(99L),
+                eq(SpeechReportReviewAction.RESOLVE),
+                eq("위반 사항 확인")
+        )).willReturn(new SpeechReportReviewRes(
+                100L,
+                SpeechReportStatus.RESOLVED,
+                99L,
+                LocalDateTime.of(2026, 6, 21, 13, 0),
+                "위반 사항 확인"
+        ));
+
+        mockMvc.perform(patch("/api/v1/admin/reports/{reportId}", 100L)
+                        .with(authPrincipal(99L))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "action": "RESOLVE",
+                                  "resolutionNote": "위반 사항 확인"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.reportId").value(100))
+                .andExpect(jsonPath("$.data.status").value("RESOLVED"))
+                .andExpect(jsonPath("$.data.reviewedBy").value(99));
+    }
+
+    @Test
+    void reviewReport_returnsBadRequest_whenActionIsMissing() throws Exception {
+        mockMvc.perform(patch("/api/v1/admin/reports/{reportId}", 100L)
+                        .with(authPrincipal(99L))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "resolutionNote": "처리 사유"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.data.action").value("신고 처리 액션은 필수입니다."));
+    }
+
+    private RequestPostProcessor authPrincipal(Long userId) {
+        return request -> {
+            SecurityContextHolder.getContext().setAuthentication(
+                    new UsernamePasswordAuthenticationToken(
+                            new AuthPrincipal(userId, "admin@example.com", "ADMIN"),
+                            null,
+                            List.of()
+                    )
+            );
+            return request;
+        };
     }
 }

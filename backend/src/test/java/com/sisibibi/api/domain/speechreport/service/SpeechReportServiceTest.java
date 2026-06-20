@@ -7,9 +7,11 @@ import com.sisibibi.api.domain.speechreport.dto.command.SpeechReportCreateComman
 import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportCreateRes;
 import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportDetailRes;
 import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportSummaryRes;
+import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportReviewRes;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReport;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportReason;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportStatus;
+import com.sisibibi.api.domain.speechreport.entity.SpeechReportReviewAction;
 import com.sisibibi.api.domain.speechreport.repository.SpeechReportRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
@@ -84,6 +86,37 @@ class SpeechReportServiceTest {
         given(speechReportRepository.findById(999L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> speechReportService.getReport(999L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SPEECH_REPORT_NOT_FOUND);
+    }
+
+    @Test
+    void reviewReport_startsReview() {
+        SpeechReport report = createReport(100L, SpeechReportStatus.PENDING);
+        given(speechReportRepository.findByIdForUpdate(100L)).willReturn(Optional.of(report));
+
+        SpeechReportReviewRes response = speechReportService.reviewReport(
+                100L,
+                99L,
+                SpeechReportReviewAction.START_REVIEW,
+                null
+        );
+
+        assertThat(response.status()).isEqualTo(SpeechReportStatus.REVIEWING);
+        assertThat(response.reviewedBy()).isEqualTo(99L);
+    }
+
+    @Test
+    void reviewReport_throwsNotFound_whenReportDoesNotExist() {
+        given(speechReportRepository.findByIdForUpdate(999L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> speechReportService.reviewReport(
+                999L,
+                99L,
+                SpeechReportReviewAction.START_REVIEW,
+                null
+        ))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.SPEECH_REPORT_NOT_FOUND);
