@@ -58,4 +58,13 @@ public class TopicController {
     return ResponseEntity.ok(ApiResponse.ok("뉴스별 키워드 분류가 완료되었습니다.", result));
   }
 
+  // ai 분류 없는 토픽후보 모음
+  @GetMapping("/candidates")
+  public ResponseEntity<ApiResponse<List<IssueCandidateRes>>> createIssue() {
+    List<IssueCandidateRes> result = topicIssueService.createIssue();
+
+    return ResponseEntity.ok(ApiResponse.ok("실시간 이슈 후보 생성이 완료되었습니다.", result));
+  }
+
+
 }
