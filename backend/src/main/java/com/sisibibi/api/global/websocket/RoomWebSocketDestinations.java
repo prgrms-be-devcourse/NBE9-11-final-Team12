@@ -7,7 +7,9 @@ import java.util.regex.Pattern;
 public final class RoomWebSocketDestinations {
 
     private static final Pattern ALLOWED_ROOM_TOPIC_PATTERN = Pattern.compile(
-            "^/topic/rooms/(\\d+)/(chat/messages|stage/events|participants/events|room/events)$"
+            "^/topic/rooms/(\\d+)/"
+                    + "(chat/messages|stage/events|participants/events|room/events|"
+                    + "speech-reactions/events)$"
     );
     private static final Pattern ROOM_TOPIC_PATTERN = Pattern.compile("^/topic/rooms/[^/]+/.*$");
 
@@ -28,6 +30,10 @@ public final class RoomWebSocketDestinations {
 
     public static String roomEvents(Long roomId) {
         return "/topic/rooms/" + roomId + "/room/events";
+    }
+
+    public static String speechReactionEvents(Long roomId) {
+        return "/topic/rooms/" + roomId + "/speech-reactions/events";
     }
 
     public static Optional<Long> findAllowedRoomTopicId(String destination) {

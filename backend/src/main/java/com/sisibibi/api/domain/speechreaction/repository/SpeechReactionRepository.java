@@ -17,6 +17,8 @@ public interface SpeechReactionRepository extends JpaRepository<SpeechReaction, 
 
     Optional<SpeechReaction> findBySpeechIdAndUserId(Long speechId, Long userId);
 
+    long countBySpeechId(Long speechId);
+
     @Query("""
             select reaction.speechId as speechId,
                    count(reaction.id) as reactionCount,

@@ -8,6 +8,7 @@ import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speechreaction.dto.response.BestSpeechRes;
 import com.sisibibi.api.domain.speechreaction.dto.response.SpeechReactionCreateRes;
+import com.sisibibi.api.domain.speechreaction.dto.event.SpeechReactionChangedEvent;
 import com.sisibibi.api.domain.speechreaction.entity.SpeechReaction;
 import com.sisibibi.api.domain.speechreaction.repository.SpeechReactionRepository;
 import com.sisibibi.api.domain.speechreaction.repository.projection.BestSpeechReactionProjection;
@@ -20,6 +21,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -45,6 +47,9 @@ class SpeechReactionServiceTest {
 
     @Mock
     private RoomParticipantRepository roomParticipantRepository;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private SpeechReactionService speechReactionService;
@@ -72,6 +77,7 @@ class SpeechReactionServiceTest {
                     );
                     return reaction;
                 });
+        given(speechReactionRepository.countBySpeechId(10L)).willReturn(3L);
 
         SpeechReactionCreateRes response = speechReactionService.createReaction(10L, 20L);
 
@@ -81,6 +87,12 @@ class SpeechReactionServiceTest {
         assertThat(captor.getValue().getUserId()).isEqualTo(20L);
         assertThat(response.reactionId()).isEqualTo(100L);
         assertThat(response.createdAt()).isEqualTo(LocalDateTime.of(2026, 6, 19, 12, 0));
+        ArgumentCaptor<SpeechReactionChangedEvent> eventCaptor =
+                ArgumentCaptor.forClass(SpeechReactionChangedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().roomId()).isEqualTo(1L);
+        assertThat(eventCaptor.getValue().payload().speechId()).isEqualTo(10L);
+        assertThat(eventCaptor.getValue().payload().reactionCount()).isEqualTo(3L);
     }
 
     @Test
@@ -158,10 +170,16 @@ class SpeechReactionServiceTest {
         given(speechRepository.findByIdAndDeletedFalse(10L)).willReturn(Optional.of(speech));
         given(speechReactionRepository.findBySpeechIdAndUserId(10L, 20L))
                 .willReturn(Optional.of(reaction));
+        given(speechReactionRepository.countBySpeechId(10L)).willReturn(2L);
 
         speechReactionService.deleteReaction(10L, 20L);
 
         verify(speechReactionRepository).delete(reaction);
+        verify(speechReactionRepository).flush();
+        ArgumentCaptor<SpeechReactionChangedEvent> eventCaptor =
+                ArgumentCaptor.forClass(SpeechReactionChangedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().payload().reactionCount()).isEqualTo(2L);
     }
 
     @Test
