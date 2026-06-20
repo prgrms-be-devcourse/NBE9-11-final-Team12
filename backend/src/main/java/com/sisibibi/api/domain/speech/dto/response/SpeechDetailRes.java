@@ -18,10 +18,16 @@ public record SpeechDetailRes(
         LocalDateTime startedAt,
         LocalDateTime endedAt,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        long reactionCount,
+        boolean reactedByMe
 ) {
 
-    public static SpeechDetailRes from(Speech speech) {
+    public static SpeechDetailRes from(
+            Speech speech,
+            long reactionCount,
+            boolean reactedByMe
+    ) {
         return new SpeechDetailRes(
                 speech.getId(),
                 speech.getRoomId(),
@@ -34,7 +40,9 @@ public record SpeechDetailRes(
                 speech.getStartedAt(),
                 speech.getEndedAt(),
                 speech.getCreatedAt(),
-                speech.getUpdatedAt()
+                speech.getUpdatedAt(),
+                reactionCount,
+                reactedByMe
         );
     }
 }

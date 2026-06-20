@@ -159,7 +159,7 @@ class SpeechControllerTest {
 
     @Test
     void getSpeeches_returnsOk() throws Exception {
-        given(speechService.getSpeeches(1L, null, 20)).willReturn(
+        given(speechService.getSpeeches(1L, 2L, null, 20)).willReturn(
                 new SpeechCursorPageRes(List.of(new SpeechListRes(
                         10L,
                         1L,
@@ -167,19 +167,25 @@ class SpeechControllerTest {
                         "찬성 의견",
                         SpeechStance.PRO,
                         SpeechStatus.READY,
-                        LocalDateTime.of(2026, 6, 12, 12, 0)
+                        LocalDateTime.of(2026, 6, 12, 12, 0),
+                        3L,
+                        true
                 )), null, false));
 
-        mockMvc.perform(get("/api/v1/rooms/{roomId}/speeches", 1L))
+        mockMvc.perform(get("/api/v1/rooms/{roomId}/speeches", 1L)
+                        .with(authPrincipal(2L)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[0].speechId").value(10))
                 .andExpect(jsonPath("$.data.items[0].stance").value("PRO"))
+                .andExpect(jsonPath("$.data.items[0].reactionCount").value(3))
+                .andExpect(jsonPath("$.data.items[0].reactedByMe").value(true))
                 .andExpect(jsonPath("$.data.hasNext").value(false));
     }
 
     @Test
     void getSpeeches_returnsBadRequest_whenSizeExceedsLimit() throws Exception {
         mockMvc.perform(get("/api/v1/rooms/{roomId}/speeches", 1L)
+                        .with(authPrincipal(2L))
                         .param("size", "101"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
@@ -187,7 +193,7 @@ class SpeechControllerTest {
 
     @Test
     void getSpeech_returnsOk() throws Exception {
-        given(speechService.getSpeech(10L)).willReturn(new SpeechDetailRes(
+        given(speechService.getSpeech(10L, 2L)).willReturn(new SpeechDetailRes(
                 10L,
                 1L,
                 2L,
@@ -199,19 +205,25 @@ class SpeechControllerTest {
                 LocalDateTime.of(2026, 6, 12, 11, 0),
                 LocalDateTime.of(2026, 6, 12, 11, 5),
                 LocalDateTime.of(2026, 6, 12, 10, 0),
-                LocalDateTime.of(2026, 6, 12, 11, 5)
+                LocalDateTime.of(2026, 6, 12, 11, 5),
+                7L,
+                true
         ));
 
-        mockMvc.perform(get("/api/v1/speeches/{speechId}", 10L))
+        mockMvc.perform(get("/api/v1/speeches/{speechId}", 10L)
+                        .with(authPrincipal(2L)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.speechId").value(10))
                 .andExpect(jsonPath("$.data.linkUrl").value("https://example.com/evidence"))
-                .andExpect(jsonPath("$.data.status").value("COMPLETED"));
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.data.reactionCount").value(7))
+                .andExpect(jsonPath("$.data.reactedByMe").value(true));
     }
 
     @Test
     void getSpeech_returnsBadRequest_whenSpeechIdIsNotPositive() throws Exception {
-        mockMvc.perform(get("/api/v1/speeches/{speechId}", 0L))
+        mockMvc.perform(get("/api/v1/speeches/{speechId}", 0L)
+                        .with(authPrincipal(2L)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
     }
@@ -230,7 +242,9 @@ class SpeechControllerTest {
                 null,
                 null,
                 LocalDateTime.of(2026, 6, 12, 10, 0),
-                LocalDateTime.of(2026, 6, 12, 12, 0)
+                LocalDateTime.of(2026, 6, 12, 12, 0),
+                0L,
+                false
         ));
 
         mockMvc.perform(patch("/api/v1/speeches/{speechId}", 10L)
@@ -319,7 +333,9 @@ class SpeechControllerTest {
                         null,
                         null,
                         LocalDateTime.of(2026, 6, 12, 10, 0),
-                        LocalDateTime.of(2026, 6, 12, 12, 0)
+                        LocalDateTime.of(2026, 6, 12, 12, 0),
+                        0L,
+                        false
                 ));
 
         mockMvc.perform(patch("/api/v1/speeches/{speechId}/link", 10L)

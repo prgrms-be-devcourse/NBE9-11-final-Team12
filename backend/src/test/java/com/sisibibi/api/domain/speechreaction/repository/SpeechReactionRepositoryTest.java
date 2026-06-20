@@ -5,6 +5,7 @@ import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speechreaction.entity.SpeechReaction;
 import com.sisibibi.api.domain.speechreaction.repository.projection.BestSpeechReactionProjection;
+import com.sisibibi.api.domain.speechreaction.repository.projection.SpeechReactionSummaryProjection;
 import com.sisibibi.api.global.config.JpaAuditingConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -53,6 +54,40 @@ class SpeechReactionRepositoryTest {
 
         assertThat(speechReactionRepository.findBySpeechIdAndUserId(10L, 20L))
                 .isPresent();
+    }
+
+    @Test
+    void findReactionSummaries_returnsCountsAndCurrentUserReactionInSingleQuery() {
+        Speech first = speechRepository.saveAndFlush(
+                Speech.createMainOpinion(1L, 10L, "첫 번째 의견", SpeechStance.PRO)
+        );
+        Speech second = speechRepository.saveAndFlush(
+                Speech.createMainOpinion(1L, 20L, "두 번째 의견", SpeechStance.CON)
+        );
+        Long currentUserId = 100L;
+
+        speechReactionRepository.saveAllAndFlush(java.util.List.of(
+                SpeechReaction.create(first.getId(), currentUserId),
+                SpeechReaction.create(first.getId(), 101L),
+                SpeechReaction.create(second.getId(), 102L)
+        ));
+
+        java.util.List<SpeechReactionSummaryProjection> results =
+                speechReactionRepository.findReactionSummaries(
+                        java.util.List.of(first.getId(), second.getId()),
+                        currentUserId
+                );
+
+        assertThat(results)
+                .extracting(
+                        SpeechReactionSummaryProjection::getSpeechId,
+                        SpeechReactionSummaryProjection::getReactionCount,
+                        SpeechReactionSummaryProjection::getMyReactionCount
+                )
+                .containsExactlyInAnyOrder(
+                        org.assertj.core.groups.Tuple.tuple(first.getId(), 2L, 1L),
+                        org.assertj.core.groups.Tuple.tuple(second.getId(), 1L, 0L)
+                );
     }
 
     @Test

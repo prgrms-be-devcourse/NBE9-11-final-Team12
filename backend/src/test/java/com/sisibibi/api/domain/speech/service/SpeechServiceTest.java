@@ -15,6 +15,8 @@ import com.sisibibi.api.domain.speech.entity.Speech;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
+import com.sisibibi.api.domain.speechreaction.repository.SpeechReactionRepository;
+import com.sisibibi.api.domain.speechreaction.repository.projection.SpeechReactionSummaryProjection;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.moderation.ProfanityDetector;
@@ -47,6 +49,9 @@ class SpeechServiceTest {
 
     @Mock
     private SpeechRepository speechRepository;
+
+    @Mock
+    private SpeechReactionRepository speechReactionRepository;
 
     @Mock
     private ProfanityDetector profanityDetector;
@@ -166,23 +171,33 @@ class SpeechServiceTest {
     @Test
     void getSpeeches_returnsRoomSpeechesInRepositoryOrder() {
         Long roomId = 1L;
+        Long userId = 30L;
         Speech first = mockSpeech(2L, roomId, 10L, "최신 의견", SpeechStance.PRO,
                 SpeechStatus.READY, LocalDateTime.of(2026, 6, 12, 12, 0));
         Speech second = mockSpeech(1L, roomId, 20L, "이전 의견", SpeechStance.CON,
                 SpeechStatus.COMPLETED, LocalDateTime.of(2026, 6, 12, 11, 0));
         Speech next = org.mockito.Mockito.mock(Speech.class);
+        SpeechReactionSummaryProjection firstSummary = reactionSummary(2L, 3L, 1L);
         given(roomRepository.existsById(roomId)).willReturn(true);
         given(speechRepository.findByRoomIdBeforeCursor(
                 roomId,
                 null,
                 PageRequest.of(0, 3)
         )).willReturn(List.of(first, second, next));
+        given(speechReactionRepository.findReactionSummaries(
+                List.of(2L, 1L),
+                userId
+        )).willReturn(List.of(firstSummary));
 
-        SpeechCursorPageRes response = speechService.getSpeeches(roomId, null, 2);
+        SpeechCursorPageRes response = speechService.getSpeeches(roomId, userId, null, 2);
 
         assertThat(response.items()).extracting(SpeechListRes::speechId).containsExactly(2L, 1L);
         assertThat(response.items()).extracting(SpeechListRes::content)
                 .containsExactly("최신 의견", "이전 의견");
+        assertThat(response.items()).extracting(SpeechListRes::reactionCount)
+                .containsExactly(3L, 0L);
+        assertThat(response.items()).extracting(SpeechListRes::reactedByMe)
+                .containsExactly(true, false);
         assertThat(response.nextCursor()).isEqualTo(1L);
         assertThat(response.hasNext()).isTrue();
     }
@@ -191,7 +206,7 @@ class SpeechServiceTest {
     void getSpeeches_throwsRoomNotFound_whenRoomDoesNotExist() {
         given(roomRepository.existsById(1L)).willReturn(false);
 
-        assertThatThrownBy(() -> speechService.getSpeeches(1L, null, 20))
+        assertThatThrownBy(() -> speechService.getSpeeches(1L, 2L, null, 20))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
@@ -199,26 +214,32 @@ class SpeechServiceTest {
 
     @Test
     void getSpeech_returnsSpeechDetail() {
+        Long userId = 20L;
         Speech speech = mockSpeech(3L, 1L, 2L, "상세 의견", SpeechStance.PRO,
                 SpeechStatus.SPEAKING, LocalDateTime.of(2026, 6, 12, 12, 30));
         given(speech.getLinkUrl()).willReturn("https://example.com/evidence");
         given(speech.getImageUrl()).willReturn("https://example.com/image.png");
         given(speech.getUpdatedAt()).willReturn(LocalDateTime.of(2026, 6, 12, 12, 30));
+        SpeechReactionSummaryProjection summary = reactionSummary(3L, 5L, 1L);
         given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
+        given(speechReactionRepository.findReactionSummaries(List.of(3L), userId))
+                .willReturn(List.of(summary));
 
-        SpeechDetailRes response = speechService.getSpeech(3L);
+        SpeechDetailRes response = speechService.getSpeech(3L, userId);
 
         assertThat(response.speechId()).isEqualTo(3L);
         assertThat(response.linkUrl()).isEqualTo("https://example.com/evidence");
         assertThat(response.imageUrl()).isEqualTo("https://example.com/image.png");
         assertThat(response.status()).isEqualTo(SpeechStatus.SPEAKING);
+        assertThat(response.reactionCount()).isEqualTo(5L);
+        assertThat(response.reactedByMe()).isTrue();
     }
 
     @Test
     void getSpeech_throwsSpeechNotFound_whenSpeechDoesNotExist() {
         given(speechRepository.findByIdAndDeletedFalse(1L)).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> speechService.getSpeech(1L))
+        assertThatThrownBy(() -> speechService.getSpeech(1L, 2L))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.SPEECH_NOT_FOUND);
@@ -433,5 +454,18 @@ class SpeechServiceTest {
         given(speech.getStatus()).willReturn(status);
         given(speech.getCreatedAt()).willReturn(createdAt);
         return speech;
+    }
+
+    private SpeechReactionSummaryProjection reactionSummary(
+            Long speechId,
+            long reactionCount,
+            long myReactionCount
+    ) {
+        SpeechReactionSummaryProjection summary =
+                org.mockito.Mockito.mock(SpeechReactionSummaryProjection.class);
+        given(summary.getSpeechId()).willReturn(speechId);
+        given(summary.getReactionCount()).willReturn(reactionCount);
+        given(summary.getMyReactionCount()).willReturn(myReactionCount);
+        return summary;
     }
 }

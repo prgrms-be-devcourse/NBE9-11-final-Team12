@@ -14,6 +14,8 @@ import com.sisibibi.api.domain.speech.dto.response.SpeechListRes;
 import com.sisibibi.api.domain.speech.entity.Speech;
 import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
+import com.sisibibi.api.domain.speechreaction.repository.SpeechReactionRepository;
+import com.sisibibi.api.domain.speechreaction.repository.projection.SpeechReactionSummaryProjection;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.moderation.ProfanityDetector;
@@ -24,7 +26,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.PageRequest;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -34,6 +40,7 @@ public class SpeechService {
     private final RoomRepository roomRepository;
     private final RoomParticipantRepository roomParticipantRepository;
     private final SpeechRepository speechRepository;
+    private final SpeechReactionRepository speechReactionRepository;
     private final ProfanityDetector profanityDetector;
 
     @Transactional
@@ -72,7 +79,7 @@ public class SpeechService {
     }
 
     @Transactional(readOnly = true)
-    public SpeechCursorPageRes getSpeeches(Long roomId, Long cursor, int size) {
+    public SpeechCursorPageRes getSpeeches(Long roomId, Long userId, Long cursor, int size) {
         if (!roomRepository.existsById(roomId)) {
             throw new CustomException(ErrorCode.ROOM_NOT_FOUND);
         }
@@ -83,9 +90,21 @@ public class SpeechService {
                 PageRequest.of(0, size + 1)
         );
         boolean hasNext = speeches.size() > size;
-        List<SpeechListRes> items = speeches.stream()
+        List<Speech> pageSpeeches = speeches.stream()
                 .limit(size)
-                .map(SpeechListRes::from)
+                .toList();
+        Map<Long, SpeechReactionSummaryProjection> reactionSummaries =
+                getReactionSummaries(pageSpeeches, userId);
+        List<SpeechListRes> items = pageSpeeches.stream()
+                .map(speech -> {
+                    SpeechReactionSummaryProjection summary =
+                            reactionSummaries.get(speech.getId());
+                    return SpeechListRes.from(
+                            speech,
+                            summary == null ? 0 : summary.getReactionCount(),
+                            summary != null && summary.getMyReactionCount() > 0
+                    );
+                })
                 .toList();
         Long nextCursor = hasNext ? items.get(items.size() - 1).speechId() : null;
 
@@ -93,11 +112,11 @@ public class SpeechService {
     }
 
     @Transactional(readOnly = true)
-    public SpeechDetailRes getSpeech(Long speechId) {
+    public SpeechDetailRes getSpeech(Long speechId, Long userId) {
         Speech speech = speechRepository.findByIdAndDeletedFalse(speechId)
                 .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_NOT_FOUND));
 
-        return SpeechDetailRes.from(speech);
+        return toDetailResponse(speech, userId);
     }
 
     @Transactional
@@ -110,7 +129,7 @@ public class SpeechService {
 
         validateContent(command.content(), "update", speech.getRoomId(), userId, speechId);
         speech.updateMainOpinion(command.content(), command.stance());
-        return SpeechDetailRes.from(speech);
+        return toDetailResponse(speech, userId);
     }
 
     @Transactional
@@ -131,7 +150,7 @@ public class SpeechService {
         Speech speech = findEditableOwnedSpeech(speechId, userId);
 
         speech.updateLink(linkUrl);
-        return SpeechDetailRes.from(speech);
+        return toDetailResponse(speech, userId);
     }
 
     private Speech findEditableOwnedSpeech(Long speechId, Long userId) {
@@ -176,5 +195,34 @@ public class SpeechService {
             }
             throw new CustomException(ErrorCode.SPEECH_CONTENT_CONTAINS_PROFANITY);
         }
+    }
+
+    private Map<Long, SpeechReactionSummaryProjection> getReactionSummaries(
+            List<Speech> speeches,
+            Long userId
+    ) {
+        if (speeches.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        List<Long> speechIds = speeches.stream()
+                .map(Speech::getId)
+                .toList();
+
+        return speechReactionRepository.findReactionSummaries(speechIds, userId).stream()
+                .collect(Collectors.toMap(
+                        SpeechReactionSummaryProjection::getSpeechId,
+                        Function.identity()
+                ));
+    }
+
+    private SpeechDetailRes toDetailResponse(Speech speech, Long userId) {
+        SpeechReactionSummaryProjection summary =
+                getReactionSummaries(List.of(speech), userId).get(speech.getId());
+        return SpeechDetailRes.from(
+                speech,
+                summary == null ? 0 : summary.getReactionCount(),
+                summary != null && summary.getMyReactionCount() > 0
+        );
     }
 }
