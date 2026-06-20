@@ -19,32 +19,32 @@ spring:
     # backend 디렉토리가 아닌 루트 디렉토리에서 .env 가져옴
     import: optional:file:../.env[.properties]
 
-#  # Database 설정 (MySQL)
-#  datasource:
-#    driver-class-name: com.mysql.cj.jdbc.Driver
-#    url: jdbc:mysql://localhost:23306/sisibibi?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
-#    username: root
-#    password: ${DB_PASSWORD:root}
-#
-#  # Redis 설정
-#  data:
-#    redis:
-#      host: localhost
-#      port: 26379
-#      timeout: 2000ms # Redis 응답 지연 시 서버 멈춤 방지 (2초)
-
+  # Database 설정 (MySQL)
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://${DB_HOST:mysql_1}:${DB_PORT:3306}/${DB_NAME:sisibibi}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
-    username: ${DB_USERNAME:sisibibi}
-    password: ${DB_PASSWORD}
+    url: jdbc:mysql://localhost:23306/sisibibi?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    username: root
+    password: ${DB_PASSWORD:root}
 
+  # Redis 설정
   data:
     redis:
-      host: ${REDIS_HOST:redis_1}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
-      timeout: 2000ms
+      host: localhost
+      port: 26379
+      timeout: 2000ms # Redis 응답 지연 시 서버 멈춤 방지 (2초)
+
+#  datasource:
+#    driver-class-name: com.mysql.cj.jdbc.Driver
+#    url: jdbc:mysql://${DB_HOST:mysql_1}:${DB_PORT:3306}/${DB_NAME:sisibibi}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+#    username: ${DB_USERNAME:sisibibi}
+#    password: ${DB_PASSWORD}
+#
+#  data:
+#    redis:
+#      host: ${REDIS_HOST:redis_1}
+#      port: ${REDIS_PORT:6379}
+#      password: ${REDIS_PASSWORD:}
+#      timeout: 2000ms
 
   # JPA/Hibernate 설정
   jpa:
@@ -55,6 +55,15 @@ spring:
       hibernate:
         format_sql: true
         default_batch_fetch_size: 100 # 배치 사이즈 설정 조정 필요
+  ai:
+    model:
+      chat: openai
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      chat:
+        options:
+          model: gpt-4o-mini
+          temperature: 0.2
 
 app:
   frontend:
