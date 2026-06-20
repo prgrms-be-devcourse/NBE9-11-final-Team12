@@ -72,6 +72,7 @@ public enum ErrorCode {
     SPEECH_REPORT_SELF_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "본인의 의견은 신고할 수 없습니다."),
     SPEECH_REPORT_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 신고한 의견입니다."),
     SPEECH_REPORT_DESCRIPTION_REQUIRED(HttpStatus.BAD_REQUEST, "기타 신고 사유에는 상세 설명이 필요합니다."),
+    SPEECH_REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 의견 신고입니다."),
     SPEECH_REACTION_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 공감한 의견입니다."),
     SPEECH_REACTION_NOT_FOUND(HttpStatus.NOT_FOUND, "취소할 의견 공감이 존재하지 않습니다."),
     SPEECH_REACTION_SELF_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "본인의 의견에는 공감할 수 없습니다."),

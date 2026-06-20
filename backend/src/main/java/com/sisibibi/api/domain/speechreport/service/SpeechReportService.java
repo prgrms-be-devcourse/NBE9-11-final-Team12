@@ -4,13 +4,18 @@ import com.sisibibi.api.domain.speech.entity.Speech;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speechreport.dto.command.SpeechReportCreateCommand;
 import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportCreateRes;
+import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportDetailRes;
+import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportSummaryRes;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReport;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportReason;
+import com.sisibibi.api.domain.speechreport.entity.SpeechReportStatus;
 import com.sisibibi.api.domain.speechreport.repository.SpeechReportRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,6 +26,24 @@ public class SpeechReportService {
 
     private final SpeechRepository speechRepository;
     private final SpeechReportRepository speechReportRepository;
+
+    @Transactional(readOnly = true)
+    public Page<SpeechReportSummaryRes> getReports(
+            SpeechReportStatus status,
+            SpeechReportReason reason,
+            Pageable pageable
+    ) {
+        return speechReportRepository.findAllByFilters(status, reason, pageable)
+                .map(SpeechReportSummaryRes::from);
+    }
+
+    @Transactional(readOnly = true)
+    public SpeechReportDetailRes getReport(Long reportId) {
+        SpeechReport report = speechReportRepository.findById(reportId)
+                .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_REPORT_NOT_FOUND));
+
+        return SpeechReportDetailRes.from(report);
+    }
 
     @Transactional
     public SpeechReportCreateRes createReport(
