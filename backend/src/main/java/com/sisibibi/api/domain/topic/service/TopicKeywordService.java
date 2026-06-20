@@ -5,12 +5,13 @@ import com.sisibibi.api.domain.topic.dto.response.keywordres.ClassifiedIssueCand
 import com.sisibibi.api.domain.topic.dto.response.keywordres.ClassifiedIssueNewsRes;
 import com.sisibibi.api.domain.topic.dto.response.keywordres.ClassifiedNewsKeywordRes;
 import com.sisibibi.api.domain.topic.dto.response.keywordres.NewsKeywordClassificationResult;
-import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -19,16 +20,47 @@ import java.util.stream.IntStream;
 public class TopicKeywordService {
 
   private final ChatClient chatClient;
+  private final ExecutorService aiClassificationExecutor;
 
-  public TopicKeywordService(ChatClient.Builder chatClientBuilder) {
+
+  public TopicKeywordService(
+      ChatClient.Builder chatClientBuilder,
+      ExecutorService aiClassificationExecutor
+  ) {
     this.chatClient = chatClientBuilder.build();
+    this.aiClassificationExecutor = aiClassificationExecutor;
   }
 
   public List<ClassifiedIssueCandidateRes> classify(List<IssueCandidateRes> candidates) {
-    return candidates.stream()
-        .map(this::classify)
+    List<CompletableFuture<ClassifiedIssueCandidateRes>> futures = candidates.stream()
+        .map(candidate -> CompletableFuture
+            .supplyAsync(() -> classify(candidate), aiClassificationExecutor)
+            .exceptionally(exception -> fallbackCandidate(candidate)))
+        .toList();
+
+    return futures.stream()
+        .map(CompletableFuture::join)
         .toList();
   }
+
+  // AI 호출이 실패했을 때 API 전체가 터지지 않게 하기 위한 대체 응답
+  private ClassifiedIssueCandidateRes fallbackCandidate(IssueCandidateRes candidate) {
+    List<ClassifiedIssueNewsRes> fallbackNews = candidate.news().stream()
+        .map(news -> new ClassifiedIssueNewsRes(
+            news,
+            "기타",
+            List.of(candidate.keyword())
+        ))
+        .toList();
+
+    return new ClassifiedIssueCandidateRes(
+        candidate.keyword(),
+        candidate.searchVolume(),
+        candidate.increasePercentage(),
+        fallbackNews
+    );
+  }
+
 
   private ClassifiedIssueCandidateRes classify(IssueCandidateRes candidate) {
     NewsKeywordClassificationResult result = chatClient.prompt()
