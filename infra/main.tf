@@ -345,3 +345,8 @@ resource "aws_eip_association" "ec2_1" {
   instance_id   = aws_instance.ec2_1.id
   allocation_id = data.aws_eip.eip_ec2_1.id
 }
+
+resource "aws_ec2_instance_state" "ec2_1" {
+  instance_id = aws_instance.ec2_1.id
+  state       = "stopped"
+}
