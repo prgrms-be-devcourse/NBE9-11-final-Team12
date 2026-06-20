@@ -348,14 +348,14 @@ class RoomServiceTest {
     Room room = Room.open(1L, "삭제 대상 토론방", firstStartedAt, firstEndedAt, 100);
     ReflectionTestUtils.setField(room, "id", 10L);
 
-    given(roomRepository.findById(10L)).willReturn(Optional.of(room));
+    given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
 
     roomService.deleteRoom(10L);
 
     assertThat(room.getStatus()).isEqualTo(RoomStatus.CLOSED);
     assertThat(room.getEndedAt()).isNotNull();
 
-    verify(roomRepository).findById(10L);
+    verify(roomRepository).findByIdForUpdate(10L);
     ArgumentCaptor<RoomClosedEvent> eventCaptor =
         ArgumentCaptor.forClass(RoomClosedEvent.class);
     verify(eventPublisher).publishEvent(eventCaptor.capture());
@@ -375,7 +375,7 @@ class RoomServiceTest {
     );
     room.close(closedAt);
 
-    given(roomRepository.findById(10L)).willReturn(Optional.of(room));
+    given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
 
     roomService.deleteRoom(10L);
 
@@ -384,13 +384,13 @@ class RoomServiceTest {
 
   @Test
   void deleteRoom_throwsRoomNotFound_whenRoomDoesNotExist() {
-    given(roomRepository.findById(999L)).willReturn(Optional.empty());
+    given(roomRepository.findByIdForUpdate(999L)).willReturn(Optional.empty());
 
     assertThatThrownBy(() -> roomService.deleteRoom(999L))
         .isInstanceOf(CustomException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
 
-    verify(roomRepository).findById(999L);
+    verify(roomRepository).findByIdForUpdate(999L);
   }
 }
