@@ -7,6 +7,9 @@ import com.sisibibi.api.domain.speech.entity.Speech;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speechreaction.dto.response.BestSpeechRes;
 import com.sisibibi.api.domain.speechreaction.dto.response.SpeechReactionCreateRes;
+import com.sisibibi.api.domain.speechreaction.dto.event.SpeechReactionChangedEvent;
+import com.sisibibi.api.domain.speechreaction.dto.event.SpeechReactionEventPayload;
+import com.sisibibi.api.domain.speechreaction.dto.event.SpeechReactionEventType;
 import com.sisibibi.api.domain.speechreaction.entity.SpeechReaction;
 import com.sisibibi.api.domain.speechreaction.repository.SpeechReactionRepository;
 import com.sisibibi.api.domain.speechreaction.repository.projection.BestSpeechReactionProjection;
@@ -14,6 +17,7 @@ import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +31,7 @@ public class SpeechReactionService {
     private final RoomParticipantRepository roomParticipantRepository;
     private final SpeechRepository speechRepository;
     private final SpeechReactionRepository speechReactionRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public SpeechReactionCreateRes createReaction(Long speechId, Long userId) {
@@ -42,18 +47,22 @@ public class SpeechReactionService {
         }
 
         SpeechReaction reaction = SpeechReaction.create(speechId, userId);
-        return SpeechReactionCreateRes.from(speechReactionRepository.saveAndFlush(reaction));
+        SpeechReaction savedReaction = speechReactionRepository.saveAndFlush(reaction);
+        publishReactionChangedEvent(speech, speechReactionRepository.countBySpeechId(speechId));
+        return SpeechReactionCreateRes.from(savedReaction);
     }
 
     @Transactional
     public void deleteReaction(Long speechId, Long userId) {
-        getActiveSpeech(speechId);
+        Speech speech = getActiveSpeech(speechId);
 
         SpeechReaction reaction = speechReactionRepository
                 .findBySpeechIdAndUserId(speechId, userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_REACTION_NOT_FOUND));
 
         speechReactionRepository.delete(reaction);
+        speechReactionRepository.flush();
+        publishReactionChangedEvent(speech, speechReactionRepository.countBySpeechId(speechId));
     }
 
     @Transactional(readOnly = true)
@@ -92,5 +101,17 @@ public class SpeechReactionService {
         )) {
             throw new CustomException(ErrorCode.ROOM_PARTICIPATION_REQUIRED);
         }
+    }
+
+    private void publishReactionChangedEvent(Speech speech, long reactionCount) {
+        eventPublisher.publishEvent(new SpeechReactionChangedEvent(
+                SpeechReactionEventType.SPEECH_REACTION_CHANGED,
+                speech.getRoomId(),
+                SpeechReactionEventPayload.of(
+                        speech.getRoomId(),
+                        speech.getId(),
+                        reactionCount
+                )
+        ));
     }
 }

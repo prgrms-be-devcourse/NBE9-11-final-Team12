@@ -16,6 +16,8 @@ class RoomWebSocketDestinationsTest {
                 .isEqualTo("/topic/rooms/1/participants/events");
         assertThat(RoomWebSocketDestinations.roomEvents(1L))
                 .isEqualTo("/topic/rooms/1/room/events");
+        assertThat(RoomWebSocketDestinations.speechReactionEvents(1L))
+                .isEqualTo("/topic/rooms/1/speech-reactions/events");
     }
 
     @Test
@@ -31,6 +33,9 @@ class RoomWebSocketDestinationsTest {
         )).contains(7L);
         assertThat(RoomWebSocketDestinations.findAllowedRoomTopicId(
                 "/topic/rooms/7/room/events"
+        )).contains(7L);
+        assertThat(RoomWebSocketDestinations.findAllowedRoomTopicId(
+                "/topic/rooms/7/speech-reactions/events"
         )).contains(7L);
     }
 

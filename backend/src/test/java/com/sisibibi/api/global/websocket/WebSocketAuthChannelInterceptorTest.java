@@ -111,6 +111,15 @@ class WebSocketAuthChannelInterceptorTest {
                 message(StompCommand.SUBSCRIBE, "/topic/rooms/1/room/events", user, null),
                 null
         )).isNotNull();
+        assertThat(interceptor.preSend(
+                message(
+                        StompCommand.SUBSCRIBE,
+                        "/topic/rooms/1/speech-reactions/events",
+                        user,
+                        null
+                ),
+                null
+        )).isNotNull();
     }
 
     @Test
