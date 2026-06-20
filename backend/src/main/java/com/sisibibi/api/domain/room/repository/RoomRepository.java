@@ -28,12 +28,6 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
 
   Optional<Room> findByTopicId(Long topicId);
 
-  List<Room> findByStatusAndEndedAtLessThanEqual(
-      RoomStatus status,
-      LocalDateTime now,
-      Pageable pageable
-  );
-
   @Query("""
     select room.id
     from Room room

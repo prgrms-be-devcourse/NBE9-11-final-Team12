@@ -45,10 +45,6 @@ public class RoomParticipantService {
       throw new CustomException(ErrorCode.ROOM_CLOSED);
     }
 
-    if (room.getEndedAt() != null && !room.getEndedAt().isAfter(now)) {
-      throw new CustomException(ErrorCode.ROOM_CLOSED);
-    }
-
     if (!room.isJoinableAt(LocalDateTime.now())) {
       throw new CustomException(ErrorCode.ROOM_CLOSED);
     }

@@ -12,6 +12,8 @@ import com.sisibibi.api.domain.topic.repository.TopicRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -26,6 +28,7 @@ public class TopicService {
   private final TopicRepository topicRepository;
   private final RoomRepository roomRepository;
 
+  @Cacheable(value = "topicDetail", key = "#topicId")
   public TopicDetailRes getTopicDetail(Long topicId) {
     Topic topic = topicRepository.findByIdAndStatus(topicId, TopicStatus.APPROVED)
         .orElseThrow(() -> new CustomException(ErrorCode.TOPIC_NOT_FOUND));
@@ -35,6 +38,7 @@ public class TopicService {
 
   // 토픽 승인
   @Transactional
+  @CacheEvict(value = "approvedTopics", allEntries = true)
   public TopicCreateRes createApprovedTopic(CreateTopicReq request) {
     Topic topic = Topic.approved(
         request.title().trim(),
@@ -49,6 +53,7 @@ public class TopicService {
   }
 
   @Transactional
+  @CacheEvict(value = {"topicDetail", "approvedTopics"}, key = "#topicId", allEntries = true)
   public TopicDetailRes updateTopic(Long topicId, UpdateTopicReq request) {
     Topic topic = topicRepository.findById(topicId)
         .orElseThrow(() -> new CustomException(ErrorCode.TOPIC_NOT_FOUND));
@@ -64,6 +69,7 @@ public class TopicService {
   }
 
   @Transactional
+  @CacheEvict(value = {"topicDetail", "approvedTopics"}, key = "#topicId", allEntries = true)
   public void deleteTopic(Long topicId) {
     Topic topic = topicRepository.findByIdForUpdate(topicId)
         .orElseThrow(() -> new CustomException(ErrorCode.TOPIC_NOT_FOUND));
@@ -75,10 +81,17 @@ public class TopicService {
     topicRepository.delete(topic);
   }
 
+  @Cacheable(
+      value = "approvedTopics",
+      key = "#pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort.toString()"
+  )
   public Page<TopicSummaryRes> getApprovedTopics(Pageable pageable) {
     return topicRepository.findAllByStatus(TopicStatus.APPROVED, pageable)
         .map(TopicSummaryRes::from);
   }
+
+
+
 
 
 }

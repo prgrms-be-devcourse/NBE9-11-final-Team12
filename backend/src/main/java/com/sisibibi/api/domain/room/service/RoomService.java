@@ -156,7 +156,7 @@ public class RoomService {
 
   @Transactional
   public void deleteRoom(Long roomId) {
-    Room room = roomRepository.findById(roomId)
+    Room room = roomRepository.findByIdForUpdate(roomId)
         .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
 
     if (room.getStatus() == RoomStatus.CLOSED) {
