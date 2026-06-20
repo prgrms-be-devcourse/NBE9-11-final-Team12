@@ -6,6 +6,7 @@ import com.sisibibi.api.domain.topic.dto.response.issueRes.IssueNewsRes;
 import com.sisibibi.api.domain.topic.dto.response.topicRes.TopicDetailRes;
 import com.sisibibi.api.domain.topic.dto.response.topicRes.TopicSummaryRes;
 import com.sisibibi.api.domain.topic.service.TopicIssueService;
+import com.sisibibi.api.domain.topic.service.TopicKeywordService;
 import com.sisibibi.api.domain.topic.service.TopicService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
@@ -46,6 +47,9 @@ class TopicControllerTest {
 
   @MockitoBean
   private TopicService topicService;
+
+  @MockitoBean
+  private TopicKeywordService topicKeywordService;
 
   @Test
   void getTopicDetail_returnsOk() throws Exception {

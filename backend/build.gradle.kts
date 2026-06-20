@@ -24,11 +24,11 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-data-jpa")
 	implementation("org.springframework.boot:spring-boot-starter-data-redis")
 	implementation("org.springframework.boot:spring-boot-starter-security")
-	implementation("org.springframework.boot:spring-boot-starter-data-redis")
 	implementation("org.springframework.boot:spring-boot-starter-validation")
 	implementation("org.springframework.boot:spring-boot-starter-web")
-	implementation("org.springframework.boot:spring-boot-starter-actuator")
 	implementation("org.springframework.boot:spring-boot-starter-websocket")
+	implementation(platform("org.springframework.ai:spring-ai-bom:1.0.9"))
+	implementation("org.springframework.ai:spring-ai-starter-model-openai")
 	runtimeOnly("io.micrometer:micrometer-registry-prometheus")
 
 	// JWT 라이브러리
@@ -68,9 +68,7 @@ tasks.test {
 	finalizedBy(tasks.jacocoTestReport)
 }
 
-tasks.jacocoTestReport {
-	dependsOn(tasks.test)
-
+tasks.named<JacocoReport>("jacocoTestReport") {
 	reports {
 		html.required.set(true)
 		xml.required.set(true)

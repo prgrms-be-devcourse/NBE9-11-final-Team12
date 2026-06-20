@@ -46,6 +46,19 @@ spring:
       password: ${REDIS_PASSWORD:}
       timeout: 2000ms
 
+#  datasource:
+#    driver-class-name: com.mysql.cj.jdbc.Driver
+#    url: jdbc:mysql://${DB_HOST:mysql_1}:${DB_PORT:3306}/${DB_NAME:sisibibi}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+#    username: ${DB_USERNAME:sisibibi}
+#    password: ${DB_PASSWORD}
+#
+#  data:
+#    redis:
+#      host: ${REDIS_HOST:redis_1}
+#      port: ${REDIS_PORT:6379}
+#      password: ${REDIS_PASSWORD:}
+#      timeout: 2000ms
+
   # JPA/Hibernate 설정
   jpa:
     hibernate:
@@ -55,6 +68,15 @@ spring:
       hibernate:
         format_sql: true
         default_batch_fetch_size: 100 # 배치 사이즈 설정 조정 필요
+  ai:
+    model:
+      chat: openai
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      chat:
+        options:
+          model: gpt-4o-mini
+          temperature: 0.2
 
 app:
   frontend:
