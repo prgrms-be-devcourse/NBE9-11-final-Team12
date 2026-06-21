@@ -1,5 +1,6 @@
 package com.sisibibi.api.domain.room.service;
 
+import com.sisibibi.api.domain.room.config.RoomTopicGenerator;
 import com.sisibibi.api.domain.room.dto.event.RoomClosedEvent;
 import com.sisibibi.api.domain.room.dto.request.CreateRoomReq;
 import com.sisibibi.api.domain.room.dto.request.UpdateRoomReq;
@@ -10,6 +11,7 @@ import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.topic.entity.Topic;
+import com.sisibibi.api.domain.topic.entity.TopicStatus;
 import com.sisibibi.api.domain.topic.repository.TopicRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
@@ -51,70 +53,93 @@ class RoomServiceTest {
   @Mock
   private RoomCloseCommandService roomCloseCommandService;
 
-  @Test
-  void createRoom_savesOpenRoom_whenTopicIsApproved() {
-    Topic topic = Topic.approved("토론 주제", "설명", "IT", "https://example.com");
+  @Mock
+  private RoomCreateCommandService roomCreateCommandService;
 
-    given(topicRepository.findByIdForUpdate(1L)).willReturn(Optional.of(topic));
-    given(roomRepository.existsByTopicId(topic.getId())).willReturn(false);
-    given(roomRepository.save(any(Room.class))).willAnswer(invocation -> invocation.getArgument(0));
+  @Mock
+  private RoomTopicGenerator roomTopicGenerator;
+
+  @Test
+  void createRoom_createsRoomWithAiGeneratedTitle_whenTopicIsApproved() {
+    Topic topic = Topic.approved("토론 주제", "설명", "IT", "https://example.com");
+    ReflectionTestUtils.setField(topic, "id", 1L);
+
+    CreateRoomRes response = new CreateRoomRes(
+        10L,
+        1L,
+        "AI가 만든 토론방 제목",
+        RoomStatus.OPEN,
+        LocalDateTime.of(2026, 6, 21, 12, 0),
+        null
+    );
+
+    given(topicRepository.findByIdAndStatus(1L, TopicStatus.APPROVED))
+        .willReturn(Optional.of(topic));
+    given(roomRepository.existsByTopicId(1L)).willReturn(false);
+    given(roomTopicGenerator.generate(topic)).willReturn("AI가 만든 토론방 제목");
+    given(roomCreateCommandService.createRoom(1L, "AI가 만든 토론방 제목", null))
+        .willReturn(response);
 
     CreateRoomRes result = roomService.createRoom(new CreateRoomReq(1L, null));
 
-    ArgumentCaptor<Room> captor = ArgumentCaptor.forClass(Room.class);
-    verify(roomRepository).save(captor.capture());
-
-    Room savedRoom = captor.getValue();
-
-    assertThat(savedRoom.getTopicId()).isEqualTo(topic.getId());
-    assertThat(savedRoom.getTitle()).isEqualTo("토론 주제");
-    assertThat(savedRoom.getStatus()).isEqualTo(RoomStatus.OPEN);
-    assertThat(savedRoom.getStartedAt()).isNotNull();
-    assertThat(savedRoom.getCreatedAt()).isNull();
+    assertThat(result.topicId()).isEqualTo(1L);
+    assertThat(result.title()).isEqualTo("AI가 만든 토론방 제목");
     assertThat(result.status()).isEqualTo(RoomStatus.OPEN);
+
+    verify(topicRepository).findByIdAndStatus(1L, TopicStatus.APPROVED);
+    verify(roomRepository).existsByTopicId(1L);
+    verify(roomTopicGenerator).generate(topic);
+    verify(roomCreateCommandService).createRoom(1L, "AI가 만든 토론방 제목", null);
+    verify(roomRepository, never()).save(any());
   }
 
   @Test
   void createRoom_throwsTopicNotFound_whenTopicDoesNotExist() {
-    given(topicRepository.findByIdForUpdate(999L)).willReturn(Optional.empty());
+    given(topicRepository.findByIdAndStatus(999L, TopicStatus.APPROVED))
+        .willReturn(Optional.empty());
 
     assertThatThrownBy(() -> roomService.createRoom(new CreateRoomReq(999L, null)))
         .isInstanceOf(CustomException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.TOPIC_NOT_FOUND);
 
-    verify(roomRepository, never()).save(any());
+    verify(roomRepository, never()).existsByTopicId(any());
+    verify(roomTopicGenerator, never()).generate(any());
+    verify(roomCreateCommandService, never()).createRoom(any(), any(), any());
   }
 
   @Test
   void createRoom_throwsRoomAlreadyExists_whenTopicAlreadyHasRoom() {
     Topic topic = Topic.approved("토론 주제", "설명", "IT", "https://example.com");
+    ReflectionTestUtils.setField(topic, "id", 1L);
 
-    given(topicRepository.findByIdForUpdate(1L)).willReturn(Optional.of(topic));
-    given(roomRepository.existsByTopicId(topic.getId())).willReturn(true);
+    given(topicRepository.findByIdAndStatus(1L, TopicStatus.APPROVED))
+        .willReturn(Optional.of(topic));
+    given(roomRepository.existsByTopicId(1L)).willReturn(true);
 
     assertThatThrownBy(() -> roomService.createRoom(new CreateRoomReq(1L, null)))
         .isInstanceOf(CustomException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.ROOM_ALREADY_EXISTS);
 
-    verify(roomRepository, never()).save(any());
+    verify(roomRepository).existsByTopicId(1L);
+    verify(roomTopicGenerator, never()).generate(any());
+    verify(roomCreateCommandService, never()).createRoom(any(), any(), any());
   }
 
   @Test
-  void createRoom_throwsTopicNotApproved_whenTopicIsNotApproved() {
-    Topic topic = Topic.approved("토론 주제", "설명", "IT", "https://example.com");
-    ReflectionTestUtils.setField(topic, "status", com.sisibibi.api.domain.topic.entity.TopicStatus.REJECTED);
-
-    given(topicRepository.findByIdForUpdate(1L)).willReturn(Optional.of(topic));
+  void createRoom_throwsTopicNotFound_whenTopicIsNotApproved() {
+    given(topicRepository.findByIdAndStatus(1L, TopicStatus.APPROVED))
+        .willReturn(Optional.empty());
 
     assertThatThrownBy(() -> roomService.createRoom(new CreateRoomReq(1L, null)))
         .isInstanceOf(CustomException.class)
         .extracting("errorCode")
-        .isEqualTo(ErrorCode.TOPIC_NOT_APPROVED);
+        .isEqualTo(ErrorCode.TOPIC_NOT_FOUND);
 
     verify(roomRepository, never()).existsByTopicId(any());
-    verify(roomRepository, never()).save(any());
+    verify(roomTopicGenerator, never()).generate(any());
+    verify(roomCreateCommandService, never()).createRoom(any(), any(), any());
   }
 
   @Test
