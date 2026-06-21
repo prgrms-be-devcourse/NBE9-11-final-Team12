@@ -2,9 +2,9 @@ package com.sisibibi.api.domain.roomparticipant.event;
 
 import com.sisibibi.api.domain.roomparticipant.dto.event.RoomParticipantChangedEvent;
 import com.sisibibi.api.global.config.AsyncConfig;
+import com.sisibibi.api.global.realtime.RealtimeEventPublisher;
 import com.sisibibi.api.global.websocket.RoomWebSocketDestinations;
 import com.sisibibi.api.global.websocket.WebSocketEventEnvelope;
-import com.sisibibi.api.global.websocket.WebSocketEventPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -17,13 +17,13 @@ import org.springframework.transaction.event.TransactionalEventListener;
 @RequiredArgsConstructor
 public class RoomParticipantChangedWebSocketEventListener {
 
-    private final WebSocketEventPublisher webSocketEventPublisher;
+    private final RealtimeEventPublisher realtimeEventPublisher;
 
     @Async(AsyncConfig.DOMAIN_EVENT_TASK_EXECUTOR)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handle(RoomParticipantChangedEvent event) {
         try {
-            webSocketEventPublisher.publish(
+            realtimeEventPublisher.publish(
                     RoomWebSocketDestinations.participantEvents(event.roomId()),
                     WebSocketEventEnvelope.of(
                             event.type(),
