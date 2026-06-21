@@ -7,6 +7,7 @@ import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.domain.user.repository.UserRepository;
+import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import java.time.LocalDateTime;
@@ -32,6 +33,7 @@ public class SpeakingQueuePersistenceService {
     private final SpeakingQueueRepository speakingQueueRepository;
     private final RoomRepository roomRepository;
     private final UserRepository userRepository;
+    private final UserSanctionPolicyService userSanctionPolicyService;
 
     @Transactional
     public SpeakingQueue createWaitingRequest(
@@ -39,6 +41,8 @@ public class SpeakingQueuePersistenceService {
             Long userId,
             SpeechStance stance
     ) {
+        userSanctionPolicyService.validateStageAllowed(userId);
+
         roomRepository.findByIdForUpdate(roomId)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
 

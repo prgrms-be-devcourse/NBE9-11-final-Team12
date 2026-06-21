@@ -75,6 +75,10 @@ public class SpeechReport {
     @Column(name = "resolution_note", length = 500)
     private String resolutionNote;
 
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private ViolationSeverity severity;
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -122,43 +126,79 @@ public class SpeechReport {
             SpeechReportReviewAction action,
             Long reviewerUserId,
             String resolutionNote,
+            ViolationSeverity severity,
             LocalDateTime now
     ) {
         switch (action) {
-            case START_REVIEW -> startReview(reviewerUserId);
-            case RESOLVE -> completeReview(
-                    SpeechReportStatus.RESOLVED,
+            case START_REVIEW -> startReview(reviewerUserId, severity);
+            case RESOLVE -> resolve(
                     reviewerUserId,
                     resolutionNote,
+                    severity,
                     now
             );
-            case REJECT -> completeReview(
-                    SpeechReportStatus.REJECTED,
+            case REJECT -> reject(
                     reviewerUserId,
                     resolutionNote,
+                    severity,
                     now
             );
         }
     }
 
-    private void startReview(Long reviewerUserId) {
+    private void startReview(Long reviewerUserId, ViolationSeverity severity) {
         if (status != SpeechReportStatus.PENDING) {
             throw new CustomException(ErrorCode.SPEECH_REPORT_INVALID_STATUS_TRANSITION);
         }
+        validateSeverityNotAllowed(severity);
 
         status = SpeechReportStatus.REVIEWING;
         reviewedBy = reviewerUserId;
+    }
+
+    private void resolve(
+            Long reviewerUserId,
+            String resolutionNote,
+            ViolationSeverity severity,
+            LocalDateTime now
+    ) {
+        validateReviewing();
+        if (severity == null) {
+            throw new CustomException(ErrorCode.SPEECH_REPORT_SEVERITY_REQUIRED);
+        }
+        completeReview(
+                SpeechReportStatus.RESOLVED,
+                reviewerUserId,
+                resolutionNote,
+                severity,
+                now
+        );
+    }
+
+    private void reject(
+            Long reviewerUserId,
+            String resolutionNote,
+            ViolationSeverity severity,
+            LocalDateTime now
+    ) {
+        validateReviewing();
+        validateSeverityNotAllowed(severity);
+        completeReview(
+                SpeechReportStatus.REJECTED,
+                reviewerUserId,
+                resolutionNote,
+                null,
+                now
+        );
     }
 
     private void completeReview(
             SpeechReportStatus targetStatus,
             Long reviewerUserId,
             String resolutionNote,
+            ViolationSeverity severity,
             LocalDateTime now
     ) {
-        if (status != SpeechReportStatus.REVIEWING) {
-            throw new CustomException(ErrorCode.SPEECH_REPORT_INVALID_STATUS_TRANSITION);
-        }
         if (resolutionNote == null || resolutionNote.isBlank()) {
             throw new CustomException(ErrorCode.SPEECH_REPORT_RESOLUTION_NOTE_REQUIRED);
         }
@@ -172,6 +212,19 @@ public class SpeechReport {
         reviewedBy = reviewerUserId;
         reviewedAt = now;
         this.resolutionNote = normalizedResolutionNote;
+        this.severity = severity;
+    }
+
+    private void validateReviewing() {
+        if (status != SpeechReportStatus.REVIEWING) {
+            throw new CustomException(ErrorCode.SPEECH_REPORT_INVALID_STATUS_TRANSITION);
+        }
+    }
+
+    private void validateSeverityNotAllowed(ViolationSeverity severity) {
+        if (severity != null) {
+            throw new CustomException(ErrorCode.SPEECH_REPORT_SEVERITY_NOT_ALLOWED);
+        }
     }
 
     private String normalizeDescription(String description) {

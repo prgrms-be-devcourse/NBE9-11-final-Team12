@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.speechreport.dto.request;
 
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportReviewAction;
+import com.sisibibi.api.domain.speechreport.entity.ViolationSeverity;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
@@ -9,6 +10,8 @@ public record SpeechReportReviewReq(
         SpeechReportReviewAction action,
 
         @Size(max = 500, message = "신고 처리 사유는 500자 이하여야 합니다.")
-        String resolutionNote
+        String resolutionNote,
+
+        ViolationSeverity severity
 ) {
 }

@@ -8,6 +8,7 @@ import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
+import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
@@ -21,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,6 +46,9 @@ class SpeakingQueueAssignmentConcurrencyTest {
 
     @Autowired
     private RoomRepository roomRepository;
+
+    @MockitoBean
+    private UserSanctionPolicyService userSanctionPolicyService;
 
     private Long roomId;
 

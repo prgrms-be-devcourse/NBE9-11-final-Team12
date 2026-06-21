@@ -16,6 +16,7 @@ import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speechreaction.repository.SpeechReactionRepository;
 import com.sisibibi.api.domain.speechreaction.repository.projection.SpeechReactionSummaryProjection;
+import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.moderation.ProfanityDetector;
@@ -42,6 +43,7 @@ public class SpeechService {
     private final SpeechRepository speechRepository;
     private final SpeechReactionRepository speechReactionRepository;
     private final ProfanityDetector profanityDetector;
+    private final UserSanctionPolicyService userSanctionPolicyService;
 
     @Transactional
     public SpeechCreateRes createMainOpinion(
@@ -49,6 +51,8 @@ public class SpeechService {
             Long userId,
             SpeechCreateCommand command
     ) {
+        userSanctionPolicyService.validateSpeechAllowed(userId);
+
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
 
@@ -125,6 +129,8 @@ public class SpeechService {
             Long userId,
             SpeechUpdateCommand command
     ) {
+        userSanctionPolicyService.validateSpeechAllowed(userId);
+
         Speech speech = findEditableOwnedSpeech(speechId, userId);
 
         validateContent(command.content(), "update", speech.getRoomId(), userId, speechId);
@@ -147,6 +153,8 @@ public class SpeechService {
 
     @Transactional
     public SpeechDetailRes updateSpeechLink(Long speechId, Long userId, String linkUrl) {
+        userSanctionPolicyService.validateSpeechAllowed(userId);
+
         Speech speech = findEditableOwnedSpeech(speechId, userId);
 
         speech.updateLink(linkUrl);

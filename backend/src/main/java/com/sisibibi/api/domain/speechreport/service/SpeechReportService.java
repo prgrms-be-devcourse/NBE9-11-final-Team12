@@ -11,6 +11,7 @@ import com.sisibibi.api.domain.speechreport.entity.SpeechReport;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportReason;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportReviewAction;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportStatus;
+import com.sisibibi.api.domain.speechreport.entity.ViolationSeverity;
 import com.sisibibi.api.domain.speechreport.repository.SpeechReportRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
@@ -54,18 +55,20 @@ public class SpeechReportService {
             Long reportId,
             Long reviewerUserId,
             SpeechReportReviewAction action,
-            String resolutionNote
+            String resolutionNote,
+            ViolationSeverity severity
     ) {
         SpeechReport report = speechReportRepository.findByIdForUpdate(reportId)
                 .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_REPORT_NOT_FOUND));
 
-        report.review(action, reviewerUserId, resolutionNote, LocalDateTime.now());
+        report.review(action, reviewerUserId, resolutionNote, severity, LocalDateTime.now());
         log.info(
-                "Speech report reviewed. reportId={}, reviewerUserId={}, action={}, status={}",
+                "Speech report reviewed. reportId={}, reviewerUserId={}, action={}, status={}, severity={}",
                 reportId,
                 reviewerUserId,
                 action,
-                report.getStatus()
+                report.getStatus(),
+                report.getSeverity()
         );
 
         return SpeechReportReviewRes.from(report);

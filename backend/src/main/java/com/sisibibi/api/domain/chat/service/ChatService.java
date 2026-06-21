@@ -13,6 +13,7 @@ import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantReposit
 import com.sisibibi.api.domain.user.entity.User;
 import com.sisibibi.api.domain.user.entity.UserStatus;
 import com.sisibibi.api.domain.user.repository.UserRepository;
+import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.moderation.ProfanityDetector;
@@ -36,6 +37,7 @@ public class ChatService {
     private final RoomRepository roomRepository;
     private final RoomParticipantRepository roomParticipantRepository;
     private final UserRepository userRepository;
+    private final UserSanctionPolicyService userSanctionPolicyService;
     private final ProfanityDetector profanityDetector;
     private final ChatRateLimiter chatRateLimiter;
     private final AfterCommitChatMessagePublisher afterCommitChatMessagePublisher;
@@ -51,6 +53,7 @@ public class ChatService {
             log.warn("Chat message blocked for banned user. roomId={}, userId={}", roomId, userId);
             throw new CustomException(ErrorCode.USER_BANNED);
         }
+        userSanctionPolicyService.validateChatAllowed(userId);
 
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
