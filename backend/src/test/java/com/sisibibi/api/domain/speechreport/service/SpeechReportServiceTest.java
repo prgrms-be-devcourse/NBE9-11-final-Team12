@@ -12,6 +12,7 @@ import com.sisibibi.api.domain.speechreport.entity.SpeechReport;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportReason;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportStatus;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportReviewAction;
+import com.sisibibi.api.domain.speechreport.entity.ViolationSeverity;
 import com.sisibibi.api.domain.speechreport.repository.SpeechReportRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
@@ -100,6 +101,7 @@ class SpeechReportServiceTest {
                 100L,
                 99L,
                 SpeechReportReviewAction.START_REVIEW,
+                null,
                 null
         );
 
@@ -115,6 +117,7 @@ class SpeechReportServiceTest {
                 999L,
                 99L,
                 SpeechReportReviewAction.START_REVIEW,
+                null,
                 null
         ))
                 .isInstanceOf(CustomException.class)

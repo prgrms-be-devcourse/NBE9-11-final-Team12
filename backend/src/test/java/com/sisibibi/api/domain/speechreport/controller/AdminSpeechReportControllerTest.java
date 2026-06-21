@@ -6,6 +6,7 @@ import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportSummaryRes;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportReason;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportReviewAction;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportStatus;
+import com.sisibibi.api.domain.speechreport.entity.ViolationSeverity;
 import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportReviewRes;
 import com.sisibibi.api.domain.speechreport.service.SpeechReportService;
 import com.sisibibi.api.global.exception.GlobalExceptionHandler;
@@ -94,6 +95,7 @@ class AdminSpeechReportControllerTest {
                         null,
                         null,
                         null,
+                        null,
                         LocalDateTime.of(2026, 6, 21, 12, 0),
                         LocalDateTime.of(2026, 6, 21, 12, 0)
                 ));
@@ -117,13 +119,15 @@ class AdminSpeechReportControllerTest {
                 eq(100L),
                 eq(99L),
                 eq(SpeechReportReviewAction.RESOLVE),
-                eq("위반 사항 확인")
+                eq("위반 사항 확인"),
+                eq(ViolationSeverity.MEDIUM)
         )).willReturn(new SpeechReportReviewRes(
                 100L,
                 SpeechReportStatus.RESOLVED,
                 99L,
                 LocalDateTime.of(2026, 6, 21, 13, 0),
-                "위반 사항 확인"
+                "위반 사항 확인",
+                ViolationSeverity.MEDIUM
         ));
 
         mockMvc.perform(patch("/api/v1/admin/reports/{reportId}", 100L)
@@ -132,13 +136,15 @@ class AdminSpeechReportControllerTest {
                         .content("""
                                 {
                                   "action": "RESOLVE",
-                                  "resolutionNote": "위반 사항 확인"
+                                  "resolutionNote": "위반 사항 확인",
+                                  "severity": "MEDIUM"
                                 }
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.reportId").value(100))
                 .andExpect(jsonPath("$.data.status").value("RESOLVED"))
-                .andExpect(jsonPath("$.data.reviewedBy").value(99));
+                .andExpect(jsonPath("$.data.reviewedBy").value(99))
+                .andExpect(jsonPath("$.data.severity").value("MEDIUM"));
     }
 
     @Test

@@ -88,6 +88,8 @@ public enum ErrorCode {
     SPEECH_REPORT_INVALID_STATUS_TRANSITION(HttpStatus.CONFLICT, "현재 상태에서 요청한 신고 처리를 수행할 수 없습니다."),
     SPEECH_REPORT_RESOLUTION_NOTE_REQUIRED(HttpStatus.BAD_REQUEST, "신고 처리 완료 또는 반려 시 처리 사유가 필요합니다."),
     SPEECH_REPORT_RESOLUTION_NOTE_TOO_LONG(HttpStatus.BAD_REQUEST, "신고 처리 사유는 500자 이하여야 합니다."),
+    SPEECH_REPORT_SEVERITY_REQUIRED(HttpStatus.BAD_REQUEST, "신고 처리 완료 시 위반 심각도가 필요합니다."),
+    SPEECH_REPORT_SEVERITY_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "검토 시작 또는 반려 처리에는 위반 심각도를 지정할 수 없습니다."),
     SPEECH_REACTION_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 공감한 의견입니다."),
     SPEECH_REACTION_NOT_FOUND(HttpStatus.NOT_FOUND, "취소할 의견 공감이 존재하지 않습니다."),
     SPEECH_REACTION_SELF_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "본인의 의견에는 공감할 수 없습니다."),

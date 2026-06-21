@@ -70,7 +70,8 @@ public class AdminSpeechReportController {
                 reportId,
                 principal.userId(),
                 request.action(),
-                request.resolutionNote()
+                request.resolutionNote(),
+                request.severity()
         );
 
         return ResponseEntity.ok(ApiResponse.ok("의견 신고 처리가 완료되었습니다.", response));
