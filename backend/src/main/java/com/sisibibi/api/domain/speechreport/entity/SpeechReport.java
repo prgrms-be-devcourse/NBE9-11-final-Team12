@@ -163,10 +163,15 @@ public class SpeechReport {
             throw new CustomException(ErrorCode.SPEECH_REPORT_RESOLUTION_NOTE_REQUIRED);
         }
 
+        String normalizedResolutionNote = resolutionNote.trim();
+        if (normalizedResolutionNote.length() > 500) {
+            throw new CustomException(ErrorCode.SPEECH_REPORT_RESOLUTION_NOTE_TOO_LONG);
+        }
+
         status = targetStatus;
         reviewedBy = reviewerUserId;
         reviewedAt = now;
-        this.resolutionNote = resolutionNote.trim();
+        this.resolutionNote = normalizedResolutionNote;
     }
 
     private String normalizeDescription(String description) {

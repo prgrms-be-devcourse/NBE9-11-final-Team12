@@ -108,6 +108,22 @@ class SpeechReportTest {
                 .isEqualTo(ErrorCode.SPEECH_REPORT_RESOLUTION_NOTE_REQUIRED);
     }
 
+    @Test
+    void review_throwsResolutionNoteTooLong_whenNoteExceedsLimit() {
+        SpeechReport report = createReport();
+        report.review(SpeechReportReviewAction.START_REVIEW, 99L, null, null);
+
+        assertThatThrownBy(() -> report.review(
+                SpeechReportReviewAction.RESOLVE,
+                99L,
+                "a".repeat(501),
+                LocalDateTime.now()
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SPEECH_REPORT_RESOLUTION_NOTE_TOO_LONG);
+    }
+
     private SpeechReport createReport() {
         return SpeechReport.create(
                 10L,
