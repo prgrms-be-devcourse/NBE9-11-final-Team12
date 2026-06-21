@@ -4,6 +4,7 @@ import os
 
 os.environ.setdefault("LOKY_MAX_CPU_COUNT", str(os.cpu_count() or 1))
 
+DEFAULT_EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 DEFAULT_CLUSTER_COUNT = None
 MIN_CLUSTER_COUNT = 4
 MAX_CLUSTER_COUNT = 18
@@ -64,6 +65,9 @@ KOREAN_SUFFIXES = (
     "에",
     "도",
 )
+_SENTENCE_TRANSFORMER_MODEL = None
+_SENTENCE_TRANSFORMER_MODEL_NAME = None
+_SENTENCE_TRANSFORMER_LOAD_FAILED = False
 
 
 def build_clustered_debate_input(debate, cluster_count=DEFAULT_CLUSTER_COUNT):
@@ -125,17 +129,25 @@ def _build_stance_then_topic_clusters(speeches):
                 "speechCount": len(stance_speeches),
                 "selectedClusterCount": len(group_clusters),
                 "strategy": group_meta["clusterCountStrategy"],
+                "embeddingBackend": group_meta.get("embeddingBackend"),
+                "embeddingModel": group_meta.get("embeddingModel"),
                 "candidateScores": group_meta["candidateScores"],
             }
         )
 
     _renumber_clusters(clusters)
+    first_group_score = group_scores[0] if group_scores else {}
+    embedding_backend = first_group_score.get("embeddingBackend")
+    embedding_model = first_group_score.get("embeddingModel")
     return clusters, _cluster_meta(
         strategy="stance_then_topic",
         selected_cluster_count=len(clusters),
         candidate_scores=[],
         grouping="stance_then_topic",
         group_scores=group_scores,
+        algorithm=_algorithm_name(embedding_backend),
+        embedding_backend=embedding_backend,
+        embedding_model=embedding_model,
     )
 
 
@@ -152,6 +164,9 @@ def _build_global_topic_clusters(speeches, cluster_count):
 def _build_topic_clusters(speeches, cluster_count, stance_group):
     embedding, vectors = _embed_contents(speeches)
     labels, centers, cluster_meta = _cluster_vectors(vectors, cluster_count)
+    cluster_meta["algorithm"] = _algorithm_name(embedding["backend"])
+    cluster_meta["embeddingBackend"] = embedding["backend"]
+    cluster_meta["embeddingModel"] = embedding["model_name"]
     clusters = _build_clusters(
         speeches=speeches,
         vectors=vectors,
@@ -180,14 +195,115 @@ def _count_stances(speeches):
 def _embed_contents(speeches):
     try:
         from sklearn.feature_extraction.text import TfidfVectorizer
+    except ImportError as exc:
+        raise RuntimeError(
+            "scikit-learn is not installed. Run install_dependencies.py in the nbe911 environment."
+        ) from exc
+
+    label_vectorizer = TfidfVectorizer(
+        token_pattern=r"(?u)\b[0-9A-Za-z가-힣]{2,}\b",
+        ngram_range=(1, 2),
+        max_features=800,
+        sublinear_tf=True,
+        stop_words=STOP_WORDS,
+    )
+    contents = [_embedding_text(speech) for speech in speeches]
+    vectors, backend, model_name = _embed_for_clustering(contents)
+    label_vectors = label_vectorizer.fit_transform(contents)
+    return {
+        "backend": backend,
+        "model_name": model_name,
+        "label_vectorizer": label_vectorizer,
+        "label_vectors": label_vectors,
+    }, vectors
+
+
+def _embed_for_clustering(contents):
+    preferred_backend = os.getenv("AI_REPORT_EMBEDDING_BACKEND", "sentence_transformer")
+    if preferred_backend not in ("sentence_transformer", "tfidf"):
+        raise ValueError("AI_REPORT_EMBEDDING_BACKEND must be sentence_transformer or tfidf")
+
+    if preferred_backend == "sentence_transformer":
+        sentence_vectors = _try_embed_with_sentence_transformer(contents)
+        if sentence_vectors is not None:
+            return sentence_vectors
+
+    return _embed_with_tfidf(contents)
+
+
+def _try_embed_with_sentence_transformer(contents):
+    model = _get_sentence_transformer_model()
+    if model is None:
+        return None
+
+    try:
+        vectors = model.encode(
+            contents,
+            batch_size=int(os.getenv("AI_REPORT_EMBEDDING_BATCH_SIZE", "32")),
+            convert_to_numpy=True,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        )
+    except Exception as exc:
+        print(f"Sentence-BERT 임베딩 실패: {exc}", flush=True)
+        print("TF-IDF 클러스터링으로 fallback합니다.", flush=True)
+        return None
+
+    return vectors, "sentence_transformer", _SENTENCE_TRANSFORMER_MODEL_NAME
+
+
+def _get_sentence_transformer_model():
+    global _SENTENCE_TRANSFORMER_LOAD_FAILED
+    global _SENTENCE_TRANSFORMER_MODEL
+    global _SENTENCE_TRANSFORMER_MODEL_NAME
+
+    if _SENTENCE_TRANSFORMER_MODEL is not None:
+        return _SENTENCE_TRANSFORMER_MODEL
+    if _SENTENCE_TRANSFORMER_LOAD_FAILED:
+        return None
+
+    model_name = os.getenv("AI_REPORT_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL_NAME)
+    try:
+        from sentence_transformers import SentenceTransformer
+    except ImportError:
+        print("sentence-transformers 미설치: TF-IDF 클러스터링으로 fallback합니다.", flush=True)
+        _SENTENCE_TRANSFORMER_LOAD_FAILED = True
+        return None
+
+    try:
+        _SENTENCE_TRANSFORMER_MODEL = SentenceTransformer(
+            model_name,
+            device=_sentence_transformer_device(),
+        )
+        _SENTENCE_TRANSFORMER_MODEL_NAME = model_name
+        return _SENTENCE_TRANSFORMER_MODEL
+    except Exception as exc:
+        print(f"Sentence-BERT 모델 로딩 실패: {exc}", flush=True)
+        print("TF-IDF 클러스터링으로 fallback합니다.", flush=True)
+        _SENTENCE_TRANSFORMER_LOAD_FAILED = True
+        return None
+
+
+def _sentence_transformer_device():
+    try:
+        import torch
+    except ImportError:
+        return "cpu"
+
+    return "cuda" if torch.cuda.is_available() else "cpu"
+
+
+def _embed_with_tfidf(contents):
+    try:
+        from sklearn.feature_extraction.text import TfidfVectorizer
         from sklearn.pipeline import FeatureUnion
     except ImportError as exc:
         raise RuntimeError(
             "scikit-learn is not installed. Run install_dependencies.py in the nbe911 environment."
         ) from exc
 
-    # 단어 n-gram은 쟁점 키워드를 잘 잡고, 문자 n-gram은 한국어 조사/띄어쓰기 차이를 흡수합니다.
-    # 별도 임베딩 모델 없이도 토론 의견을 최대한 의미 단위에 가깝게 묶기 위한 하이브리드 벡터화입니다.
+    # Sentence-BERT를 사용할 수 없을 때만 쓰는 fallback입니다.
+    # 단어 n-gram은 쟁점 키워드를, 문자 n-gram은 한국어 조사/띄어쓰기 차이를 보완합니다.
     word_vectorizer = TfidfVectorizer(
         token_pattern=r"(?u)\b[0-9A-Za-z가-힣]{2,}\b",
         ngram_range=(1, 2),
@@ -207,20 +323,8 @@ def _embed_contents(speeches):
             ("char", char_vectorizer),
         ]
     )
-    label_vectorizer = TfidfVectorizer(
-        token_pattern=r"(?u)\b[0-9A-Za-z가-힣]{2,}\b",
-        ngram_range=(1, 2),
-        max_features=800,
-        sublinear_tf=True,
-        stop_words=STOP_WORDS,
-    )
-    contents = [_embedding_text(speech) for speech in speeches]
     vectors = vectorizer.fit_transform(contents)
-    label_vectors = label_vectorizer.fit_transform(contents)
-    return {
-        "label_vectorizer": label_vectorizer,
-        "label_vectors": label_vectors,
-    }, vectors
+    return vectors, "tfidf", "word_ngram+char_ngram_tfidf"
 
 
 def _embedding_text(speech):
@@ -327,18 +431,31 @@ def _cluster_meta(
     candidate_scores,
     grouping="global_topic",
     group_scores=None,
+    algorithm="sentence_embedding+kmeans",
+    embedding_backend=None,
+    embedding_model=None,
 ):
     meta = {
-        "algorithm": "tfidf+kmeans",
-        "vectorizer": "word_ngram+char_ngram_tfidf",
+        "algorithm": algorithm,
+        "labelExtractor": "word_ngram_tfidf",
         "grouping": grouping,
         "clusterCountStrategy": strategy,
         "selectedClusterCount": selected_cluster_count,
         "candidateScores": candidate_scores,
     }
+    if embedding_backend is not None:
+        meta["embeddingBackend"] = embedding_backend
+    if embedding_model is not None:
+        meta["embeddingModel"] = embedding_model
     if group_scores is not None:
         meta["groupScores"] = group_scores
     return meta
+
+
+def _algorithm_name(embedding_backend):
+    if embedding_backend == "tfidf":
+        return "tfidf+kmeans"
+    return "sentence_embedding+kmeans"
 
 
 def _build_clusters(

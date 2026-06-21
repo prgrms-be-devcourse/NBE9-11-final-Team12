@@ -6,9 +6,10 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from ai_test import AiTestConfig, DEFAULT_MODEL_PATH as CONFIG_DEFAULT_MODEL_PATH
-from ai_test import LlamaCppClient
-from ai_test import ReportGenerator
+from aireport import AiReportConfig, DEFAULT_MODEL_PATH as CONFIG_DEFAULT_MODEL_PATH
+from aireport import LlamaCppClient
+from aireport import ReportGenerator
+from aireport.report_schema import validate_report_file
 
 DEFAULT_MODEL_PATH = CONFIG_DEFAULT_MODEL_PATH
 DEFAULT_SAMPLE_PATH = PROJECT_ROOT / "samples" / "anonymous_debate_3h_sample.json"
@@ -48,6 +49,8 @@ def main():
     print(json.dumps(report, ensure_ascii=False, indent=2))
     save_json(model_input, DEFAULT_MODEL_INPUT_OUTPUT_PATH, "모델 입력 데이터")
     save_report(report, DEFAULT_OUTPUT_PATH)
+    validate_report_file(DEFAULT_OUTPUT_PATH)
+    print("저장된 AI 리포트 JSON 스키마 검증 완료", flush=True)
     print(f"모델 입력 데이터 저장 위치: {DEFAULT_MODEL_INPUT_OUTPUT_PATH}")
     print(f"AI 리포트 결과 저장 위치: {DEFAULT_OUTPUT_PATH}")
 
@@ -56,7 +59,7 @@ def run_report():
     # 설정, 샘플, 프롬프트, 모델 클라이언트를 조립하는 실제 리포트 생성 흐름입니다.
     # 백엔드와 연결하지 않고 로컬 파일만 사용하므로 실험 결과를 안전하게 반복할 수 있습니다.
     print("1/5 설정을 읽는 중...", flush=True)
-    config = AiTestConfig.from_env()
+    config = AiReportConfig.from_env()
     print(f"2/5 샘플 데이터를 읽는 중: {DEFAULT_SAMPLE_PATH}", flush=True)
     sample = _read_json(DEFAULT_SAMPLE_PATH)
     print(f"3/5 프롬프트 템플릿과 few-shot 예시를 읽는 중: {DEFAULT_PROMPT_PATH}", flush=True)

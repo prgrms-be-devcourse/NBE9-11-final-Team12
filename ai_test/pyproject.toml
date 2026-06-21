@@ -3,14 +3,17 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ai-report-model-test"
+name = "aireport-model-test"
 version = "0.1.0"
-description = "Standalone harness for testing open-source models on AI debate report generation."
+description = "Standalone harness for testing open-source models on AI report generation."
 requires-python = ">=3.10"
 dependencies = [
     "huggingface_hub>=0.23.0",
+    "pydantic>=2.0.0",
+    "scikit-learn>=1.4.0",
+    "sentence-transformers>=3.0.0",
 ]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["ai_test*"]
+include = ["aireport*", "test*"]

@@ -1,6 +1,7 @@
 import json
 
-from ai_test.report_schema import validate_report
+from aireport.input_contract import normalize_report_request
+from aireport.report_schema import validate_report
 
 
 USE_TEXT_CLUSTERING = True
@@ -20,14 +21,15 @@ class ReportGenerator:
     def build_prompt(self, debate):
         # 텍스트 클러스터링 결과를 LLM 입력으로 전달합니다.
         # 비교 실험을 위해 클러스터링 없이 보고 싶으면 USE_TEXT_CLUSTERING=False로 바꾸면 됩니다.
+        normalized_debate = normalize_report_request(debate)
         if USE_TEXT_CLUSTERING:
-            from ai_test import build_clustered_debate_input
+            from aireport import build_clustered_debate_input
 
-            prompt_data = build_clustered_debate_input(debate)
+            prompt_data = build_clustered_debate_input(normalized_debate)
         else:
-            prompt_data = build_filtered_debate_input(debate)
+            prompt_data = build_filtered_debate_input(normalized_debate)
         self.last_model_input = prompt_data
-        prompt_input = json.dumps(prompt_data, ensure_ascii=False, indent=2)
+        prompt_input = json.dumps(_compact_prompt_input(prompt_data), ensure_ascii=False, separators=(",", ":"))
         return (
             self.prompt_template
             .replace("{{FEW_SHOT_EXAMPLES}}", self.few_shot_examples)
@@ -112,6 +114,53 @@ def _format_opinion(opinion):
         "stance": opinion.get("stance"),
         "keywords": opinion.get("keywords", []),
         "content": opinion.get("content", ""),
+    }
+
+
+def _compact_prompt_input(prompt_data):
+    # candidate score, embedding model 같은 디버그 정보는 저장용으로는 유용하지만
+    # LLM이 리포트를 작성하는 데는 불필요하므로 프롬프트 입력에서는 제거합니다.
+    compact = {
+        "topic": prompt_data.get("topic", ""),
+        "description": prompt_data.get("description", ""),
+        "stanceCounts": prompt_data.get("stanceCounts", {}),
+    }
+    if "clusters" in prompt_data:
+        compact["clusters"] = [
+            _compact_cluster(cluster)
+            for cluster in prompt_data.get("clusters", [])
+        ]
+    if "opinions" in prompt_data:
+        compact["opinions"] = prompt_data.get("opinions", [])
+    return _drop_empty_values(compact)
+
+
+def _compact_cluster(cluster):
+    return _drop_empty_values(
+        {
+            "stanceGroup": cluster.get("stanceGroup"),
+            "label": cluster.get("label"),
+            "memberCount": cluster.get("memberCount"),
+            "stanceDistribution": cluster.get("stanceDistribution"),
+            "keywords": cluster.get("keywords"),
+            "representativeOpinions": [
+                _content_only(opinion)
+                for opinion in cluster.get("representativeOpinions", [])
+            ],
+        }
+    )
+
+
+def _content_only(opinion):
+    # LLM 입력에서는 발언 순서와 작성자 식별자가 필요 없으므로 실제 의견 본문만 남깁니다.
+    return str(opinion).split(": ", 1)[-1]
+
+
+def _drop_empty_values(data):
+    return {
+        key: value
+        for key, value in data.items()
+        if value not in ("", None, [], {})
     }
 
 
