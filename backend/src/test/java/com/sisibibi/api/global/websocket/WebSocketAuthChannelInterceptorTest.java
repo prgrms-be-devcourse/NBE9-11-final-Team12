@@ -152,6 +152,39 @@ class WebSocketAuthChannelInterceptorTest {
         );
     }
 
+    @Test
+    void preSend_allowsSubscribeToOwnSanctionTopic() {
+        AuthPrincipal principal = new AuthPrincipal(2L, "user@example.com", "USER");
+        Principal user = authenticatedPrincipal(principal);
+
+        Message<?> result = interceptor.preSend(
+                message(
+                        StompCommand.SUBSCRIBE,
+                        "/topic/users/2/sanctions/events",
+                        user,
+                        null
+                ),
+                null
+        );
+
+        assertThat(result).isNotNull();
+    }
+
+    @Test
+    void preSend_rejectsSubscribeToOtherUsersSanctionTopic() {
+        AuthPrincipal principal = new AuthPrincipal(2L, "user@example.com", "USER");
+        Principal user = authenticatedPrincipal(principal);
+        Message<byte[]> message = message(
+                StompCommand.SUBSCRIBE,
+                "/topic/users/3/sanctions/events",
+                user,
+                null
+        );
+
+        assertThatThrownBy(() -> interceptor.preSend(message, null))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
     private Message<byte[]> message(
             StompCommand command,
             String destination,

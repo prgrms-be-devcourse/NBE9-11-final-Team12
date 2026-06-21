@@ -7,6 +7,7 @@ import com.sisibibi.api.domain.speechreport.repository.SpeechReportRepository;
 import com.sisibibi.api.domain.user.entity.User;
 import com.sisibibi.api.domain.user.repository.UserRepository;
 import com.sisibibi.api.domain.usersanction.dto.request.UserSanctionCreateReq;
+import com.sisibibi.api.domain.usersanction.dto.event.UserSanctionChangedEvent;
 import com.sisibibi.api.domain.usersanction.dto.response.UserSanctionRes;
 import com.sisibibi.api.domain.usersanction.entity.UserSanction;
 import com.sisibibi.api.domain.usersanction.entity.UserSanctionState;
@@ -21,6 +22,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
@@ -44,6 +46,9 @@ class UserSanctionServiceTest {
 
     @Mock
     private UserSanctionRepository userSanctionRepository;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private UserSanctionService userSanctionService;
@@ -81,6 +86,7 @@ class UserSanctionServiceTest {
         assertThat(response.sanctionId()).isEqualTo(200L);
         assertThat(response.reportId()).isEqualTo(100L);
         assertThat(response.state()).isEqualTo(UserSanctionState.ACTIVE);
+        verify(eventPublisher).publishEvent(any(UserSanctionChangedEvent.class));
     }
 
     @Test
@@ -167,6 +173,22 @@ class UserSanctionServiceTest {
     }
 
     @Test
+    void getActiveSanctions_returnsCurrentRestrictionsWithoutInternalData() {
+        UserSanction sanction = sanction(200L);
+        given(userSanctionRepository.findActiveRestrictions(
+                org.mockito.ArgumentMatchers.eq(10L),
+                any(LocalDateTime.class)
+        )).willReturn(List.of(sanction));
+
+        var response = userSanctionService.getActiveSanctions(10L);
+
+        assertThat(response).hasSize(1);
+        assertThat(response.getFirst().sanctionId()).isEqualTo(200L);
+        assertThat(response.getFirst().type())
+                .isEqualTo(UserSanctionType.CHAT_RESTRICTION);
+    }
+
+    @Test
     void revokeSanction_revokesActiveSanction() {
         UserSanction sanction = sanction(200L);
         given(userSanctionRepository.findByIdAndUserIdForUpdate(200L, 10L))
@@ -177,6 +199,7 @@ class UserSanctionServiceTest {
 
         assertThat(response.state()).isEqualTo(UserSanctionState.REVOKED);
         verify(userSanctionRepository).findByIdAndUserIdForUpdate(200L, 10L);
+        verify(eventPublisher).publishEvent(any(UserSanctionChangedEvent.class));
     }
 
     private SpeechReport resolvedReport(Long reportId, Long reportedUserId) {
