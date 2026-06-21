@@ -1,5 +1,6 @@
 package com.sisibibi.api.domain.room.service;
 
+import com.sisibibi.api.domain.room.config.RoomTopicGenerator;
 import com.sisibibi.api.domain.room.dto.event.RoomClosedEvent;
 import com.sisibibi.api.domain.room.dto.request.CreateRoomReq;
 import com.sisibibi.api.domain.room.dto.request.UpdateRoomReq;
@@ -20,6 +21,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 
@@ -36,34 +38,27 @@ public class RoomService {
   private final TopicRepository topicRepository;
   private final RoomCloseCommandService roomCloseCommandService;
   private final ApplicationEventPublisher eventPublisher;
+  private final RoomCreateCommandService roomCreateCommandService;
+  private final RoomTopicGenerator roomTopicGenerator;
 
 
 
-  @Transactional
+  @Transactional(propagation = Propagation.NOT_SUPPORTED)
   public CreateRoomRes createRoom(CreateRoomReq request) {
-    Topic topic = topicRepository.findByIdForUpdate(request.topicId())
+    Topic topic = topicRepository.findByIdAndStatus(request.topicId(), TopicStatus.APPROVED)
         .orElseThrow(() -> new CustomException(ErrorCode.TOPIC_NOT_FOUND));
-
-
-    if (topic.getStatus() != TopicStatus.APPROVED) {
-      throw new CustomException(ErrorCode.TOPIC_NOT_APPROVED);
-    }
 
     if (roomRepository.existsByTopicId(topic.getId())) {
       throw new CustomException(ErrorCode.ROOM_ALREADY_EXISTS);
     }
-    LocalDateTime startedAt = LocalDateTime.now();
-    LocalDateTime endedAt = startedAt.plusMinutes(5);
-    int maxParticipants = resolveMaxParticipants(request.maxParticipants());
 
-    Room room = Room.open(topic.getId(), topic.getTitle(), startedAt, endedAt, maxParticipants);
+    String debateTitle = roomTopicGenerator.generate(topic);
 
-    try {
-      Room savedRoom = roomRepository.save(room);
-      return CreateRoomRes.from(savedRoom);
-    } catch (DataIntegrityViolationException e) {
-      throw new CustomException(ErrorCode.ROOM_ALREADY_EXISTS);
-    }
+    return roomCreateCommandService.createRoom(
+        topic.getId(),
+        debateTitle,
+        request.maxParticipants()
+    );
   }
 
   // 관리자 방 수정
