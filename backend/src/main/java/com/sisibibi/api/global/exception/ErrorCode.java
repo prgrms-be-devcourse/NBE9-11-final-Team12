@@ -24,6 +24,18 @@ public enum ErrorCode {
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 일치하지 않습니다."),
     USER_INACTIVE(HttpStatus.FORBIDDEN, "비활성화된 계정입니다."),
     USER_BANNED(HttpStatus.FORBIDDEN, "차단된 계정입니다."),
+    USER_SANCTION_ALREADY_ACTIVE(HttpStatus.CONFLICT, "동일한 유형의 활성 제재가 이미 존재합니다."),
+    USER_SANCTION_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 사용자 제재입니다."),
+    USER_SANCTION_NOT_REVOCABLE(HttpStatus.CONFLICT, "활성 상태의 사용자 제재만 해제할 수 있습니다."),
+    USER_SANCTION_INVALID_PERIOD(HttpStatus.BAD_REQUEST, "올바르지 않은 사용자 제재 기간입니다."),
+    USER_SANCTION_REASON_REQUIRED(HttpStatus.BAD_REQUEST, "사용자 제재 사유가 필요합니다."),
+    USER_SANCTION_REASON_TOO_LONG(HttpStatus.BAD_REQUEST, "사용자 제재 사유는 500자 이하여야 합니다."),
+    USER_CHAT_RESTRICTED(HttpStatus.FORBIDDEN, "채팅 이용이 제한된 사용자입니다."),
+    USER_SPEECH_RESTRICTED(HttpStatus.FORBIDDEN, "의견 작성이 제한된 사용자입니다."),
+    USER_STAGE_RESTRICTED(HttpStatus.FORBIDDEN, "발언권 신청이 제한된 사용자입니다."),
+    USER_SANCTION_REPORT_MISMATCH(HttpStatus.BAD_REQUEST, "신고 대상 사용자와 제재 대상 사용자가 일치하지 않습니다."),
+    USER_SANCTION_REPORT_NOT_RESOLVED(HttpStatus.BAD_REQUEST, "처리 완료된 신고만 사용자 제재와 연결할 수 있습니다."),
+    USER_SANCTION_ADMIN_NOT_ALLOWED(HttpStatus.FORBIDDEN, "관리자 계정은 사용자 제재 대상으로 지정할 수 없습니다."),
 
     // Topic
     TOPIC_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 토픽입니다."),
