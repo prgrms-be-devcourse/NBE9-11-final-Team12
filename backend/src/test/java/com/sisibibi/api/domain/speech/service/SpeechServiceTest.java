@@ -17,6 +17,7 @@ import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speechreaction.repository.SpeechReactionRepository;
 import com.sisibibi.api.domain.speechreaction.repository.projection.SpeechReactionSummaryProjection;
+import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.moderation.ProfanityDetector;
@@ -36,6 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -56,8 +58,29 @@ class SpeechServiceTest {
     @Mock
     private ProfanityDetector profanityDetector;
 
+    @Mock
+    private UserSanctionPolicyService userSanctionPolicyService;
+
     @InjectMocks
     private SpeechService speechService;
+
+    @Test
+    void createMainOpinion_throwsSpeechRestricted_whenUserHasActiveSanction() {
+        doThrow(new CustomException(ErrorCode.USER_SPEECH_RESTRICTED))
+                .when(userSanctionPolicyService)
+                .validateSpeechAllowed(2L);
+
+        assertThatThrownBy(() -> speechService.createMainOpinion(
+                1L,
+                2L,
+                new SpeechCreateCommand("의견", SpeechStance.PRO)
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.USER_SPEECH_RESTRICTED);
+
+        verify(speechRepository, never()).save(org.mockito.ArgumentMatchers.any(Speech.class));
+    }
 
     @Test
     void createMainOpinion_savesReadySpeech_whenRoomIsOpenAndUserIsParticipating() {

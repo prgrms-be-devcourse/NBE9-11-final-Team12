@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 
@@ -15,6 +16,8 @@ import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
+import com.sisibibi.api.domain.user.repository.UserRepository;
+import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 
@@ -43,6 +46,12 @@ class SpeakingQueuePersistenceServiceTest {
     @Mock
     private RoomRepository roomRepository;
 
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
+    private UserSanctionPolicyService userSanctionPolicyService;
+
     @InjectMocks
     private SpeakingQueuePersistenceService speakingQueuePersistenceService;
 
@@ -54,6 +63,24 @@ class SpeakingQueuePersistenceServiceTest {
             LocalDateTime.of(2026, 6, 15, 12, 0),
             100
         );
+    }
+
+    @Test
+    void createWaitingRequest_throwsStageRestricted_whenUserHasActiveSanction() {
+        doThrow(new CustomException(ErrorCode.USER_STAGE_RESTRICTED))
+                .when(userSanctionPolicyService)
+                .validateStageAllowed(7L);
+
+        assertThatThrownBy(() -> speakingQueuePersistenceService.createWaitingRequest(
+                1L,
+                7L,
+                SpeechStance.PRO
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.USER_STAGE_RESTRICTED);
+
+        verify(speakingQueueRepository, never()).save(any(SpeakingQueue.class));
     }
 
     @Test

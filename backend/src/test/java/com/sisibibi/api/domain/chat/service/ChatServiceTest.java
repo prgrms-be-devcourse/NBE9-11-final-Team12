@@ -13,6 +13,7 @@ import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantReposit
 import com.sisibibi.api.domain.user.entity.User;
 import com.sisibibi.api.domain.user.entity.UserStatus;
 import com.sisibibi.api.domain.user.repository.UserRepository;
+import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.moderation.ProfanityDetector;
@@ -32,6 +33,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -50,6 +52,9 @@ class ChatServiceTest {
     private UserRepository userRepository;
 
     @Mock
+    private UserSanctionPolicyService userSanctionPolicyService;
+
+    @Mock
     private ProfanityDetector profanityDetector;
 
     @Mock
@@ -60,6 +65,24 @@ class ChatServiceTest {
 
     @InjectMocks
     private ChatService chatService;
+
+    @Test
+    void createMessage_throwsChatRestricted_whenUserHasActiveSanction() {
+        Long roomId = 1L;
+        Long userId = 2L;
+        User user = user(UserStatus.ACTIVE);
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        doThrow(new CustomException(ErrorCode.USER_CHAT_RESTRICTED))
+                .when(userSanctionPolicyService)
+                .validateChatAllowed(userId);
+
+        assertThatThrownBy(() -> chatService.createMessage(roomId, userId, "hello"))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.USER_CHAT_RESTRICTED);
+
+        verify(chatMessageRepository, never()).save(any(ChatMessage.class));
+    }
 
     @Test
     void createMessage_savesMessageAndSchedulesPublish_whenRequestIsValid() {
