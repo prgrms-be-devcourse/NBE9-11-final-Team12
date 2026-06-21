@@ -2,12 +2,15 @@ package com.sisibibi.api.domain.speechreport.repository;
 
 import com.sisibibi.api.domain.speechreport.entity.SpeechReport;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportReason;
+import com.sisibibi.api.domain.speechreport.entity.SpeechReportStatus;
 import com.sisibibi.api.global.config.JpaAuditingConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -76,5 +79,50 @@ class SpeechReportRepositoryTest {
                 "다른 사유"
         )))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void findAllByFilters_filtersByStatusAndReason() {
+        speechReportRepository.saveAndFlush(SpeechReport.create(
+                10L,
+                30L,
+                20L,
+                "스팸 신고 대상",
+                SpeechReportReason.SPAM,
+                null
+        ));
+        speechReportRepository.saveAndFlush(SpeechReport.create(
+                11L,
+                31L,
+                21L,
+                "혐오 발언 신고 대상",
+                SpeechReportReason.HATE_SPEECH,
+                null
+        ));
+
+        Page<SpeechReport> reports = speechReportRepository.findAllByFilters(
+                SpeechReportStatus.PENDING,
+                SpeechReportReason.SPAM,
+                PageRequest.of(0, 20)
+        );
+
+        assertThat(reports.getTotalElements()).isEqualTo(1);
+        assertThat(reports.getContent().getFirst().getReason())
+                .isEqualTo(SpeechReportReason.SPAM);
+    }
+
+    @Test
+    void findByIdForUpdate_returnsReport() {
+        SpeechReport savedReport = speechReportRepository.saveAndFlush(SpeechReport.create(
+                10L,
+                30L,
+                20L,
+                "신고 대상 의견",
+                SpeechReportReason.SPAM,
+                null
+        ));
+
+        assertThat(speechReportRepository.findByIdForUpdate(savedReport.getId()))
+                .contains(savedReport);
     }
 }
