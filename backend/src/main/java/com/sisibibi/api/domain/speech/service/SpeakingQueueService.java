@@ -32,6 +32,8 @@ import java.util.stream.IntStream;
 @RequiredArgsConstructor
 public class SpeakingQueueService {
 
+    private static final int REDIS_PROJECTION_REBUILD_MAX_ATTEMPTS = 3;
+
     private final RedisSpeakingQueueRepository redisSpeakingQueueRepository;
     private final SpeakingQueuePersistenceService speakingQueuePersistenceService;
     private final SpeakingQueueProperties speakingQueueProperties;
@@ -350,24 +352,41 @@ public class SpeakingQueueService {
     }
 
     private void rebuildRedisProjection(Long roomId) {
-        try {
-            List<SpeakingQueue> waitingQueues =
-                    speakingQueuePersistenceService.findWaitingRequestsForRedisProjection(roomId);
-            Optional<SpeakingQueue> currentSpeaker =
-                    speakingQueuePersistenceService.findCurrentSpeakerForRedisProjection(roomId);
+        for (int attempt = 1; attempt <= REDIS_PROJECTION_REBUILD_MAX_ATTEMPTS; attempt++) {
+            try {
+                List<SpeakingQueue> waitingQueues =
+                        speakingQueuePersistenceService.findWaitingRequestsForRedisProjection(roomId);
+                Optional<SpeakingQueue> currentSpeaker =
+                        speakingQueuePersistenceService.findCurrentSpeakerForRedisProjection(roomId);
 
-            redisSpeakingQueueRepository.replaceRoomProjection(
-                    roomId,
-                    waitingQueues,
-                    currentSpeaker
-            );
-            log.info("Speaking Redis projection rebuilt. roomId={}", roomId);
-        } catch (RuntimeException rebuildException) {
-            log.error(
-                    "Failed to rebuild speaking Redis projection. roomId={}",
-                    roomId,
-                    rebuildException
-            );
+                redisSpeakingQueueRepository.replaceRoomProjection(
+                        roomId,
+                        waitingQueues,
+                        currentSpeaker
+                );
+                log.info(
+                        "Speaking Redis projection rebuilt. roomId={}, attempt={}",
+                        roomId,
+                        attempt
+                );
+                return;
+            } catch (RuntimeException rebuildException) {
+                if (attempt == REDIS_PROJECTION_REBUILD_MAX_ATTEMPTS) {
+                    log.error(
+                            "Failed to rebuild speaking Redis projection. roomId={}, attempts={}",
+                            roomId,
+                            attempt,
+                            rebuildException
+                    );
+                    return;
+                }
+                log.warn(
+                        "Retrying speaking Redis projection rebuild. roomId={}, attempt={}",
+                        roomId,
+                        attempt,
+                        rebuildException
+                );
+            }
         }
     }
 

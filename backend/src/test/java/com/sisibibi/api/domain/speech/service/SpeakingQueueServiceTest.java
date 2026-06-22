@@ -159,6 +159,43 @@ class SpeakingQueueServiceTest {
     }
 
     @Test
+    void requestSpeakingTurn_retriesRedisProjectionRebuildWhenRebuildTemporarilyFails() {
+        SpeakingQueue saved = persistedWaitingRequest(1L, 7L, 15);
+        given(speakingQueuePersistenceService.createWaitingRequest(1L, 7L, SpeechStance.PRO))
+                .willReturn(saved);
+        given(speakingQueueProperties.getTurnDuration())
+                .willReturn(Duration.ofMinutes(2));
+        given(speakingQueuePersistenceService.assignNextSpeaker(
+                eq(1L),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        )).willReturn(Optional.empty());
+        doThrow(new IllegalStateException("redis unavailable"))
+                .when(redisSpeakingQueueRepository)
+                .upsert(1L, 7L, 15);
+        given(speakingQueuePersistenceService.findWaitingRequestsForRedisProjection(1L))
+                .willReturn(List.of(saved));
+        given(speakingQueuePersistenceService.findCurrentSpeakerForRedisProjection(1L))
+                .willReturn(Optional.empty());
+        doThrow(new IllegalStateException("temporary rebuild failure"))
+                .doThrow(new IllegalStateException("temporary rebuild failure"))
+                .doNothing()
+                .when(redisSpeakingQueueRepository)
+                .replaceRoomProjection(1L, List.of(saved), Optional.empty());
+
+        StageRequestRes response =
+                speakingQueueService.requestSpeakingTurn(1L, 7L, SpeechStance.PRO);
+
+        assertThat(response.status()).isEqualTo(SpeakingQueueStatus.WAITING);
+        verify(redisSpeakingQueueRepository, times(3))
+                .replaceRoomProjection(1L, List.of(saved), Optional.empty());
+        verify(speakingQueuePersistenceService, times(3))
+                .findWaitingRequestsForRedisProjection(1L);
+        verify(speakingQueuePersistenceService, times(3))
+                .findCurrentSpeakerForRedisProjection(1L);
+    }
+
+    @Test
     void requestSpeakingTurn_keepsCreatedRequestWhenImmediateAssignmentFails() {
         SpeakingQueue saved = persistedWaitingRequest(1L, 7L, 15);
         given(speakingQueuePersistenceService.createWaitingRequest(1L, 7L, SpeechStance.PRO))
