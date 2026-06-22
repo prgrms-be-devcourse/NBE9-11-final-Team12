@@ -415,9 +415,12 @@ Prometheus와 Grafana만으로는 애플리케이션 로그를 수집할 수 없
 프로젝트 루트에서 실행한다.
 
 ```bash
+mkdir -p backend/logs
 docker compose up -d mysql redis
 docker compose -f monitoring/docker-compose.monitoring.yml up -d
 ```
+
+`backend/logs`를 먼저 생성하는 이유는 Docker가 없는 경로를 대신 만들면서 소유권이 달라지는 문제를 방지하기 위해서다. 디렉터리가 없으면 모니터링 Compose는 자동 생성하지 않고 명확히 실패한다.
 
 접속 주소:
 
