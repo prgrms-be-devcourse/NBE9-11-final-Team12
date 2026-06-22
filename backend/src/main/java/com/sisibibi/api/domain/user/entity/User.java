@@ -51,7 +51,7 @@ public class User {
     private UserStatus status;
 
     @Column(name = "token_version", nullable = false, columnDefinition = "BIGINT DEFAULT 0")
-    private Long tokenVersion = 0L;
+    private Long tokenVersion;
 
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -76,6 +76,7 @@ public class User {
         user.nickname = nickname;
         user.role = role;
         user.status = UserStatus.ACTIVE;
+        user.tokenVersion = 0L;
         return user;
     }
 
