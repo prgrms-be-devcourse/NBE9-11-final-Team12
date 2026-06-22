@@ -1,7 +1,6 @@
 package com.sisibibi.api.domain.usertrust.service;
 
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
-import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speechreaction.repository.SpeechReactionRepository;
 import com.sisibibi.api.domain.speechreport.repository.SpeechReportRepository;
@@ -17,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.Clock;
 
 @Service
 @RequiredArgsConstructor
@@ -30,6 +30,7 @@ public class UserTrustService {
     private final SpeechRepository speechRepository;
     private final RoomParticipantRepository roomParticipantRepository;
     private final UserTrustPolicy userTrustPolicy;
+    private final Clock clock;
 
     @Transactional(readOnly = true)
     public UserTrustDetailRes getMyTrust(Long userId) {
@@ -50,7 +51,9 @@ public class UserTrustService {
                 context.participatedRoomCount(),
                 violationCount,
                 context.calculation().positiveScore(),
-                context.calculation().penaltyScore()
+                context.calculation().penaltyScore(),
+                UserTrustPolicy.POLICY_VERSION,
+                context.calculatedAt()
         );
     }
 
@@ -63,27 +66,27 @@ public class UserTrustService {
                 context.user().getNickname(),
                 context.calculation().score(),
                 context.calculation().trustLevel(),
-                context.calculation().activityLevel()
+                context.calculation().activityLevel(),
+                UserTrustPolicy.POLICY_VERSION,
+                context.calculatedAt()
         );
     }
 
     private TrustContext calculateTrust(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+        LocalDateTime calculatedAt = LocalDateTime.now(clock);
         long receivedReactionCount = speechReactionRepository.countReceivedByUserId(userId);
         ViolationHistorySummaryProjection violations =
                 speechReportRepository.summarizeResolvedViolations(
                         userId,
-                        LocalDateTime.now().minusDays(VIOLATION_LOOKBACK_DAYS)
+                        calculatedAt.minusDays(VIOLATION_LOOKBACK_DAYS)
                 );
         long lowViolationCount = value(violations.getLowCount());
         long mediumViolationCount = value(violations.getMediumCount());
         long highViolationCount = value(violations.getHighCount());
         long criticalViolationCount = value(violations.getCriticalCount());
-        long completedSpeechCount = speechRepository.countByUserIdAndStatusAndDeletedFalse(
-                userId,
-                SpeechStatus.COMPLETED
-        );
+        long completedSpeechCount = speechRepository.countByUserIdAndDeletedFalse(userId);
         long participatedRoomCount = roomParticipantRepository.countByUserId(userId);
         UserTrustCalculation calculation = userTrustPolicy.calculate(
                 receivedReactionCount,
@@ -104,7 +107,8 @@ public class UserTrustService {
                 criticalViolationCount,
                 completedSpeechCount,
                 participatedRoomCount,
-                calculation
+                calculation,
+                calculatedAt
         );
     }
 
@@ -121,7 +125,8 @@ public class UserTrustService {
             long criticalViolationCount,
             long completedSpeechCount,
             long participatedRoomCount,
-            UserTrustCalculation calculation
+            UserTrustCalculation calculation,
+            LocalDateTime calculatedAt
     ) {
     }
 }

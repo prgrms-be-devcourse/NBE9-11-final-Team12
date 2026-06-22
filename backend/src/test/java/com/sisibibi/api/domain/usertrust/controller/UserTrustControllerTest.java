@@ -20,6 +20,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.util.List;
+import java.time.LocalDateTime;
 
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -43,7 +44,8 @@ class UserTrustControllerTest {
     void getMyTrust_returnsDetailedTrust() throws Exception {
         given(userTrustService.getMyTrust(1L)).willReturn(new UserTrustDetailRes(
                 1L, "tester", 72, UserTrustLevel.RELIABLE, UserActivityLevel.CONTRIBUTOR,
-                22, 4, 3, 1, 15, 8
+                22, 4, 3, 1, 15, 8, "v1",
+                LocalDateTime.of(2026, 6, 23, 9, 0)
         ));
 
         mockMvc.perform(get("/api/v1/users/me/trust").with(authPrincipal()))
@@ -56,7 +58,8 @@ class UserTrustControllerTest {
     @Test
     void getUserTrust_returnsPublicSummary() throws Exception {
         given(userTrustService.getUserTrust(2L)).willReturn(new UserTrustSummaryRes(
-                2L, "other", 65, UserTrustLevel.NORMAL, UserActivityLevel.ACTIVE
+                2L, "other", 65, UserTrustLevel.NORMAL, UserActivityLevel.ACTIVE,
+                "v1", LocalDateTime.of(2026, 6, 23, 9, 0)
         ));
 
         mockMvc.perform(get("/api/v1/users/2/trust").with(authPrincipal()))

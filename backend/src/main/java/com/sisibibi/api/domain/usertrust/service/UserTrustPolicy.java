@@ -7,6 +7,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class UserTrustPolicy {
 
+    public static final String POLICY_VERSION = "v1";
+
     private static final int BASE_SCORE = 50;
     private static final int MAX_REACTION_SCORE = 30;
     private static final int MIN_SCORE = 0;

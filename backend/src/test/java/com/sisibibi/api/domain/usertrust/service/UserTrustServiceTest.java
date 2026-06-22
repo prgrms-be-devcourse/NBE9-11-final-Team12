@@ -17,6 +17,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Optional;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneId;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -31,11 +34,13 @@ class UserTrustServiceTest {
     @Mock private SpeechRepository speechRepository;
     @Mock private RoomParticipantRepository roomParticipantRepository;
     @Mock private UserTrustPolicy userTrustPolicy;
+    @Mock private Clock clock;
 
     @InjectMocks private UserTrustService userTrustService;
 
     @Test
     void getMyTrust_returnsDetailedTrustInformation() {
+        givenClock();
         User user = user(1L, "tester");
         ViolationHistorySummaryProjection violations = violations(1, 2, 0, 0);
         UserTrustCalculation calculation = new UserTrustCalculation(
@@ -49,10 +54,7 @@ class UserTrustServiceTest {
                 org.mockito.ArgumentMatchers.eq(1L),
                 org.mockito.ArgumentMatchers.any()
         )).willReturn(violations);
-        given(speechRepository.countByUserIdAndStatusAndDeletedFalse(
-                1L,
-                com.sisibibi.api.domain.speech.entity.SpeechStatus.COMPLETED
-        )).willReturn(3L);
+        given(speechRepository.countByUserIdAndDeletedFalse(1L)).willReturn(3L);
         given(roomParticipantRepository.countByUserId(1L)).willReturn(4L);
         given(userTrustPolicy.calculate(12, 1, 2, 0, 0, 3, 4))
                 .willReturn(calculation);
@@ -63,10 +65,14 @@ class UserTrustServiceTest {
         assertThat(response.score()).isEqualTo(52);
         assertThat(response.receivedReactionCount()).isEqualTo(12);
         assertThat(response.resolvedViolationCount()).isEqualTo(3);
+        assertThat(response.policyVersion()).isEqualTo("v1");
+        assertThat(response.calculatedAt())
+                .isEqualTo(java.time.LocalDateTime.of(2026, 6, 23, 9, 0));
     }
 
     @Test
     void getUserTrust_hidesViolationBreakdown() {
+        givenClock();
         User user = user(2L, "other");
         ViolationHistorySummaryProjection violations = violations(0, 0, 0, 0);
         given(userRepository.findById(2L)).willReturn(Optional.of(user));
@@ -75,10 +81,7 @@ class UserTrustServiceTest {
                 org.mockito.ArgumentMatchers.eq(2L),
                 org.mockito.ArgumentMatchers.any()
         )).willReturn(violations);
-        given(speechRepository.countByUserIdAndStatusAndDeletedFalse(
-                2L,
-                com.sisibibi.api.domain.speech.entity.SpeechStatus.COMPLETED
-        )).willReturn(1L);
+        given(speechRepository.countByUserIdAndDeletedFalse(2L)).willReturn(1L);
         given(roomParticipantRepository.countByUserId(2L)).willReturn(2L);
         given(userTrustPolicy.calculate(5, 0, 0, 0, 0, 1, 2))
                 .willReturn(new UserTrustCalculation(
@@ -108,6 +111,11 @@ class UserTrustServiceTest {
         User user = User.signup(nickname + "@example.com", "password", nickname);
         ReflectionTestUtils.setField(user, "id", id);
         return user;
+    }
+
+    private void givenClock() {
+        given(clock.instant()).willReturn(Instant.parse("2026-06-23T00:00:00Z"));
+        given(clock.getZone()).willReturn(ZoneId.of("Asia/Seoul"));
     }
 
     private ViolationHistorySummaryProjection violations(

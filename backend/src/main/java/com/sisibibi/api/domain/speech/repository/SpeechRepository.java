@@ -1,7 +1,6 @@
 package com.sisibibi.api.domain.speech.repository;
 
 import com.sisibibi.api.domain.speech.entity.Speech;
-import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -16,7 +15,7 @@ public interface SpeechRepository extends JpaRepository<Speech, Long> {
 
     boolean existsByRoomIdAndUserIdAndDeletedFalse(Long roomId, Long userId);
 
-    long countByUserIdAndStatusAndDeletedFalse(Long userId, SpeechStatus status);
+    long countByUserIdAndDeletedFalse(Long userId);
 
     @Query("""
             select speech
