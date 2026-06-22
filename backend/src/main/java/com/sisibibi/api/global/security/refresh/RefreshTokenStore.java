@@ -11,13 +11,16 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 @Component
 public class RefreshTokenStore {
 
     private static final String ACTIVE_KEY_PREFIX = "auth:refresh:";
     private static final String USED_KEY_PREFIX = "auth:refresh-used:";
+    private static final String USER_TOKEN_INDEX_PREFIX = "auth:refresh-index:";
 
     private final StringRedisTemplate redisTemplate;
     private final AuthProperties authProperties;
@@ -33,6 +36,8 @@ public class RefreshTokenStore {
                 hash(refreshToken),
                 authProperties.jwt().refreshTokenExpiration()
         );
+        redisTemplate.opsForSet().add(indexKey(userId), tokenId);
+        redisTemplate.expire(indexKey(userId), authProperties.jwt().refreshTokenExpiration());
     }
 
     public void verifyAndDelete(Long userId, String tokenId, String refreshToken) {
@@ -57,6 +62,7 @@ public class RefreshTokenStore {
         }
 
         redisTemplate.delete(activeKey);
+        redisTemplate.opsForSet().remove(indexKey(userId), tokenId);
         redisTemplate.opsForValue().set(
                 usedKey(userId, tokenId),
                 "1",
@@ -66,6 +72,21 @@ public class RefreshTokenStore {
 
     public void delete(Long userId, String tokenId) {
         redisTemplate.delete(activeKey(userId, tokenId));
+        redisTemplate.opsForSet().remove(indexKey(userId), tokenId);
+    }
+
+    public void deleteAll(Long userId) {
+        Set<String> tokenIds = redisTemplate.opsForSet().members(indexKey(userId));
+        if (tokenIds == null || tokenIds.isEmpty()) {
+            redisTemplate.delete(indexKey(userId));
+            return;
+        }
+
+        List<String> activeKeys = tokenIds.stream()
+                .map(tokenId -> activeKey(userId, tokenId))
+                .toList();
+        redisTemplate.delete(activeKeys);
+        redisTemplate.delete(indexKey(userId));
     }
 
     String activeKey(Long userId, String tokenId) {
@@ -74,6 +95,10 @@ public class RefreshTokenStore {
 
     String usedKey(Long userId, String tokenId) {
         return USED_KEY_PREFIX + userId + ":" + tokenId;
+    }
+
+    String indexKey(Long userId) {
+        return USER_TOKEN_INDEX_PREFIX + userId;
     }
 
     private Duration usedTokenRetention() {

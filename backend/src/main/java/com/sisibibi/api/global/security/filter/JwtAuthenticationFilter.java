@@ -2,6 +2,7 @@ package com.sisibibi.api.global.security.filter;
 
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.security.AuthPrincipal;
+import com.sisibibi.api.global.security.account.UserAccountStatusStore;
 import com.sisibibi.api.global.security.cookie.AuthCookieProvider;
 import com.sisibibi.api.global.security.handler.SecurityExceptionHandler;
 import com.sisibibi.api.global.security.jwt.JwtTokenProvider;
@@ -27,13 +28,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
     private final SecurityExceptionHandler securityExceptionHandler;
+    private final UserAccountStatusStore userAccountStatusStore;
 
     public JwtAuthenticationFilter(
             JwtTokenProvider jwtTokenProvider,
-            SecurityExceptionHandler securityExceptionHandler
+            SecurityExceptionHandler securityExceptionHandler,
+            UserAccountStatusStore userAccountStatusStore
     ) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.securityExceptionHandler = securityExceptionHandler;
+        this.userAccountStatusStore = userAccountStatusStore;
     }
 
     @Override
@@ -51,6 +55,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         try {
             TokenClaims claims = jwtTokenProvider.parseAccessToken(accessToken);
+            if (!"ADMIN".equals(claims.role())
+                    && userAccountStatusStore.isBanned(claims.userId())) {
+                throw new CustomException(
+                        com.sisibibi.api.global.exception.ErrorCode.USER_BANNED
+                );
+            }
             AuthPrincipal principal = claims.toPrincipal();
 
             UsernamePasswordAuthenticationToken authentication =
