@@ -139,9 +139,7 @@ def _compact_cluster(cluster):
     return _drop_empty_values(
         {
             "stanceGroup": cluster.get("stanceGroup"),
-            "label": cluster.get("label"),
             "memberCount": cluster.get("memberCount"),
-            "stanceDistribution": cluster.get("stanceDistribution"),
             "keywords": cluster.get("keywords"),
             "representativeOpinions": [
                 _content_only(opinion)
