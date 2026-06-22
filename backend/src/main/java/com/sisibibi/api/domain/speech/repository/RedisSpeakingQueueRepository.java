@@ -82,10 +82,16 @@ public class RedisSpeakingQueueRepository {
                         redis.call('SET', KEYS[2], currentSpeakerUserId)
                     end
 
-                    local index = 3
-                    while index < #ARGV do
-                        redis.call('ZADD', KEYS[1], ARGV[index + 1], ARGV[index])
-                        index = index + 2
+                    local waitingQueueArgIndex = 3
+                    while waitingQueueArgIndex + 1 <= #ARGV do
+                        local queueOrderArgIndex = waitingQueueArgIndex + 1
+                        redis.call(
+                            'ZADD',
+                            KEYS[1],
+                            ARGV[queueOrderArgIndex],
+                            ARGV[waitingQueueArgIndex]
+                        )
+                        waitingQueueArgIndex = waitingQueueArgIndex + 2
                     end
 
                     redis.call('SET', KEYS[3], currentVersion + 1)
