@@ -3,6 +3,7 @@ services:
     image: prom/prometheus:v2.53.0
     container_name: sisibibi-prometheus
     restart: unless-stopped
+    mem_limit: 512m
     ports:
       - "${PROMETHEUS_PORT:-9091}:9090"
     extra_hosts:
@@ -19,6 +20,7 @@ services:
     image: grafana/loki:3.1.0
     container_name: sisibibi-loki
     restart: unless-stopped
+    mem_limit: 512m
     volumes:
       - ./loki/loki-config.yml:/etc/loki/local-config.yaml:ro
       - loki-data:/loki
@@ -29,6 +31,7 @@ services:
     image: grafana/promtail:3.1.0
     container_name: sisibibi-promtail
     restart: unless-stopped
+    mem_limit: 128m
     depends_on:
       - loki
     volumes:
@@ -42,6 +45,7 @@ services:
     image: grafana/grafana:11.1.0
     container_name: sisibibi-grafana
     restart: unless-stopped
+    mem_limit: 256m
     depends_on:
       - prometheus
       - loki
