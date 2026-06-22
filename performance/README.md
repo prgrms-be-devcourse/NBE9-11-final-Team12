@@ -416,17 +416,21 @@ Prometheus와 Grafana만으로는 애플리케이션 로그를 수집할 수 없
 
 ```bash
 mkdir -p backend/logs
+cp monitoring/.env.example monitoring/.env
+# monitoring/.env의 GRAFANA_ADMIN_PASSWORD를 로컬에서 사용할 값으로 변경
 docker compose up -d mysql redis
-docker compose -f monitoring/docker-compose.monitoring.yml up -d
+docker compose --env-file monitoring/.env -f monitoring/docker-compose.monitoring.yml up -d
 ```
 
 `backend/logs`를 먼저 생성하는 이유는 Docker가 없는 경로를 대신 만들면서 소유권이 달라지는 문제를 방지하기 위해서다. 디렉터리가 없으면 모니터링 Compose는 자동 생성하지 않고 명확히 실패한다.
+
+Grafana 관리자 비밀번호는 저장소에 기본값을 두지 않는다. `monitoring/.env`는 Git에 포함하지 않으며, 로컬 실행 시 `monitoring/.env.example`을 복사해 설정한다.
 
 접속 주소:
 
 | 대상 | 주소 | 기본 인증 |
 | --- | --- | --- |
-| Grafana | `http://localhost:3001` | `admin` / `admin` |
+| Grafana | `http://localhost:3001` | `monitoring/.env` 설정값 |
 | Prometheus | `http://localhost:9091` | 없음 |
 
 Grafana에는 Prometheus와 Loki datasource, `Sisibibi Local Overview` 대시보드가 자동 등록된다.
@@ -436,7 +440,7 @@ Grafana에는 Prometheus와 Loki datasource, `Sisibibi Local Overview` 대시보
 ```bash
 GRAFANA_PORT=33001 \
 PROMETHEUS_PORT=39091 \
-docker compose -f monitoring/docker-compose.monitoring.yml up -d
+docker compose --env-file monitoring/.env -f monitoring/docker-compose.monitoring.yml up -d
 ```
 
 ### 2. Backend 실행
@@ -470,13 +474,13 @@ Prometheus 컨테이너는 로컬 IDE에서 실행한 Backend를 `host.docker.in
 컨테이너만 종료:
 
 ```bash
-docker compose -f monitoring/docker-compose.monitoring.yml stop
+docker compose --env-file monitoring/.env -f monitoring/docker-compose.monitoring.yml stop
 ```
 
 컨테이너와 모니터링 볼륨 삭제:
 
 ```bash
-docker compose -f monitoring/docker-compose.monitoring.yml down -v
+docker compose --env-file monitoring/.env -f monitoring/docker-compose.monitoring.yml down -v
 ```
 
 일반 개발용 MySQL과 Redis는 루트 `docker-compose.yml`, 관측 도구는 `monitoring/docker-compose.monitoring.yml`로 분리한다. 따라서 평소 `docker compose up`으로 모니터링 서비스가 의도치 않게 함께 실행되지 않는다.
