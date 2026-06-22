@@ -6,7 +6,9 @@ import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
+import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
+import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
@@ -20,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,13 +47,18 @@ class SpeakingQueueAssignmentConcurrencyTest {
     @Autowired
     private RoomRepository roomRepository;
 
+    @MockitoBean
+    private UserSanctionPolicyService userSanctionPolicyService;
+
     private Long roomId;
 
     @BeforeEach
     void setUpWaitingQueue() {
         speakingQueueRepository.deleteAll();
         roomRepository.deleteAll();
-        Room room = Room.open(1L, "토론방");
+        LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
+        LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
+        Room room = Room.open(1L, "토론방", firstStartedAt, firstEndedAt, 100);
         ReflectionTestUtils.setField(room, "createdAt", LocalDateTime.now());
         roomId = roomRepository.saveAndFlush(room).getId();
         speakingQueueRepository.saveAndFlush(
@@ -58,7 +66,8 @@ class SpeakingQueueAssignmentConcurrencyTest {
                         roomId,
                         10L,
                         1,
-                        LocalDateTime.of(2026, 6, 15, 10, 0)
+                        SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 15, 10, 0)
                 )
         );
         speakingQueueRepository.saveAndFlush(
@@ -66,7 +75,8 @@ class SpeakingQueueAssignmentConcurrencyTest {
                         roomId,
                         20L,
                         2,
-                        LocalDateTime.of(2026, 6, 15, 10, 1)
+                        SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 15, 10, 1)
                 )
         );
     }

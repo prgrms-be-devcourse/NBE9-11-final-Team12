@@ -19,38 +19,90 @@ spring:
     # backend 디렉토리가 아닌 루트 디렉토리에서 .env 가져옴
     import: optional:file:../.env[.properties]
 
-  # Database 설정 (MySQL)
+#  # Database 설정 (MySQL)
+#  datasource:
+#    driver-class-name: com.mysql.cj.jdbc.Driver
+#    url: jdbc:mysql://localhost:23306/sisibibi?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+#    username: root
+#    password: ${DB_PASSWORD:root}
+#
+#  # Redis 설정
+#  data:
+#    redis:
+#      host: localhost
+#      port: 26379
+#      timeout: 2000ms # Redis 응답 지연 시 서버 멈춤 방지 (2초)
+
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:23306/sisibibi?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
-    username: root
-    password: ${DB_PASSWORD:root}
+    url: jdbc:mysql://${DB_HOST:mysql_1}:${DB_PORT:3306}/${DB_NAME:sisibibi}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    username: ${DB_USERNAME:sisibibi}
+    password: ${DB_PASSWORD}
 
-  # Redis 설정
   data:
     redis:
-      host: localhost
-      port: 26379
-      timeout: 2000ms # Redis 응답 지연 시 서버 멈춤 방지 (2초)
+      host: ${REDIS_HOST:redis_1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2000ms
+
+#  datasource:
+#    driver-class-name: com.mysql.cj.jdbc.Driver
+#    url: jdbc:mysql://${DB_HOST:mysql_1}:${DB_PORT:3306}/${DB_NAME:sisibibi}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+#    username: ${DB_USERNAME:sisibibi}
+#    password: ${DB_PASSWORD}
+#
+#  data:
+#    redis:
+#      host: ${REDIS_HOST:redis_1}
+#      port: ${REDIS_PORT:6379}
+#      password: ${REDIS_PASSWORD:}
+#      timeout: 2000ms
+
+#  datasource:
+#    driver-class-name: com.mysql.cj.jdbc.Driver
+#    url: jdbc:mysql://${DB_HOST:mysql_1}:${DB_PORT:3306}/${DB_NAME:sisibibi}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+#    username: ${DB_USERNAME:sisibibi}
+#    password: ${DB_PASSWORD}
+#
+#  data:
+#    redis:
+#      host: ${REDIS_HOST:redis_1}
+#      port: ${REDIS_PORT:6379}
+#      password: ${REDIS_PASSWORD:}
+#      timeout: 2000ms
 
   # JPA/Hibernate 설정
   jpa:
     hibernate:
-      ddl-auto: update # 개발 초기 환경용 (운영 환경에서는 반드시 none 또는 validate 사용)
+      ddl-auto: create # 개발 초기 환경용 (운영 환경에서는 반드시 none 또는 validate 사용)
     show-sql: true
     properties:
       hibernate:
         format_sql: true
         default_batch_fetch_size: 100 # 배치 사이즈 설정 조정 필요
+  ai:
+    model:
+      chat: openai
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      chat:
+        options:
+          model: gpt-4o-mini
+          temperature: 0.2
 
 app:
   frontend:
     url: ${FRONTEND_URL:http://localhost:3000}
   speaking:
-    turn-duration: ${SPEAKING_TURN_DURATION:2m}
+    turn-duration: ${SPEAKING_TURN_DURATION:3m}
+    queue:
+      summary-size: ${SPEAKING_QUEUE_SUMMARY_SIZE:5}
+      default-page-size: ${SPEAKING_QUEUE_DEFAULT_PAGE_SIZE:20}
+      max-page-size: ${SPEAKING_QUEUE_MAX_PAGE_SIZE:100}
     assignment:
       enabled: ${SPEAKING_ASSIGNMENT_ENABLED:true}
-      fixed-delay-ms: ${SPEAKING_ASSIGNMENT_FIXED_DELAY_MS:200}
+      fixed-delay-ms: ${SPEAKING_ASSIGNMENT_FIXED_DELAY_MS:10000}
     expiration:
       enabled: ${SPEAKING_EXPIRATION_ENABLED:true}
       fixed-delay-ms: ${SPEAKING_EXPIRATION_FIXED_DELAY_MS:1000}

@@ -13,10 +13,16 @@ public record SpeechListRes(
         String content,
         SpeechStance stance,
         SpeechStatus status,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        long reactionCount,
+        boolean reactedByMe
 ) {
 
-    public static SpeechListRes from(Speech speech) {
+    public static SpeechListRes from(
+            Speech speech,
+            long reactionCount,
+            boolean reactedByMe
+    ) {
         return new SpeechListRes(
                 speech.getId(),
                 speech.getRoomId(),
@@ -24,7 +30,9 @@ public record SpeechListRes(
                 speech.getContent(),
                 speech.getStance(),
                 speech.getStatus(),
-                speech.getCreatedAt()
+                speech.getCreatedAt(),
+                reactionCount,
+                reactedByMe
         );
     }
 }

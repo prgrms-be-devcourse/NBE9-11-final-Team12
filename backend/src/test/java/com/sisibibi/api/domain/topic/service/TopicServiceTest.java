@@ -22,6 +22,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.*;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 @ExtendWith(MockitoExtension.class)
 class TopicServiceTest {
@@ -72,7 +73,7 @@ class TopicServiceTest {
   void deleteTopic_deletesTopic_whenTopicHasNoRoom() {
     Topic topic = Topic.approved("제목", "설명", "IT", "https://example.com");
 
-    when(topicRepository.findById(1L)).thenReturn(Optional.of(topic));
+    when(topicRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(topic));
     when(roomRepository.existsByTopicId(1L)).thenReturn(false);
 
     topicService.deleteTopic(1L);
@@ -82,7 +83,7 @@ class TopicServiceTest {
 
   @Test
   void deleteTopic_throwsTopicNotFound_whenTopicDoesNotExist() {
-    when(topicRepository.findById(999L)).thenReturn(Optional.empty());
+    when(topicRepository.findByIdForUpdate(999L)).thenReturn(Optional.empty());
 
     assertThatThrownBy(() -> topicService.deleteTopic(999L))
         .isInstanceOf(CustomException.class)
@@ -94,7 +95,7 @@ class TopicServiceTest {
   void deleteTopic_throwsTopicHasRoom_whenTopicIsLinkedToRoom() {
     Topic topic = Topic.approved("제목", "설명", "IT", "https://example.com");
 
-    when(topicRepository.findById(1L)).thenReturn(Optional.of(topic));
+    when(topicRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(topic));
     when(roomRepository.existsByTopicId(1L)).thenReturn(true);
 
     assertThatThrownBy(() -> topicService.deleteTopic(1L))

@@ -3,13 +3,19 @@ package com.sisibibi.api.domain.speech.service;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
+import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
+import com.sisibibi.api.domain.user.repository.UserRepository;
+import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,12 +26,23 @@ public class SpeakingQueuePersistenceService {
 
     private static final List<SpeakingQueueStatus> ACTIVE_STATUSES =
             List.of(SpeakingQueueStatus.WAITING, SpeakingQueueStatus.ASSIGNED);
+    private static final List<SpeakingQueueStatus> ASSIGNMENT_HISTORY_STATUSES =
+            List.of(SpeakingQueueStatus.COMPLETED);
+    private static final int BALANCE_STREAK_THRESHOLD = 3;
 
     private final SpeakingQueueRepository speakingQueueRepository;
     private final RoomRepository roomRepository;
+    private final UserRepository userRepository;
+    private final UserSanctionPolicyService userSanctionPolicyService;
 
     @Transactional
-    public SpeakingQueue createWaitingRequest(Long roomId, Long userId) {
+    public SpeakingQueue createWaitingRequest(
+            Long roomId,
+            Long userId,
+            SpeechStance stance
+    ) {
+        userSanctionPolicyService.validateStageAllowed(userId);
+
         roomRepository.findByIdForUpdate(roomId)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
 
@@ -43,6 +60,7 @@ public class SpeakingQueuePersistenceService {
                 roomId,
                 userId,
                 nextQueueOrder,
+                stance,
                 LocalDateTime.now()
         );
         return speakingQueueRepository.save(speakingQueue);
@@ -70,6 +88,41 @@ public class SpeakingQueuePersistenceService {
         return speakingQueue;
     }
 
+    @Transactional(readOnly = true)
+    public Optional<SpeakingQueue> findMyActiveRequest(Long roomId, Long userId) {
+        if (!roomRepository.existsById(roomId)) {
+            throw new CustomException(ErrorCode.ROOM_NOT_FOUND);
+        }
+
+        return speakingQueueRepository.findByRoomIdAndUserIdAndStatusIn(
+                roomId,
+                userId,
+                ACTIVE_STATUSES
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public void validateRoomExists(Long roomId) {
+        if (!roomRepository.existsById(roomId)) {
+            throw new CustomException(ErrorCode.ROOM_NOT_FOUND);
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public Map<Long, String> findNicknamesByUserIds(Collection<Long> userIds) {
+        if (userIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return userRepository.findAllById(userIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        user -> user.getId(),
+                        user -> user.getNickname(),
+                        (first, second) -> first
+                ));
+    }
+
     @Transactional
     public Optional<SpeakingQueue> assignNextSpeaker(
             Long roomId,
@@ -86,12 +139,7 @@ public class SpeakingQueuePersistenceService {
             return Optional.empty();
         }
 
-        Optional<SpeakingQueue> waitingRequest =
-                speakingQueueRepository
-                        .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
-                                roomId,
-                                SpeakingQueueStatus.WAITING
-                        );
+        Optional<SpeakingQueue> waitingRequest = findNextWaitingRequest(roomId);
 
         if (waitingRequest.isEmpty()) {
             return Optional.empty();
@@ -100,6 +148,53 @@ public class SpeakingQueuePersistenceService {
         SpeakingQueue nextSpeaker = waitingRequest.get();
         nextSpeaker.assign(assignedAt, expiresAt);
         return Optional.of(nextSpeaker);
+    }
+
+    private Optional<SpeakingQueue> findNextWaitingRequest(Long roomId) {
+        Optional<SpeakingQueue> balancedRequest = findOppositeStanceWaitingRequest(roomId);
+        if (balancedRequest.isPresent()) {
+            return balancedRequest;
+        }
+
+        return speakingQueueRepository
+                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+                        roomId,
+                        SpeakingQueueStatus.WAITING
+                );
+    }
+
+    private Optional<SpeakingQueue> findOppositeStanceWaitingRequest(Long roomId) {
+        List<SpeakingQueue> recentAssignments =
+                speakingQueueRepository
+                        .findTop3ByRoomIdAndStatusInAndStanceIsNotNullOrderByAssignedAtDesc(
+                                roomId,
+                                ASSIGNMENT_HISTORY_STATUSES
+                        );
+
+        if (recentAssignments.size() < BALANCE_STREAK_THRESHOLD) {
+            return Optional.empty();
+        }
+
+        SpeechStance recentStance = recentAssignments.getFirst().getStance();
+        boolean sameStanceStreak = recentAssignments.stream()
+                .allMatch(assignment -> recentStance == assignment.getStance());
+        if (!sameStanceStreak) {
+            return Optional.empty();
+        }
+
+        return speakingQueueRepository
+                .findFirstByRoomIdAndStatusAndStanceOrderByQueueOrderAsc(
+                        roomId,
+                        SpeakingQueueStatus.WAITING,
+                        oppositeOf(recentStance)
+                );
+    }
+
+    private SpeechStance oppositeOf(SpeechStance stance) {
+        if (stance == SpeechStance.PRO) {
+            return SpeechStance.CON;
+        }
+        return SpeechStance.PRO;
     }
 
     @Transactional

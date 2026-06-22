@@ -82,11 +82,44 @@ class WebSocketAuthChannelInterceptorTest {
                 2L,
                 RoomParticipantStatus.JOINED
         )).willReturn(true);
-        Message<byte[]> message = message(StompCommand.SUBSCRIBE, "/topic/rooms/1/chat/messages", user, null);
+        Message<byte[]> message = message(StompCommand.SUBSCRIBE, "/topic/rooms/1/chat/events", user, null);
 
         Message<?> result = interceptor.preSend(message, null);
 
         assertThat(result).isNotNull();
+    }
+
+    @Test
+    void preSend_allowsSubscribeToWhitelistedRoomTopics_whenUserJoinedRoom() {
+        AuthPrincipal principal = new AuthPrincipal(2L, "user@example.com", "USER");
+        Principal user = authenticatedPrincipal(principal);
+        given(roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
+                1L,
+                2L,
+                RoomParticipantStatus.JOINED
+        )).willReturn(true);
+
+        assertThat(interceptor.preSend(
+                message(StompCommand.SUBSCRIBE, "/topic/rooms/1/stage/events", user, null),
+                null
+        )).isNotNull();
+        assertThat(interceptor.preSend(
+                message(StompCommand.SUBSCRIBE, "/topic/rooms/1/participants/events", user, null),
+                null
+        )).isNotNull();
+        assertThat(interceptor.preSend(
+                message(StompCommand.SUBSCRIBE, "/topic/rooms/1/room/events", user, null),
+                null
+        )).isNotNull();
+        assertThat(interceptor.preSend(
+                message(
+                        StompCommand.SUBSCRIBE,
+                        "/topic/rooms/1/speech-reactions/events",
+                        user,
+                        null
+                ),
+                null
+        )).isNotNull();
     }
 
     @Test
@@ -98,7 +131,55 @@ class WebSocketAuthChannelInterceptorTest {
                 2L,
                 RoomParticipantStatus.JOINED
         )).willReturn(false);
-        Message<byte[]> message = message(StompCommand.SUBSCRIBE, "/topic/rooms/1/chat/messages", user, null);
+        Message<byte[]> message = message(StompCommand.SUBSCRIBE, "/topic/rooms/1/chat/events", user, null);
+
+        assertThatThrownBy(() -> interceptor.preSend(message, null))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void preSend_rejectsSubscribeToUnknownRoomTopic() {
+        AuthPrincipal principal = new AuthPrincipal(2L, "user@example.com", "USER");
+        Principal user = authenticatedPrincipal(principal);
+        Message<byte[]> message = message(StompCommand.SUBSCRIBE, "/topic/rooms/1/events", user, null);
+
+        assertThatThrownBy(() -> interceptor.preSend(message, null))
+                .isInstanceOf(AccessDeniedException.class);
+        verify(roomParticipantRepository, never()).existsByRoomIdAndUserIdAndStatus(
+                1L,
+                2L,
+                RoomParticipantStatus.JOINED
+        );
+    }
+
+    @Test
+    void preSend_allowsSubscribeToOwnSanctionTopic() {
+        AuthPrincipal principal = new AuthPrincipal(2L, "user@example.com", "USER");
+        Principal user = authenticatedPrincipal(principal);
+
+        Message<?> result = interceptor.preSend(
+                message(
+                        StompCommand.SUBSCRIBE,
+                        "/topic/users/2/sanctions/events",
+                        user,
+                        null
+                ),
+                null
+        );
+
+        assertThat(result).isNotNull();
+    }
+
+    @Test
+    void preSend_rejectsSubscribeToOtherUsersSanctionTopic() {
+        AuthPrincipal principal = new AuthPrincipal(2L, "user@example.com", "USER");
+        Principal user = authenticatedPrincipal(principal);
+        Message<byte[]> message = message(
+                StompCommand.SUBSCRIBE,
+                "/topic/users/3/sanctions/events",
+                user,
+                null
+        );
 
         assertThatThrownBy(() -> interceptor.preSend(message, null))
                 .isInstanceOf(AccessDeniedException.class);

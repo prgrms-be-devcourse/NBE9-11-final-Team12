@@ -384,10 +384,6 @@ export default function SignupPage() {
                       <span className="size-1 rounded-full bg-primary flex-shrink-0" />
                       커뮤니티 규칙을 준수해 주세요
                     </li>
-                    <li className="flex items-center gap-1.5">
-                      <span className="size-1 rounded-full bg-primary flex-shrink-0" />
-                      공감 코인으로 발언자를 응원할 수 있어요
-                    </li>
                   </ul>
                 </div>
                 <Link href="/rooms" className="w-full">

@@ -1,5 +1,7 @@
 package com.sisibibi.api.domain.room.service;
 
+import com.sisibibi.api.domain.room.config.RoomTopicGenerator;
+import com.sisibibi.api.domain.room.dto.event.RoomClosedEvent;
 import com.sisibibi.api.domain.room.dto.request.CreateRoomReq;
 import com.sisibibi.api.domain.room.dto.request.UpdateRoomReq;
 import com.sisibibi.api.domain.room.dto.response.CreateRoomRes;
@@ -14,13 +16,19 @@ import com.sisibibi.api.domain.topic.repository.TopicRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+
 
 import java.time.LocalDateTime;
 import java.util.List;
 
-
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -28,24 +36,29 @@ public class RoomService {
 
   private final RoomRepository roomRepository;
   private final TopicRepository topicRepository;
+  private final RoomCloseCommandService roomCloseCommandService;
+  private final ApplicationEventPublisher eventPublisher;
+  private final RoomCreateCommandService roomCreateCommandService;
+  private final RoomTopicGenerator roomTopicGenerator;
 
-  @Transactional
+
+
+  @Transactional(propagation = Propagation.NOT_SUPPORTED)
   public CreateRoomRes createRoom(CreateRoomReq request) {
-    Topic topic = topicRepository.findById(request.topicId())
+    Topic topic = topicRepository.findByIdAndStatus(request.topicId(), TopicStatus.APPROVED)
         .orElseThrow(() -> new CustomException(ErrorCode.TOPIC_NOT_FOUND));
-
-    if (topic.getStatus() != TopicStatus.APPROVED) {
-      throw new CustomException(ErrorCode.TOPIC_NOT_APPROVED);
-    }
 
     if (roomRepository.existsByTopicId(topic.getId())) {
       throw new CustomException(ErrorCode.ROOM_ALREADY_EXISTS);
     }
 
-    Room room = Room.open(topic.getId(), topic.getTitle());
-    Room savedRoom = roomRepository.save(room);
+    String debateTitle = roomTopicGenerator.generate(topic);
 
-    return CreateRoomRes.from(savedRoom);
+    return roomCreateCommandService.createRoom(
+        topic.getId(),
+        debateTitle,
+        request.maxParticipants()
+    );
   }
 
   // 관리자 방 수정
@@ -59,7 +72,8 @@ public class RoomService {
     room.update(
         request.title(),
         request.startedAt(),
-        request.endedAt()
+        request.endedAt(),
+        request.maxParticipants()
     );
 
     return RoomDetailRes.from(room);
@@ -72,9 +86,26 @@ public class RoomService {
         .toList();
   }
 
-  @Transactional
   public int closeExpiredRooms(LocalDateTime now) {
-    return roomRepository.closeExpiredRooms(now);
+    List<Long> expiredRoomIds = roomRepository.findExpiredOpenRoomIds(
+        RoomStatus.OPEN,
+        now,
+        PageRequest.of(0, 100)
+    );
+
+    int closedCount = 0;
+
+    for (Long roomId : expiredRoomIds) {
+      try {
+        if (roomCloseCommandService.closeExpiredRoom(roomId, now)) {
+          closedCount++;
+        }
+      } catch (Exception e) {
+        log.error("Failed to close expired room. roomId={}", roomId, e);
+      }
+    }
+
+    return closedCount;
   }
 
   // 하나의 토론방 상세 조회
@@ -100,6 +131,10 @@ public class RoomService {
       throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
     }
 
+    if (request.maxParticipants() != null && request.maxParticipants() <= 0) {
+      throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+    }
+
     LocalDateTime nextStartedAt = request.startedAt() != null
         ? request.startedAt()
         : room.getStartedAt();
@@ -116,9 +151,32 @@ public class RoomService {
 
   @Transactional
   public void deleteRoom(Long roomId) {
-    Room room = roomRepository.findById(roomId)
+    Room room = roomRepository.findByIdForUpdate(roomId)
         .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
 
+    if (room.getStatus() == RoomStatus.CLOSED) {
+      return;
+    }
+
     room.close(LocalDateTime.now());
+    publishRoomClosedEvent(room);
   }
+
+  private void publishRoomClosedEvent(Room room) {
+    eventPublisher.publishEvent(new RoomClosedEvent(room.getId(), room.getEndedAt()));
+  }
+
+  // 방 정원 검증 로직
+  private int resolveMaxParticipants(Integer maxParticipants) {
+    if (maxParticipants == null) {
+      return 100;
+    }
+
+    if (maxParticipants <= 0) {
+      throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+    }
+
+    return maxParticipants;
+  }
+
 }

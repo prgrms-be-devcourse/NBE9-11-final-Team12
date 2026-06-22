@@ -6,7 +6,9 @@ import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
+import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
+import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import java.time.LocalDateTime;
@@ -21,6 +23,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,6 +49,9 @@ class SpeakingQueueExpirationConcurrencyTest {
     @Autowired
     private RoomRepository roomRepository;
 
+    @MockitoBean
+    private UserSanctionPolicyService userSanctionPolicyService;
+
     private Long roomId;
 
     @BeforeEach
@@ -53,7 +59,9 @@ class SpeakingQueueExpirationConcurrencyTest {
         speakingQueueRepository.deleteAll();
         roomRepository.deleteAll();
 
-        Room room = Room.open(1L, "토론방");
+        LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
+        LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
+        Room room = Room.open(1L, "토론방", firstStartedAt, firstEndedAt, 100);
         ReflectionTestUtils.setField(room, "createdAt", LocalDateTime.now());
         roomId = roomRepository.saveAndFlush(room).getId();
 
@@ -61,6 +69,7 @@ class SpeakingQueueExpirationConcurrencyTest {
                 roomId,
                 USER_ID,
                 1,
+                SpeechStance.PRO,
                 LocalDateTime.of(2026, 6, 15, 10, 0)
         );
         assigned.assign(

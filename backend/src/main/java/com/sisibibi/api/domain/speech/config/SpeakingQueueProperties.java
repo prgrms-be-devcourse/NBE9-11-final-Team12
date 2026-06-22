@@ -12,5 +12,15 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "app.speaking")
 public class SpeakingQueueProperties {
 
-    private Duration turnDuration = Duration.ofMinutes(2);
+    private Duration turnDuration = Duration.ofMinutes(3);
+    private Queue queue = new Queue();
+
+    @Getter
+    @Setter
+    public static class Queue {
+
+        private int summarySize = 5;
+        private int defaultPageSize = 20;
+        private int maxPageSize = 100;
+    }
 }

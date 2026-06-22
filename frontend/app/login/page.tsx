@@ -83,7 +83,7 @@ export default function LoginPage() {
             <div className="mb-6 flex items-center justify-center gap-2 rounded-xl border border-border bg-muted/50 px-4 py-2.5">
               <span className="size-1.5 rounded-full bg-rose-500 animate-live-pulse" />
               <span className="text-xs text-muted-foreground">
-                지금 <span className="font-semibold text-foreground">48,291명</span>이 토의 중
+                로그인 후 실제 토의방 현황을 확인할 수 있어요
               </span>
               <Radio className="size-3.5 text-muted-foreground" />
             </div>

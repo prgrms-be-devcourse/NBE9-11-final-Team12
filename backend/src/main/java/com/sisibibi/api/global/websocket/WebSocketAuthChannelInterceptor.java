@@ -21,15 +21,10 @@ import java.security.Principal;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Component
 @RequiredArgsConstructor
 public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
-
-    private static final Pattern CHAT_DESTINATION_PATTERN =
-            Pattern.compile("^/(?:app|topic)/rooms/(\\d+)/chat/messages$");
 
     private final RoomParticipantRepository roomParticipantRepository;
 
@@ -54,7 +49,7 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
 
         if (command == StompCommand.SUBSCRIBE) {
             AuthPrincipal principal = requirePrincipal(accessor);
-            validateChatDestinationAccess(principal, accessor.getDestination());
+            validateDestinationAccess(principal, accessor.getDestination());
             return MessageBuilder.createMessage(message.getPayload(), accessor.getMessageHeaders());
         }
 
@@ -105,19 +100,34 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
         );
     }
 
-    private void validateChatDestinationAccess(AuthPrincipal principal, String destination) {
+    private void validateDestinationAccess(AuthPrincipal principal, String destination) {
         if (destination == null) {
             return;
         }
 
-        Matcher matcher = CHAT_DESTINATION_PATTERN.matcher(destination);
-        if (!matcher.matches()) {
+        Optional<Long> sanctionEventUserId =
+                UserWebSocketDestinations.findSanctionEventUserId(destination);
+        if (sanctionEventUserId.isPresent()) {
+            if (!sanctionEventUserId.get().equals(principal.userId())) {
+                throw new AccessDeniedException(ErrorCode.FORBIDDEN.name());
+            }
+            return;
+        }
+        if (UserWebSocketDestinations.isUserTopic(destination)) {
+            throw new AccessDeniedException(ErrorCode.FORBIDDEN.name());
+        }
+
+        Optional<Long> allowedRoomId =
+                RoomWebSocketDestinations.findAllowedRoomTopicId(destination);
+        if (allowedRoomId.isEmpty()) {
+            if (RoomWebSocketDestinations.isRoomTopic(destination)) {
+                throw new AccessDeniedException(ErrorCode.FORBIDDEN.name());
+            }
             return;
         }
 
-        Long roomId = Long.valueOf(matcher.group(1));
         boolean joined = roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
-                roomId,
+                allowedRoomId.get(),
                 principal.userId(),
                 RoomParticipantStatus.JOINED
         );

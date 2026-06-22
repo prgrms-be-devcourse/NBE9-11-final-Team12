@@ -1,17 +1,31 @@
 package com.sisibibi.api.domain.speech.service;
 
 import com.sisibibi.api.domain.speech.config.SpeakingQueueProperties;
+import com.sisibibi.api.domain.speech.dto.event.StageChangedEvent;
+import com.sisibibi.api.domain.speech.dto.event.StageEventPayload;
+import com.sisibibi.api.domain.speech.dto.event.StageEventType;
+import com.sisibibi.api.domain.speech.dto.event.StageTurnEndReason;
 import com.sisibibi.api.domain.speech.dto.response.StageCurrentSpeakerRes;
+import com.sisibibi.api.domain.speech.dto.response.StageQueueRes;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
+import com.sisibibi.api.domain.speech.dto.response.StageRequestStatusRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
+import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
+import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.RedisSpeakingQueueRepository;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
+import com.sisibibi.api.global.exception.CustomException;
+import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.IntStream;
 
 @Slf4j
 @Service
@@ -21,13 +35,30 @@ public class SpeakingQueueService {
     private final RedisSpeakingQueueRepository redisSpeakingQueueRepository;
     private final SpeakingQueuePersistenceService speakingQueuePersistenceService;
     private final SpeakingQueueProperties speakingQueueProperties;
+    private final ApplicationEventPublisher eventPublisher;
 
-    public StageRequestRes requestSpeakingTurn(Long roomId, Long userId) {
+    public StageRequestRes requestSpeakingTurn(
+            Long roomId,
+            Long userId,
+            SpeechStance stance
+    ) {
         SpeakingQueue saved =
-                speakingQueuePersistenceService.createWaitingRequest(roomId, userId);
+                speakingQueuePersistenceService.createWaitingRequest(roomId, userId, stance);
 
         synchronizeWaitingRedisProjection(saved);
-        return StageRequestRes.from(saved);
+        log.info(
+                "Speaking request created. roomId={}, userId={}, queueOrder={}, status={}",
+                saved.getRoomId(),
+                saved.getUserId(),
+                saved.getQueueOrder(),
+                saved.getStatus()
+        );
+        publishStageChanged(StageEventType.SPEAKING_REQUESTED, saved);
+        return StageRequestRes.from(
+                tryAssignNextSpeaker(roomId)
+                        .filter(assigned -> assigned.getUserId().equals(userId))
+                        .orElse(saved)
+        );
     }
 
     public Optional<SpeakingQueue> assignNextSpeaker(Long roomId) {
@@ -37,8 +68,17 @@ public class SpeakingQueueService {
                         roomId,
                         assignedAt,
                         assignedAt.plus(speakingQueueProperties.getTurnDuration())
-                );
+        );
         assigned.ifPresent(this::synchronizeAssignedRedisProjection);
+        assigned.ifPresent(speakingQueue -> log.info(
+                "Speaking request assigned. roomId={}, userId={}, queueOrder={}, expiresAt={}",
+                speakingQueue.getRoomId(),
+                speakingQueue.getUserId(),
+                speakingQueue.getQueueOrder(),
+                speakingQueue.getExpiresAt()
+        ));
+        assigned.ifPresent(speakingQueue ->
+                publishStageChanged(StageEventType.SPEAKER_ASSIGNED, speakingQueue));
         return assigned;
     }
 
@@ -46,12 +86,44 @@ public class SpeakingQueueService {
         SpeakingQueue canceled =
                 speakingQueuePersistenceService.cancelWaitingRequest(roomId, userId);
         synchronizeCanceledRedisProjection(canceled);
+        log.info(
+                "Speaking request canceled. roomId={}, userId={}, queueOrder={}",
+                canceled.getRoomId(),
+                canceled.getUserId(),
+                canceled.getQueueOrder()
+        );
+        publishStageChanged(StageEventType.SPEAKING_CANCELED, canceled);
+        tryAssignNextSpeaker(roomId);
+    }
+
+    public StageRequestStatusRes getMySpeakingRequestStatus(Long roomId, Long userId) {
+        Optional<SpeakingQueue> activeRequest =
+                speakingQueuePersistenceService.findMyActiveRequest(roomId, userId);
+
+        return activeRequest
+                .map(request -> StageRequestStatusRes.from(
+                        request,
+                        currentWaitingRank(request)
+                ))
+                .orElseGet(StageRequestStatusRes::empty);
     }
 
     public void completeSpeakingTurn(Long roomId, Long userId) {
         SpeakingQueue completed =
                 speakingQueuePersistenceService.completeCurrentSpeaker(roomId, userId);
         synchronizeCompletedRedisProjection(completed);
+        log.info(
+                "Speaking request completed. roomId={}, userId={}, queueOrder={}",
+                completed.getRoomId(),
+                completed.getUserId(),
+                completed.getQueueOrder()
+        );
+        publishStageChanged(
+                StageEventType.SPEAKER_COMPLETED,
+                completed,
+                StageTurnEndReason.COMPLETED
+        );
+        tryAssignNextSpeaker(roomId);
     }
 
     public StageCurrentSpeakerRes getCurrentSpeaker(Long roomId) {
@@ -65,6 +137,44 @@ public class SpeakingQueueService {
         return StageCurrentSpeakerRes.from(currentSpeaker.get());
     }
 
+    public StageQueueRes getQueueSummary(Long roomId) {
+        return getWaitingQueue(
+                roomId,
+                0,
+                speakingQueueProperties.getQueue().getSummarySize()
+        );
+    }
+
+    public StageQueueRes getWaitingQueue(Long roomId, Integer offset, Integer size) {
+        speakingQueuePersistenceService.validateRoomExists(roomId);
+
+        int resolvedOffset = resolveOffset(offset);
+        int resolvedSize = resolveSize(size);
+        long totalWaitingCount = redisSpeakingQueueRepository.count(roomId);
+        long start = resolvedOffset;
+        long end = resolvedOffset + (long) resolvedSize - 1;
+        List<Long> userIds =
+                redisSpeakingQueueRepository.findWaitingUserIds(roomId, start, end);
+        Map<Long, String> nicknames =
+                speakingQueuePersistenceService.findNicknamesByUserIds(userIds);
+        List<StageQueueRes.WaitingSpeaker> items =
+                IntStream.range(0, userIds.size())
+                        .mapToObj(index -> waitingSpeaker(
+                                resolvedOffset,
+                                index,
+                                userIds.get(index),
+                                nicknames
+                        ))
+                        .toList();
+
+        return StageQueueRes.of(
+                totalWaitingCount,
+                resolvedOffset,
+                resolvedSize,
+                items
+        );
+    }
+
     public Optional<SpeakingQueue> expireCurrentSpeaker(
             Long roomId,
             LocalDateTime now
@@ -72,7 +182,94 @@ public class SpeakingQueueService {
         Optional<SpeakingQueue> expired =
                 speakingQueuePersistenceService.expireCurrentSpeaker(roomId, now);
         expired.ifPresent(this::synchronizeCompletedRedisProjection);
+        expired.ifPresent(speakingQueue -> log.info(
+                "Speaking request expired. roomId={}, userId={}, queueOrder={}, expiredAt={}",
+                speakingQueue.getRoomId(),
+                speakingQueue.getUserId(),
+                speakingQueue.getQueueOrder(),
+                now
+        ));
+        expired.ifPresent(speakingQueue -> publishStageChanged(
+                StageEventType.SPEAKER_EXPIRED,
+                speakingQueue,
+                StageTurnEndReason.EXPIRED
+        ));
+        expired.ifPresent(speakingQueue -> tryAssignNextSpeaker(roomId));
         return expired;
+    }
+
+    private void publishStageChanged(
+            StageEventType type,
+            SpeakingQueue speakingQueue
+    ) {
+        publishStageChanged(type, speakingQueue, null);
+    }
+
+    private void publishStageChanged(
+            StageEventType type,
+            SpeakingQueue speakingQueue,
+            StageTurnEndReason endReason
+    ) {
+        eventPublisher.publishEvent(new StageChangedEvent(
+                type,
+                speakingQueue.getRoomId(),
+                StageEventPayload.from(speakingQueue, endReason)
+        ));
+    }
+
+    private Optional<SpeakingQueue> tryAssignNextSpeaker(Long roomId) {
+        try {
+            return assignNextSpeaker(roomId);
+        } catch (RuntimeException assignmentException) {
+            log.error(
+                    "Failed to assign next speaker after stage state change. roomId={}",
+                    roomId,
+                    assignmentException
+            );
+            return Optional.empty();
+        }
+    }
+
+    private Integer currentWaitingRank(SpeakingQueue speakingQueue) {
+        if (speakingQueue.getStatus() != SpeakingQueueStatus.WAITING) {
+            return null;
+        }
+
+        return redisSpeakingQueueRepository.rank(
+                speakingQueue.getRoomId(),
+                speakingQueue.getUserId()
+        ).orElse(null);
+    }
+
+    private int resolveOffset(Integer offset) {
+        if (offset == null) {
+            return 0;
+        }
+        return offset;
+    }
+
+    private int resolveSize(Integer size) {
+        int resolvedSize = size == null
+                ? speakingQueueProperties.getQueue().getDefaultPageSize()
+                : size;
+
+        if (resolvedSize > speakingQueueProperties.getQueue().getMaxPageSize()) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        return resolvedSize;
+    }
+
+    private StageQueueRes.WaitingSpeaker waitingSpeaker(
+            int offset,
+            int index,
+            Long userId,
+            Map<Long, String> nicknames
+    ) {
+        return new StageQueueRes.WaitingSpeaker(
+                offset + index + 1,
+                userId,
+                nicknames.get(userId)
+        );
     }
 
     private void synchronizeWaitingRedisProjection(SpeakingQueue speakingQueue) {

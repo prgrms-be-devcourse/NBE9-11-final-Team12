@@ -4,6 +4,7 @@ import com.sisibibi.api.domain.auth.dto.request.SignupReq;
 import com.sisibibi.api.domain.auth.dto.request.LoginReq;
 import com.sisibibi.api.domain.auth.dto.response.SignupRes;
 import com.sisibibi.api.domain.user.entity.User;
+import com.sisibibi.api.domain.user.entity.UserStatus;
 import com.sisibibi.api.domain.user.repository.UserRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
@@ -117,6 +118,56 @@ class AuthServiceTest {
     }
 
     @Test
+    void login_throwsInvalidCredentials_whenEmailDoesNotExist() {
+        given(userRepository.findByEmail("missing@example.com"))
+                .willReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                authService.login(new LoginReq("missing@example.com", "password123!"))
+        )
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_CREDENTIALS);
+
+        verify(passwordEncoder, never()).matches(anyString(), anyString());
+        verify(refreshTokenStore, never()).save(any(), anyString(), anyString());
+    }
+
+    @Test
+    void login_throwsUserInactive_whenUserIsInactive() {
+        User user = User.signup("user@example.com", "encoded-password", "tester");
+        ReflectionTestUtils.setField(user, "status", UserStatus.INACTIVE);
+        given(userRepository.findByEmail("user@example.com")).willReturn(Optional.of(user));
+        given(passwordEncoder.matches("password123!", "encoded-password")).willReturn(true);
+
+        assertThatThrownBy(() ->
+                authService.login(new LoginReq("user@example.com", "password123!"))
+        )
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.USER_INACTIVE);
+
+        verify(refreshTokenStore, never()).save(any(), anyString(), anyString());
+    }
+
+    @Test
+    void login_throwsUserBanned_whenUserIsBanned() {
+        User user = User.signup("user@example.com", "encoded-password", "tester");
+        ReflectionTestUtils.setField(user, "status", UserStatus.BANNED);
+        given(userRepository.findByEmail("user@example.com")).willReturn(Optional.of(user));
+        given(passwordEncoder.matches("password123!", "encoded-password")).willReturn(true);
+
+        assertThatThrownBy(() ->
+                authService.login(new LoginReq("user@example.com", "password123!"))
+        )
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.USER_BANNED);
+
+        verify(refreshTokenStore, never()).save(any(), anyString(), anyString());
+    }
+
+    @Test
     void reissue_rotatesRefreshToken() {
         TokenClaims claims = new TokenClaims(
                 1L,
@@ -156,5 +207,52 @@ class AuthServiceTest {
         authService.logout("refresh-token");
 
         verify(refreshTokenStore).delete(1L, "token-id");
+    }
+
+    @Test
+    void reissue_throwsUserNotFound_whenTokenOwnerDoesNotExist() {
+        TokenClaims claims = refreshClaims();
+        given(jwtTokenProvider.parseRefreshToken("old-refresh-token")).willReturn(claims);
+        given(userRepository.findById(1L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.reissue("old-refresh-token"))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.USER_NOT_FOUND);
+
+        verify(refreshTokenStore).verifyAndDelete(
+                1L,
+                "old-token-id",
+                "old-refresh-token"
+        );
+        verify(refreshTokenStore, never()).save(any(), anyString(), anyString());
+    }
+
+    @Test
+    void reissue_throwsUserBanned_whenTokenOwnerIsBanned() {
+        TokenClaims claims = refreshClaims();
+        User user = User.signup("user@example.com", "encoded-password", "tester");
+        ReflectionTestUtils.setField(user, "id", 1L);
+        ReflectionTestUtils.setField(user, "status", UserStatus.BANNED);
+        given(jwtTokenProvider.parseRefreshToken("old-refresh-token")).willReturn(claims);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> authService.reissue("old-refresh-token"))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.USER_BANNED);
+
+        verify(refreshTokenStore, never()).save(any(), anyString(), anyString());
+    }
+
+    private TokenClaims refreshClaims() {
+        return new TokenClaims(
+                1L,
+                "user@example.com",
+                "USER",
+                "old-token-id",
+                TokenType.REFRESH,
+                Instant.parse("2030-06-12T00:00:00Z")
+        );
     }
 }

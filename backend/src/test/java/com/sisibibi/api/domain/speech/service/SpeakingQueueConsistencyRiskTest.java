@@ -10,12 +10,14 @@ import static org.mockito.Mockito.spy;
 import com.sisibibi.api.domain.speech.config.SpeakingQueueProperties;
 import com.sisibibi.api.domain.speech.dto.response.StageRequestRes;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
+import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.RedisSpeakingQueueRepository;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.data.redis.DataRedisTest;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -60,15 +62,17 @@ class SpeakingQueueConsistencyRiskTest {
     void requestSpeakingTurn_doesNotCreateRedisEntryWhenRdbSaveFails() {
         SpeakingQueuePersistenceService failingPersistenceService =
                 mock(SpeakingQueuePersistenceService.class);
-        given(failingPersistenceService.createWaitingRequest(ROOM_ID, USER_ID))
+        given(failingPersistenceService.createWaitingRequest(ROOM_ID, USER_ID, SpeechStance.PRO))
                 .willThrow(new IllegalStateException("database unavailable"));
         SpeakingQueueService service = new SpeakingQueueService(
                 redisSpeakingQueueRepository,
                 failingPersistenceService,
-                mock(SpeakingQueueProperties.class)
+                mock(SpeakingQueueProperties.class),
+                mock(ApplicationEventPublisher.class)
         );
 
-        assertThatThrownBy(() -> service.requestSpeakingTurn(ROOM_ID, USER_ID))
+        assertThatThrownBy(() ->
+                service.requestSpeakingTurn(ROOM_ID, USER_ID, SpeechStance.PRO))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("database unavailable");
 
@@ -81,11 +85,13 @@ class SpeakingQueueConsistencyRiskTest {
                 ROOM_ID,
                 USER_ID,
                 15,
+                SpeechStance.PRO,
                 LocalDateTime.of(2026, 6, 12, 11, 30)
         );
         SpeakingQueuePersistenceService persistenceService =
                 mock(SpeakingQueuePersistenceService.class);
-        given(persistenceService.createWaitingRequest(ROOM_ID, USER_ID)).willReturn(saved);
+        given(persistenceService.createWaitingRequest(ROOM_ID, USER_ID, SpeechStance.PRO))
+                .willReturn(saved);
         RedisSpeakingQueueRepository failingRedisRepository =
                 spy(redisSpeakingQueueRepository);
         doThrow(new IllegalStateException("redis unavailable"))
@@ -94,10 +100,12 @@ class SpeakingQueueConsistencyRiskTest {
         SpeakingQueueService service = new SpeakingQueueService(
                 failingRedisRepository,
                 persistenceService,
-                mock(SpeakingQueueProperties.class)
+                mock(SpeakingQueueProperties.class),
+                mock(ApplicationEventPublisher.class)
         );
 
-        StageRequestRes response = service.requestSpeakingTurn(ROOM_ID, USER_ID);
+        StageRequestRes response =
+                service.requestSpeakingTurn(ROOM_ID, USER_ID, SpeechStance.PRO);
 
         assertThat(response.queueOrder()).isEqualTo(15);
         assertThat(redisTemplate.opsForZSet().score(QUEUE_KEY, USER_ID.toString())).isNull();

@@ -56,22 +56,24 @@ public class SpeechController {
     @GetMapping("/rooms/{roomId}/speeches")
     public ResponseEntity<ApiResponse<SpeechCursorPageRes>> getSpeeches(
             @PathVariable @Positive Long roomId,
+            @AuthenticationPrincipal AuthPrincipal principal,
             @RequestParam(required = false) @Positive Long cursor,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
         return ResponseEntity.ok(ApiResponse.ok(
                 "의견 목록 조회가 완료되었습니다.",
-                speechService.getSpeeches(roomId, cursor, size)
+                speechService.getSpeeches(roomId, principal.userId(), cursor, size)
         ));
     }
 
     @GetMapping("/speeches/{speechId}")
     public ResponseEntity<ApiResponse<SpeechDetailRes>> getSpeech(
-            @PathVariable @Positive Long speechId
+            @PathVariable @Positive Long speechId,
+            @AuthenticationPrincipal AuthPrincipal principal
     ) {
         return ResponseEntity.ok(ApiResponse.ok(
                 "의견 상세 조회가 완료되었습니다.",
-                speechService.getSpeech(speechId)
+                speechService.getSpeech(speechId, principal.userId())
         ));
     }
 
