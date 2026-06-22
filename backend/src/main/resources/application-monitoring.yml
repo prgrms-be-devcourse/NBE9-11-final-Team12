@@ -1,0 +1,8 @@
+logging:
+  file:
+    name: ${LOG_FILE_PATH:logs/sisibibi-api.log}
+  logback:
+    rollingpolicy:
+      max-file-size: 20MB
+      max-history: 7
+      total-size-cap: 200MB
