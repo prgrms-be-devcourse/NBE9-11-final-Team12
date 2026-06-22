@@ -221,6 +221,7 @@ function accessToken(userId) {
         email: `perf-${userId}@sisibibi.test`,
         role: "USER",
         tokenType: "ACCESS",
+        tokenVersion: Number(__ENV.TOKEN_VERSION || "0"),
         iat: now,
         exp: now + 1800,
     }));

@@ -1,8 +1,9 @@
 import http from "k6/http";
 import { check } from "k6";
 import { Counter } from "k6/metrics";
+import { authParams } from "./lib/auth.js";
 
-const baseUrl = __ENV.BASE_URL || "http://localhost:18080";
+const baseUrl = __ENV.BASE_URL || "http://localhost:8080";
 const roomId = Number(__ENV.ROOM_ID || "910001");
 const userIdBase = Number(__ENV.USER_ID_BASE || "1000000");
 
@@ -29,13 +30,15 @@ export const options = {
 
 export default function () {
     const userId = userIdBase + (__VU * 1_000_000) + __ITER;
-    const url = `${baseUrl}/api/v1/rooms/${roomId}/stage/requests?userId=${userId}`;
+    const url = `${baseUrl}/api/v1/rooms/${roomId}/stage/requests`;
 
-    const response = http.post(url, null, {
-        tags: {
+    const response = http.post(
+        url,
+        JSON.stringify({ stance: __ITER % 2 === 0 ? "PRO" : "CON" }),
+        authParams(userId, {
             name: "POST /api/v1/rooms/{roomId}/stage/requests",
-        },
-    });
+        })
+    );
 
     const created = check(response, {
         "stage request returns 201": (res) => res.status === 201,
