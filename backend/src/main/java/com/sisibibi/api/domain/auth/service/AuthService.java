@@ -82,7 +82,7 @@ public class AuthService {
         TokenClaims claims = jwtTokenProvider.parseRefreshToken(refreshToken);
         refreshTokenStore.verifyAndDelete(claims.userId(), claims.tokenId(), refreshToken);
 
-        User user = userRepository.findById(claims.userId())
+        User user = userRepository.findByIdForUpdate(claims.userId())
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
         validateLoginAvailable(user);
         validateTokenVersion(user, claims);

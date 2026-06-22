@@ -185,7 +185,7 @@ class AuthServiceTest {
         User user = User.signup("user@example.com", "encoded-password", "tester");
         ReflectionTestUtils.setField(user, "id", 1L);
         given(jwtTokenProvider.parseRefreshToken("old-refresh-token")).willReturn(claims);
-        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(userRepository.findByIdForUpdate(1L)).willReturn(Optional.of(user));
         given(jwtTokenProvider.createAccessToken(any())).willReturn("new-access-token");
         given(jwtTokenProvider.createRefreshToken(any(), anyString())).willReturn("new-refresh-token");
 
@@ -265,7 +265,7 @@ class AuthServiceTest {
     void reissue_throwsUserNotFound_whenTokenOwnerDoesNotExist() {
         TokenClaims claims = refreshClaims();
         given(jwtTokenProvider.parseRefreshToken("old-refresh-token")).willReturn(claims);
-        given(userRepository.findById(1L)).willReturn(Optional.empty());
+        given(userRepository.findByIdForUpdate(1L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.reissue("old-refresh-token"))
                 .isInstanceOf(CustomException.class)
@@ -287,7 +287,7 @@ class AuthServiceTest {
         ReflectionTestUtils.setField(user, "id", 1L);
         ReflectionTestUtils.setField(user, "status", UserStatus.BANNED);
         given(jwtTokenProvider.parseRefreshToken("old-refresh-token")).willReturn(claims);
-        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(userRepository.findByIdForUpdate(1L)).willReturn(Optional.of(user));
 
         assertThatThrownBy(() -> authService.reissue("old-refresh-token"))
                 .isInstanceOf(CustomException.class)
@@ -312,7 +312,7 @@ class AuthServiceTest {
         ReflectionTestUtils.setField(user, "id", 1L);
         user.invalidateTokens();
         given(jwtTokenProvider.parseRefreshToken("old-refresh-token")).willReturn(claims);
-        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(userRepository.findByIdForUpdate(1L)).willReturn(Optional.of(user));
 
         assertThatThrownBy(() -> authService.reissue("old-refresh-token"))
                 .isInstanceOf(CustomException.class)
