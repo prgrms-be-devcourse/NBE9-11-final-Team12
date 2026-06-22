@@ -10,8 +10,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
-import java.time.Duration;
-
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -26,8 +24,8 @@ public class UserAccountStatusStore {
     public boolean isBanned(Long userId) {
         try {
             String cachedStatus = redisTemplate.opsForValue().get(key(userId));
-            if (cachedStatus != null) {
-                return UserStatus.BANNED.name().equals(cachedStatus);
+            if (UserStatus.BANNED.name().equals(cachedStatus)) {
+                return true;
             }
         } catch (RuntimeException redisException) {
             log.warn("Failed to read user status cache. userId={}", userId, redisException);
@@ -36,30 +34,35 @@ public class UserAccountStatusStore {
         UserStatus status = userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND))
                 .getStatus();
-        cache(userId, status);
+        if (status == UserStatus.BANNED) {
+            cacheBanned(userId);
+        }
         return status == UserStatus.BANNED;
     }
 
     public void markBanned(Long userId) {
-        cache(userId, UserStatus.BANNED);
+        cacheBanned(userId);
     }
 
     public void markActive(Long userId) {
-        cache(userId, UserStatus.ACTIVE);
+        try {
+            redisTemplate.delete(key(userId));
+        } catch (RuntimeException redisException) {
+            log.warn("Failed to evict user status cache. userId={}", userId, redisException);
+        }
     }
 
-    private void cache(Long userId, UserStatus status) {
+    private void cacheBanned(Long userId) {
         try {
             redisTemplate.opsForValue().set(
                     key(userId),
-                    status.name(),
-                    cacheDuration(status)
+                    UserStatus.BANNED.name(),
+                    authProperties.jwt().accessTokenExpiration()
             );
         } catch (RuntimeException redisException) {
             log.warn(
-                    "Failed to update user status cache. userId={}, status={}",
+                    "Failed to update banned user cache. userId={}",
                     userId,
-                    status,
                     redisException
             );
         }
@@ -67,12 +70,5 @@ public class UserAccountStatusStore {
 
     private String key(Long userId) {
         return KEY_PREFIX + userId;
-    }
-
-    private Duration cacheDuration(UserStatus status) {
-        if (status == UserStatus.BANNED) {
-            return authProperties.jwt().accessTokenExpiration();
-        }
-        return Duration.ofSeconds(30);
     }
 }
