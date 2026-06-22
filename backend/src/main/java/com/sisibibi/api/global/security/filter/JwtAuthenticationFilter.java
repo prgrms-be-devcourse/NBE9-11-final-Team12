@@ -26,6 +26,8 @@ import java.util.List;
 @ConditionalOnBean(JwtTokenProvider.class)
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
+    private static final String AUTH_API_PREFIX = "/api/v1/auth/";
+
     private final JwtTokenProvider jwtTokenProvider;
     private final SecurityExceptionHandler securityExceptionHandler;
     private final TokenSessionValidator tokenSessionValidator;
@@ -71,6 +73,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             SecurityContextHolder.clearContext();
             securityExceptionHandler.write(response, e.getErrorCode());
         }
+    }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return request.getRequestURI().startsWith(AUTH_API_PREFIX);
     }
 
     private String findCookieValue(HttpServletRequest request, String cookieName) {

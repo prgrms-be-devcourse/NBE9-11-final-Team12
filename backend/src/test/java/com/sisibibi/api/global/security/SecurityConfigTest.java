@@ -16,6 +16,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.servlet.http.Cookie;
@@ -117,6 +118,13 @@ class SecurityConfigTest {
     }
 
     @Test
+    void authApi_isPublicAndDoesNotRequireCsrfToken() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/test"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code", is("SUCCESS")));
+    }
+
+    @Test
     void actuatorHealth_isPublic() throws Exception {
         mockMvc.perform(get("/actuator/health"))
                 .andExpect(status().isOk())
@@ -145,6 +153,11 @@ class SecurityConfigTest {
                 @AuthenticationPrincipal AuthPrincipal principal
         ) {
             return ResponseEntity.ok(ApiResponse.ok(principal.userId()));
+        }
+
+        @PostMapping("/api/v1/auth/test")
+        ResponseEntity<ApiResponse<Void>> publicAuthApi() {
+            return ResponseEntity.ok(ApiResponse.okMessage("인증 공개 API입니다."));
         }
     }
 }

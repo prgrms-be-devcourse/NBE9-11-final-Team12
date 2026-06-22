@@ -7,6 +7,8 @@ import com.sisibibi.api.global.security.jwt.JwtTokenProvider;
 import com.sisibibi.api.global.security.session.TokenSessionValidator;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
@@ -33,6 +35,7 @@ class JwtAuthenticationFilterTest {
     @Test
     void doFilter_rejectsAccessToken_whenUserIsBanned() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/api/v1/users/me");
         request.setCookies(new Cookie(AuthCookieProvider.ACCESS_TOKEN_COOKIE_NAME, "access-token"));
         MockHttpServletResponse response = new MockHttpServletResponse();
         var filterChain = mock(jakarta.servlet.FilterChain.class);
@@ -53,5 +56,25 @@ class JwtAuthenticationFilterTest {
 
         verify(securityExceptionHandler).write(response, ErrorCode.USER_BANNED);
         verifyNoInteractions(filterChain);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/api/v1/auth/signup",
+            "/api/v1/auth/login",
+            "/api/v1/auth/logout",
+            "/api/v1/auth/reissue"
+    })
+    void doFilter_skipsAccessTokenValidation_forAuthApi(String requestUri) throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", requestUri);
+        request.setRequestURI(requestUri);
+        request.setCookies(new Cookie(AuthCookieProvider.ACCESS_TOKEN_COOKIE_NAME, "stale-token"));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        var filterChain = mock(jakarta.servlet.FilterChain.class);
+
+        filter.doFilter(request, response, filterChain);
+
+        verify(filterChain).doFilter(request, response);
+        verifyNoInteractions(jwtTokenProvider, tokenSessionValidator, securityExceptionHandler);
     }
 }
