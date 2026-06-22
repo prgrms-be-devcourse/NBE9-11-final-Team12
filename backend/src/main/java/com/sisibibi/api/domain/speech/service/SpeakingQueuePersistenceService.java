@@ -123,6 +123,22 @@ public class SpeakingQueuePersistenceService {
                 ));
     }
 
+    @Transactional(readOnly = true)
+    public List<SpeakingQueue> findWaitingRequestsForRedisProjection(Long roomId) {
+        return speakingQueueRepository.findByRoomIdAndStatusOrderByQueueOrderAsc(
+                roomId,
+                SpeakingQueueStatus.WAITING
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<SpeakingQueue> findCurrentSpeakerForRedisProjection(Long roomId) {
+        return speakingQueueRepository.findByRoomIdAndStatus(
+                roomId,
+                SpeakingQueueStatus.ASSIGNED
+        );
+    }
+
     @Transactional
     public Optional<SpeakingQueue> assignNextSpeaker(
             Long roomId,

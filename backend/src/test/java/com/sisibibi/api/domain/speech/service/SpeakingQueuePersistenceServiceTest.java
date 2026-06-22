@@ -270,6 +270,56 @@ class SpeakingQueuePersistenceServiceTest {
     }
 
     @Test
+    void findWaitingRequestsForRedisProjection_returnsWaitingRequestsInQueueOrder() {
+        List<SpeakingQueue> waitingRequests = List.of(
+                SpeakingQueue.waiting(
+                        1L,
+                        10L,
+                        1,
+                        SpeechStance.PRO,
+                        LocalDateTime.of(2026, 6, 12, 11, 30)
+                ),
+                SpeakingQueue.waiting(
+                        1L,
+                        20L,
+                        2,
+                        SpeechStance.CON,
+                        LocalDateTime.of(2026, 6, 12, 11, 31)
+                )
+        );
+        given(speakingQueueRepository.findByRoomIdAndStatusOrderByQueueOrderAsc(
+                1L,
+                SpeakingQueueStatus.WAITING
+        )).willReturn(waitingRequests);
+
+        List<SpeakingQueue> found =
+                speakingQueuePersistenceService.findWaitingRequestsForRedisProjection(1L);
+
+        assertThat(found).isEqualTo(waitingRequests);
+    }
+
+    @Test
+    void findCurrentSpeakerForRedisProjection_returnsAssignedRequest() {
+        SpeakingQueue assigned = SpeakingQueue.waiting(
+                1L,
+                10L,
+                1,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        assign(assigned);
+        given(speakingQueueRepository.findByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        )).willReturn(Optional.of(assigned));
+
+        Optional<SpeakingQueue> found =
+                speakingQueuePersistenceService.findCurrentSpeakerForRedisProjection(1L);
+
+        assertThat(found).contains(assigned);
+    }
+
+    @Test
     void findMyActiveRequest_rejectsMissingRoom() {
         given(roomRepository.existsById(1L)).willReturn(false);
 
