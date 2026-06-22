@@ -1,6 +1,8 @@
 package com.sisibibi.api.domain.usersanction.event;
 
 import com.sisibibi.api.domain.usersanction.dto.event.UserSanctionChangedEvent;
+import com.sisibibi.api.domain.usersanction.dto.event.UserSanctionEventType;
+import com.sisibibi.api.domain.usersanction.entity.UserSanctionType;
 import com.sisibibi.api.global.realtime.RealtimeEventPublisher;
 import com.sisibibi.api.global.websocket.UserWebSocketDestinations;
 import com.sisibibi.api.global.websocket.WebSocketEventEnvelope;
@@ -19,6 +21,10 @@ public class UserSanctionChangedWebSocketEventListener {
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handle(UserSanctionChangedEvent event) {
+        if (isAccountSuspensionRevoked(event)) {
+            return;
+        }
+
         try {
             realtimeEventPublisher.publish(
                     UserWebSocketDestinations.sanctionEvents(event.userId()),
@@ -36,5 +42,10 @@ public class UserSanctionChangedWebSocketEventListener {
                     publishException
             );
         }
+    }
+
+    private boolean isAccountSuspensionRevoked(UserSanctionChangedEvent event) {
+        return event.type() == UserSanctionEventType.SANCTION_REVOKED
+                && event.payload().type() == UserSanctionType.ACCOUNT_SUSPENSION;
     }
 }
