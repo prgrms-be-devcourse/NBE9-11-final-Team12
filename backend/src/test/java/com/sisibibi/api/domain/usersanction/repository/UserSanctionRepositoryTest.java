@@ -11,6 +11,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -73,5 +74,54 @@ class UserSanctionRepositoryTest {
                 10L,
                 PageRequest.of(0, 20)
         ).getContent().getFirst().getId()).isEqualTo(latest.getId());
+    }
+
+    @Test
+    void findActiveRestrictions_returnsOnlyCurrentNonRevokedRestrictions() {
+        LocalDateTime now = LocalDateTime.of(2026, 6, 22, 12, 0);
+        UserSanction active = userSanctionRepository.saveAndFlush(UserSanction.create(
+                10L,
+                99L,
+                null,
+                UserSanctionType.CHAT_RESTRICTION,
+                "채팅 제한",
+                now.minusHours(1),
+                now.plusHours(1)
+        ));
+        userSanctionRepository.saveAndFlush(UserSanction.create(
+                10L,
+                99L,
+                null,
+                UserSanctionType.SPEECH_RESTRICTION,
+                "만료된 의견 제한",
+                now.minusHours(2),
+                now.minusHours(1)
+        ));
+        userSanctionRepository.saveAndFlush(UserSanction.create(
+                10L,
+                99L,
+                null,
+                UserSanctionType.WARNING,
+                "경고",
+                now,
+                null
+        ));
+        UserSanction revoked = userSanctionRepository.saveAndFlush(UserSanction.create(
+                10L,
+                99L,
+                null,
+                UserSanctionType.STAGE_RESTRICTION,
+                "발언권 제한",
+                now.minusHours(1),
+                now.plusHours(1)
+        ));
+        revoked.revoke(99L, "해제", now);
+        userSanctionRepository.flush();
+
+        List<UserSanction> result =
+                userSanctionRepository.findActiveRestrictions(10L, now);
+
+        assertThat(result).extracting(UserSanction::getId)
+                .containsExactly(active.getId());
     }
 }

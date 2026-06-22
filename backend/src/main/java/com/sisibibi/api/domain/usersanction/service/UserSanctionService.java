@@ -7,6 +7,10 @@ import com.sisibibi.api.domain.user.repository.UserRepository;
 import com.sisibibi.api.domain.user.entity.User;
 import com.sisibibi.api.domain.user.entity.UserRole;
 import com.sisibibi.api.domain.usersanction.dto.request.UserSanctionCreateReq;
+import com.sisibibi.api.domain.usersanction.dto.event.UserSanctionChangedEvent;
+import com.sisibibi.api.domain.usersanction.dto.event.UserSanctionEventPayload;
+import com.sisibibi.api.domain.usersanction.dto.event.UserSanctionEventType;
+import com.sisibibi.api.domain.usersanction.dto.response.ActiveUserSanctionRes;
 import com.sisibibi.api.domain.usersanction.dto.response.UserSanctionRes;
 import com.sisibibi.api.domain.usersanction.entity.UserSanction;
 import com.sisibibi.api.domain.usersanction.entity.UserSanctionType;
@@ -15,12 +19,14 @@ import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Slf4j
 @Service
@@ -30,6 +36,7 @@ public class UserSanctionService {
     private final UserRepository userRepository;
     private final SpeechReportRepository speechReportRepository;
     private final UserSanctionRepository userSanctionRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public UserSanctionRes createSanction(
@@ -66,6 +73,11 @@ public class UserSanctionService {
                 endsAt
         );
         UserSanction savedSanction = userSanctionRepository.save(sanction);
+        publishSanctionChangedEvent(
+                UserSanctionEventType.SANCTION_CREATED,
+                savedSanction,
+                startsAt
+        );
         log.info(
                 "User sanction created. sanctionId={}, userId={}, adminUserId={}, type={}, reportId={}",
                 savedSanction.getId(),
@@ -90,6 +102,15 @@ public class UserSanctionService {
                 .map(sanction -> UserSanctionRes.from(sanction, now));
     }
 
+    @Transactional(readOnly = true)
+    public List<ActiveUserSanctionRes> getActiveSanctions(Long userId) {
+        return userSanctionRepository
+                .findActiveRestrictions(userId, LocalDateTime.now())
+                .stream()
+                .map(ActiveUserSanctionRes::from)
+                .toList();
+    }
+
     @Transactional
     public UserSanctionRes revokeSanction(
             Long userId,
@@ -103,6 +124,11 @@ public class UserSanctionService {
 
         LocalDateTime now = LocalDateTime.now();
         sanction.revoke(adminUserId, reason, now);
+        publishSanctionChangedEvent(
+                UserSanctionEventType.SANCTION_REVOKED,
+                sanction,
+                now
+        );
         log.info(
                 "User sanction revoked. sanctionId={}, userId={}, adminUserId={}, type={}",
                 sanctionId,
@@ -112,6 +138,18 @@ public class UserSanctionService {
         );
 
         return UserSanctionRes.from(sanction, now);
+    }
+
+    private void publishSanctionChangedEvent(
+            UserSanctionEventType eventType,
+            UserSanction sanction,
+            LocalDateTime now
+    ) {
+        eventPublisher.publishEvent(new UserSanctionChangedEvent(
+                eventType,
+                sanction.getUserId(),
+                UserSanctionEventPayload.from(sanction, now)
+        ));
     }
 
     private void validateReport(Long userId, Long reportId) {

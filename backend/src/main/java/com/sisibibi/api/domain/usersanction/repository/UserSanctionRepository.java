@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 public interface UserSanctionRepository extends JpaRepository<UserSanction, Long> {
@@ -27,6 +28,21 @@ public interface UserSanctionRepository extends JpaRepository<UserSanction, Long
     boolean existsActive(
             @Param("userId") Long userId,
             @Param("type") UserSanctionType type,
+            @Param("now") LocalDateTime now
+    );
+
+    @Query("""
+            select sanction
+            from UserSanction sanction
+            where sanction.userId = :userId
+              and sanction.type <> com.sisibibi.api.domain.usersanction.entity.UserSanctionType.WARNING
+              and sanction.revokedAt is null
+              and sanction.startsAt <= :now
+              and sanction.endsAt > :now
+            order by sanction.endsAt asc, sanction.id asc
+            """)
+    List<UserSanction> findActiveRestrictions(
+            @Param("userId") Long userId,
             @Param("now") LocalDateTime now
     );
 

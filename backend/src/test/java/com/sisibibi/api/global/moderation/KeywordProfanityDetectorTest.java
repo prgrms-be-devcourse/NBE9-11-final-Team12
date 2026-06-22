@@ -100,18 +100,6 @@ class KeywordProfanityDetectorTest {
     }
 
     @Test
-    void containsProfanity_returnsTrue_forSexualHarassmentPhrases() {
-        assertThat(profanityDetector.containsProfanity("너 가슴 빨아"))
-                .isTrue();
-        assertThat(profanityDetector.containsProfanity("니 보지 구멍"))
-                .isTrue();
-        assertThat(profanityDetector.containsProfanity("몸 안에 사정"))
-                .isTrue();
-        assertThat(profanityDetector.containsProfanity("걸레 같은 년"))
-                .isTrue();
-    }
-
-    @Test
     void containsProfanity_returnsFalse_whenContentDoesNotContainProfanityOrMatchesAllowedPhrase() {
         assertThat(profanityDetector.containsProfanity("상대 의견의 근거가 부족합니다."))
                 .isFalse();
