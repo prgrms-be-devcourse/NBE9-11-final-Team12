@@ -114,4 +114,47 @@ class UserSanctionTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.USER_SANCTION_NOT_REVOCABLE);
     }
+
+    @Test
+    void extend_updatesEndsAt_whenRequestedEndIsLater() {
+        UserSanction sanction = UserSanction.create(
+                10L,
+                99L,
+                null,
+                UserSanctionType.SPEECH_RESTRICTION,
+                "의견 제한",
+                NOW.minusHours(1),
+                NOW.plusHours(24)
+        );
+
+        sanction.extend(99L, "반복 위반", NOW.plusDays(7), NOW);
+
+        assertThat(sanction.getEndsAt()).isEqualTo(NOW.plusDays(7));
+        assertThat(sanction.getExtendedBy()).isEqualTo(99L);
+        assertThat(sanction.getExtensionReason()).isEqualTo("반복 위반");
+        assertThat(sanction.getExtendedAt()).isEqualTo(NOW);
+    }
+
+    @Test
+    void extend_throwsNotExtendable_whenRequestedEndIsNotLater() {
+        UserSanction sanction = UserSanction.create(
+                10L,
+                99L,
+                null,
+                UserSanctionType.SPEECH_RESTRICTION,
+                "의견 제한",
+                NOW.minusHours(1),
+                NOW.plusDays(7)
+        );
+
+        assertThatThrownBy(() -> sanction.extend(
+                99L,
+                "짧은 연장",
+                NOW.plusHours(24),
+                NOW
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.USER_SANCTION_NOT_EXTENDABLE);
+    }
 }

@@ -27,6 +27,7 @@ public enum ErrorCode {
     USER_SANCTION_ALREADY_ACTIVE(HttpStatus.CONFLICT, "동일한 유형의 활성 제재가 이미 존재합니다."),
     USER_SANCTION_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 사용자 제재입니다."),
     USER_SANCTION_NOT_REVOCABLE(HttpStatus.CONFLICT, "활성 상태의 사용자 제재만 해제할 수 있습니다."),
+    USER_SANCTION_NOT_EXTENDABLE(HttpStatus.CONFLICT, "현재 활성 제재보다 종료 시각이 늦어지는 경우에만 연장할 수 있습니다."),
     USER_SANCTION_INVALID_PERIOD(HttpStatus.BAD_REQUEST, "올바르지 않은 사용자 제재 기간입니다."),
     USER_SANCTION_REASON_REQUIRED(HttpStatus.BAD_REQUEST, "사용자 제재 사유가 필요합니다."),
     USER_SANCTION_REASON_TOO_LONG(HttpStatus.BAD_REQUEST, "사용자 제재 사유는 500자 이하여야 합니다."),

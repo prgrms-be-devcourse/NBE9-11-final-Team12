@@ -202,6 +202,24 @@ class UserSanctionServiceTest {
         verify(eventPublisher).publishEvent(any(UserSanctionChangedEvent.class));
     }
 
+    @Test
+    void extendSanction_extendsFromCurrentTimeWhenRecommendationIsLonger() {
+        UserSanction sanction = sanction(200L);
+        given(userSanctionRepository.findByIdAndUserIdForUpdate(200L, 10L))
+                .willReturn(Optional.of(sanction));
+
+        UserSanctionRes response = userSanctionService.extendSanction(
+                10L,
+                200L,
+                100L,
+                168,
+                "반복 위반으로 제한 연장"
+        );
+
+        assertThat(response.endsAt()).isAfter(LocalDateTime.now().plusDays(6));
+        verify(eventPublisher).publishEvent(any(UserSanctionChangedEvent.class));
+    }
+
     private SpeechReport resolvedReport(Long reportId, Long reportedUserId) {
         SpeechReport report = SpeechReport.create(
                 1L,

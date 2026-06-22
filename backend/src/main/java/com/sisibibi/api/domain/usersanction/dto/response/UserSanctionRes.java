@@ -19,6 +19,9 @@ public record UserSanctionRes(
         LocalDateTime revokedAt,
         Long revokedBy,
         String revocationReason,
+        LocalDateTime extendedAt,
+        Long extendedBy,
+        String extensionReason,
         LocalDateTime createdAt
 ) {
 
@@ -36,6 +39,9 @@ public record UserSanctionRes(
                 sanction.getRevokedAt(),
                 sanction.getRevokedBy(),
                 sanction.getRevocationReason(),
+                sanction.getExtendedAt(),
+                sanction.getExtendedBy(),
+                sanction.getExtensionReason(),
                 sanction.getCreatedAt()
         );
     }

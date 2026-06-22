@@ -35,6 +35,22 @@ public interface UserSanctionRepository extends JpaRepository<UserSanction, Long
             select sanction
             from UserSanction sanction
             where sanction.userId = :userId
+              and sanction.type = :type
+              and sanction.revokedAt is null
+              and sanction.startsAt <= :now
+              and sanction.endsAt > :now
+            order by sanction.endsAt desc, sanction.id desc
+            """)
+    Optional<UserSanction> findFirstActive(
+            @Param("userId") Long userId,
+            @Param("type") UserSanctionType type,
+            @Param("now") LocalDateTime now
+    );
+
+    @Query("""
+            select sanction
+            from UserSanction sanction
+            where sanction.userId = :userId
               and sanction.type <> com.sisibibi.api.domain.usersanction.entity.UserSanctionType.WARNING
               and sanction.revokedAt is null
               and sanction.startsAt <= :now
