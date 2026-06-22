@@ -1,6 +1,6 @@
 logging:
   file:
-    name: logs/sisibibi-api.log
+    name: ${LOG_FILE_PATH:logs/sisibibi-api.log}
   logback:
     rollingpolicy:
       max-file-size: 20MB
