@@ -24,6 +24,7 @@ public class JwtTokenProvider {
     private static final String EMAIL_CLAIM = "email";
     private static final String ROLE_CLAIM = "role";
     private static final String TOKEN_TYPE_CLAIM = "tokenType";
+    private static final String TOKEN_VERSION_CLAIM = "tokenVersion";
 
     private final AuthProperties authProperties;
     private final Clock clock;
@@ -72,6 +73,7 @@ public class JwtTokenProvider {
                 .claim(EMAIL_CLAIM, principal.email())
                 .claim(ROLE_CLAIM, principal.role())
                 .claim(TOKEN_TYPE_CLAIM, tokenType.name())
+                .claim(TOKEN_VERSION_CLAIM, principal.tokenVersion())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(expiresAt))
                 .signWith(secretKey)
@@ -92,6 +94,7 @@ public class JwtTokenProvider {
                     claims.get(ROLE_CLAIM, String.class),
                     claims.getId(),
                     TokenType.valueOf(claims.get(TOKEN_TYPE_CLAIM, String.class)),
+                    readTokenVersion(claims),
                     claims.getExpiration().toInstant()
             );
         } catch (ExpiredJwtException e) {
@@ -120,12 +123,32 @@ public class JwtTokenProvider {
             String role,
             String tokenId,
             TokenType tokenType,
+            Long tokenVersion,
             Instant expiresAt
     ) {
 
-        public AuthPrincipal toPrincipal() {
-            return new AuthPrincipal(userId, email, role);
+        public TokenClaims(
+                Long userId,
+                String email,
+                String role,
+                String tokenId,
+                TokenType tokenType,
+                Instant expiresAt
+        ) {
+            this(userId, email, role, tokenId, tokenType, 0L, expiresAt);
         }
+
+        public AuthPrincipal toPrincipal() {
+            return new AuthPrincipal(userId, email, role, tokenVersion);
+        }
+    }
+
+    private Long readTokenVersion(Claims claims) {
+        Object tokenVersion = claims.get(TOKEN_VERSION_CLAIM);
+        if (!(tokenVersion instanceof Number number)) {
+            throw new IllegalArgumentException("Token version claim is missing.");
+        }
+        return number.longValue();
     }
 
     public enum TokenType {

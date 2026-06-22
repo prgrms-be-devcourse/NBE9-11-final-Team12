@@ -139,6 +139,66 @@ class UserSanctionServiceTest {
     }
 
     @Test
+    void createSanction_bansUser_whenTypeIsAccountSuspension() {
+        User user = User.signup("user@example.com", "password", "user");
+        given(userRepository.findByIdForUpdate(10L)).willReturn(Optional.of(user));
+        given(userSanctionRepository.existsActive(
+                org.mockito.ArgumentMatchers.eq(10L),
+                org.mockito.ArgumentMatchers.eq(UserSanctionType.ACCOUNT_SUSPENSION),
+                any(LocalDateTime.class)
+        )).willReturn(false);
+        given(userSanctionRepository.save(any(UserSanction.class)))
+                .willAnswer(invocation -> {
+                    UserSanction sanction = invocation.getArgument(0);
+                    ReflectionTestUtils.setField(sanction, "id", 201L);
+                    ReflectionTestUtils.setField(sanction, "createdAt", LocalDateTime.now());
+                    return sanction;
+                });
+
+        UserSanctionRes response = userSanctionService.createSanction(
+                10L,
+                99L,
+                new UserSanctionCreateReq(
+                        UserSanctionType.ACCOUNT_SUSPENSION,
+                        "반복적인 운영 정책 위반",
+                        null,
+                        null
+                )
+        );
+
+        assertThat(user.getStatus()).isEqualTo(com.sisibibi.api.domain.user.entity.UserStatus.BANNED);
+        assertThat(user.getTokenVersion()).isEqualTo(1L);
+        assertThat(response.endsAt()).isNull();
+        assertThat(response.state()).isEqualTo(UserSanctionState.ACTIVE);
+    }
+
+    @Test
+    void revokeSanction_activatesUser_whenAccountSuspensionIsRevoked() {
+        User user = User.signup("user@example.com", "password", "user");
+        user.ban();
+        UserSanction sanction = UserSanction.create(
+                10L,
+                99L,
+                null,
+                UserSanctionType.ACCOUNT_SUSPENSION,
+                "반복적인 운영 정책 위반",
+                LocalDateTime.now().minusMinutes(1),
+                null
+        );
+        ReflectionTestUtils.setField(sanction, "id", 201L);
+        ReflectionTestUtils.setField(sanction, "createdAt", LocalDateTime.now());
+        given(userRepository.findByIdForUpdate(10L)).willReturn(Optional.of(user));
+        given(userSanctionRepository.findByIdAndUserIdForUpdate(201L, 10L))
+                .willReturn(Optional.of(sanction));
+
+        UserSanctionRes response =
+                userSanctionService.revokeSanction(10L, 201L, 100L, "이의제기 검토 후 해제");
+
+        assertThat(user.getStatus()).isEqualTo(com.sisibibi.api.domain.user.entity.UserStatus.ACTIVE);
+        assertThat(response.state()).isEqualTo(UserSanctionState.REVOKED);
+    }
+
+    @Test
     void createSanction_throwsReportMismatch_whenReportedUserDiffers() {
         given(userRepository.findByIdForUpdate(10L))
                 .willReturn(Optional.of(User.signup("user@example.com", "password", "user")));
@@ -191,6 +251,8 @@ class UserSanctionServiceTest {
     @Test
     void revokeSanction_revokesActiveSanction() {
         UserSanction sanction = sanction(200L);
+        given(userRepository.findByIdForUpdate(10L))
+                .willReturn(Optional.of(User.signup("user@example.com", "password", "user")));
         given(userSanctionRepository.findByIdAndUserIdForUpdate(200L, 10L))
                 .willReturn(Optional.of(sanction));
 

@@ -4,6 +4,7 @@ import com.sisibibi.api.ApiApplication;
 import com.sisibibi.api.global.response.ApiResponse;
 import com.sisibibi.api.global.security.cookie.AuthCookieProvider;
 import com.sisibibi.api.global.security.jwt.JwtTokenProvider;
+import com.sisibibi.api.global.security.session.TokenSessionValidator;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -12,8 +13,10 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.servlet.http.Cookie;
@@ -40,6 +43,9 @@ class SecurityConfigTest {
 
     @Autowired
     private JwtTokenProvider jwtTokenProvider;
+
+    @MockitoBean
+    private TokenSessionValidator tokenSessionValidator;
 
     @Test
     void protectedApi_returnsApiResponse401WithoutAuthentication() throws Exception {
@@ -112,6 +118,13 @@ class SecurityConfigTest {
     }
 
     @Test
+    void authApi_isPublicAndDoesNotRequireCsrfToken() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/test"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code", is("SUCCESS")));
+    }
+
+    @Test
     void actuatorHealth_isPublic() throws Exception {
         mockMvc.perform(get("/actuator/health"))
                 .andExpect(status().isOk())
@@ -140,6 +153,11 @@ class SecurityConfigTest {
                 @AuthenticationPrincipal AuthPrincipal principal
         ) {
             return ResponseEntity.ok(ApiResponse.ok(principal.userId()));
+        }
+
+        @PostMapping("/api/v1/auth/test")
+        ResponseEntity<ApiResponse<Void>> publicAuthApi() {
+            return ResponseEntity.ok(ApiResponse.okMessage("인증 공개 API입니다."));
         }
     }
 }

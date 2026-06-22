@@ -7,9 +7,11 @@ import com.sisibibi.api.global.security.refresh.RefreshTokenStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.ValueOperations;
 
 import java.time.Duration;
+import java.util.LinkedHashSet;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -22,12 +24,14 @@ class RefreshTokenStoreTest {
 
     private final StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
     private final ValueOperations<String, String> valueOperations = mock(ValueOperations.class);
+    private final SetOperations<String, String> setOperations = mock(SetOperations.class);
     private RefreshTokenStore refreshTokenStore;
 
     @BeforeEach
     void setUp() {
         refreshTokenStore = new RefreshTokenStore(redisTemplate, authProperties());
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(redisTemplate.opsForSet()).thenReturn(setOperations);
     }
 
     @Test
@@ -39,6 +43,7 @@ class RefreshTokenStoreTest {
                 anyString(),
                 eq(Duration.ofDays(14))
         );
+        verify(setOperations).add("auth:refresh-index:1", "token-id");
     }
 
     @Test
@@ -50,11 +55,26 @@ class RefreshTokenStoreTest {
         refreshTokenStore.verifyAndDelete(1L, "token-id", "refresh-token");
 
         verify(redisTemplate).delete("auth:refresh:1:token-id");
+        verify(setOperations).remove("auth:refresh-index:1", "token-id");
         verify(valueOperations).set(
                 "auth:refresh-used:1:token-id",
                 "1",
                 Duration.ofDays(14).plusMinutes(30)
         );
+    }
+
+    @Test
+    void deleteAll_deletesEveryIndexedRefreshToken() {
+        when(setOperations.members("auth:refresh-index:1"))
+                .thenReturn(new LinkedHashSet<>(java.util.List.of("token-1", "token-2")));
+
+        refreshTokenStore.deleteAll(1L);
+
+        verify(redisTemplate).delete(java.util.List.of(
+                "auth:refresh:1:token-1",
+                "auth:refresh:1:token-2"
+        ));
+        verify(redisTemplate).delete("auth:refresh-index:1");
     }
 
     @Test

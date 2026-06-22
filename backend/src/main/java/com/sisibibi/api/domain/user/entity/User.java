@@ -50,6 +50,9 @@ public class User {
     @Column(nullable = false, length = 20)
     private UserStatus status;
 
+    @Column(name = "token_version", nullable = false, columnDefinition = "BIGINT DEFAULT 0")
+    private Long tokenVersion;
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -73,10 +76,24 @@ public class User {
         user.nickname = nickname;
         user.role = role;
         user.status = UserStatus.ACTIVE;
+        user.tokenVersion = 0L;
         return user;
     }
 
     public void changeNickname(String nickname) {
         this.nickname = nickname;
+    }
+
+    public void ban() {
+        this.status = UserStatus.BANNED;
+        invalidateTokens();
+    }
+
+    public void activate() {
+        this.status = UserStatus.ACTIVE;
+    }
+
+    public void invalidateTokens() {
+        this.tokenVersion++;
     }
 }
