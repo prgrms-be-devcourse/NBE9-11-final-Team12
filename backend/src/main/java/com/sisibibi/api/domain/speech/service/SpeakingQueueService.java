@@ -33,6 +33,8 @@ import java.util.stream.IntStream;
 public class SpeakingQueueService {
 
     private static final int REDIS_PROJECTION_REBUILD_MAX_ATTEMPTS = 3;
+    private static final long REDIS_PROJECTION_REBUILD_INITIAL_BACKOFF_MS = 50L;
+    private static final int REDIS_PROJECTION_REBUILD_BACKOFF_MULTIPLIER = 2;
 
     private final RedisSpeakingQueueRepository redisSpeakingQueueRepository;
     private final SpeakingQueuePersistenceService speakingQueuePersistenceService;
@@ -374,6 +376,9 @@ public class SpeakingQueueService {
                         attempt,
                         versionException
                 );
+                if (!sleepBeforeRedisProjectionRebuildRetry(roomId, attempt)) {
+                    return;
+                }
                 continue;
             }
 
@@ -411,6 +416,9 @@ public class SpeakingQueueService {
                             attempt,
                             expectedVersion
                     );
+                    if (!sleepBeforeRedisProjectionRebuildRetry(roomId, attempt)) {
+                        return;
+                    }
                     continue;
                 }
                 log.info(
@@ -437,7 +445,37 @@ public class SpeakingQueueService {
                         attempt,
                         rebuildException
                 );
+                if (!sleepBeforeRedisProjectionRebuildRetry(roomId, attempt)) {
+                    return;
+                }
             }
+        }
+    }
+
+    private boolean sleepBeforeRedisProjectionRebuildRetry(Long roomId, int attempt) {
+        if (attempt >= REDIS_PROJECTION_REBUILD_MAX_ATTEMPTS) {
+            return true;
+        }
+
+        long delayMillis = REDIS_PROJECTION_REBUILD_INITIAL_BACKOFF_MS;
+        for (int index = 1; index < attempt; index++) {
+            delayMillis *= REDIS_PROJECTION_REBUILD_BACKOFF_MULTIPLIER;
+        }
+
+        try {
+            Thread.sleep(delayMillis);
+            return true;
+        } catch (InterruptedException interruptedException) {
+            Thread.currentThread().interrupt();
+            log.warn(
+                    "Interrupted while waiting to retry speaking Redis projection rebuild. "
+                            + "roomId={}, attempt={}, delayMillis={}",
+                    roomId,
+                    attempt,
+                    delayMillis,
+                    interruptedException
+            );
+            return false;
         }
     }
 
