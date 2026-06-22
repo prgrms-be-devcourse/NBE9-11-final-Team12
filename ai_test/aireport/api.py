@@ -122,8 +122,10 @@ def generate_report(request: AiReportGenerateRequest):
     try:
         report = api_state.generate(request.model_dump())
     except ReportGenerationError as exc:
+        logger.warning("AI 리포트 모델 응답 파싱에 실패했습니다: %s", exc)
         raise HTTPException(status_code=502, detail=f"AI 리포트 응답 형식이 올바르지 않습니다: {exc}") from exc
     except ValueError as exc:
+        logger.warning("AI 리포트 스키마 검증에 실패했습니다: %s", exc)
         raise HTTPException(status_code=502, detail=f"AI 리포트 검증에 실패했습니다: {exc}") from exc
     except Exception as exc:
         logger.exception("AI 리포트 생성에 실패했습니다.")

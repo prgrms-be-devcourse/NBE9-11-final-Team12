@@ -1,5 +1,6 @@
 from collections import Counter
 import os
+import re
 
 
 os.environ.setdefault("LOKY_MAX_CPU_COUNT", str(os.cpu_count() or 1))
@@ -183,8 +184,14 @@ def _valid_speeches(speeches):
     return [
         speech
         for speech in speeches
-        if speech.get("content") and speech.get("stance") in STANCE_ORDER
+        if _has_meaningful_content(speech.get("content")) and speech.get("stance") in STANCE_ORDER
     ]
+
+
+def _has_meaningful_content(content):
+    # DB 테스트 데이터를 직접 넣는 과정에서 공백, 마침표만 있는 발화가 들어가도
+    # TF-IDF가 빈 vocabulary로 실패하지 않도록 실제 단어가 있는 발화만 사용합니다.
+    return bool(re.search(r"[0-9A-Za-z가-힣]{2,}", str(content or "")))
 
 
 def _count_stances(speeches):
@@ -209,7 +216,13 @@ def _embed_contents(speeches):
     )
     contents = [_embedding_text(speech) for speech in speeches]
     vectors, backend, model_name = _embed_for_clustering(contents)
-    label_vectors = label_vectorizer.fit_transform(contents)
+    try:
+        label_vectors = label_vectorizer.fit_transform(contents)
+    except ValueError:
+        # 대표 발언 선정에는 Sentence-BERT/TF-IDF 임베딩 벡터를 계속 쓰고,
+        # 라벨용 키워드만 비워서 클러스터링 전체가 실패하지 않게 합니다.
+        label_vectorizer = _EmptyLabelVectorizer()
+        label_vectors = _EmptyLabelVectors(len(contents))
     return {
         "backend": backend,
         "model_name": model_name,
@@ -559,6 +572,8 @@ def _representative_indexes(cluster_id, member_indexes, vectors, centers):
 
 def _top_keywords(member_indexes, vectors, vectorizer, limit=4):
     feature_names = vectorizer.get_feature_names_out()
+    if len(feature_names) == 0:
+        return []
     cluster_vector = vectors[member_indexes].sum(axis=0)
     scores = cluster_vector.A1
     ranked_indexes = scores.argsort()[::-1]
@@ -613,3 +628,25 @@ def _format_representative_opinion(speech):
         f"{speech.get('speaker')} / {speech.get('stance')}: "
         f"{speech.get('content', '')}"
     )
+
+
+class _EmptyLabelVectorizer:
+    def get_feature_names_out(self):
+        return []
+
+
+class _EmptyLabelVectors:
+    def __init__(self, row_count):
+        self.row_count = row_count
+
+    def __getitem__(self, item):
+        return self
+
+    def sum(self, axis=0):
+        return _EmptyLabelVector()
+
+
+class _EmptyLabelVector:
+    @property
+    def A1(self):
+        return []
