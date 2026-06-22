@@ -22,11 +22,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class AiReportPersistenceService {
+
+    private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
 
     private final RoomRepository roomRepository;
     private final TopicRepository topicRepository;
@@ -109,6 +112,10 @@ public class AiReportPersistenceService {
     }
 
     private String compactContent(String content) {
-        return String.join(" ", content.trim().split("\\s+"));
+        if (content == null) {
+            return "";
+        }
+
+        return WHITESPACE_PATTERN.matcher(content.trim()).replaceAll(" ");
     }
 }

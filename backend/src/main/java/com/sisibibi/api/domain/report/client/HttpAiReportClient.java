@@ -5,12 +5,14 @@ import com.sisibibi.api.domain.report.client.dto.AiReportGenerateRes;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
+
+import java.net.http.HttpClient;
 
 @Slf4j
 @Component
@@ -22,14 +24,9 @@ public class HttpAiReportClient implements AiReportClient {
     public HttpAiReportClient(RestClient.Builder restClientBuilder, AiReportProperties properties) {
         validateBaseUrl(properties);
 
-        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        int timeoutMillis = Math.toIntExact(properties.getTimeout().toMillis());
-        requestFactory.setConnectTimeout(timeoutMillis);
-        requestFactory.setReadTimeout(timeoutMillis);
-
         this.restClient = restClientBuilder
                 .baseUrl(properties.getBaseUrl())
-                .requestFactory(requestFactory)
+                .requestFactory(createRequestFactory(properties))
                 .build();
         this.properties = properties;
     }
@@ -63,5 +60,15 @@ public class HttpAiReportClient implements AiReportClient {
         if (!StringUtils.hasText(properties.getBaseUrl())) {
             throw new CustomException(ErrorCode.AI_REPORT_CONFIG_MISSING);
         }
+    }
+
+    private JdkClientHttpRequestFactory createRequestFactory(AiReportProperties properties) {
+        HttpClient httpClient = HttpClient.newBuilder()
+                .connectTimeout(properties.getTimeout())
+                .build();
+
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
+        requestFactory.setReadTimeout(properties.getTimeout());
+        return requestFactory;
     }
 }
