@@ -4,12 +4,21 @@ import exec from "k6/execution";
 import { Counter, Rate, Trend } from "k6/metrics";
 import { authParams } from "./lib/auth.js";
 
+// 실행 전 준비:
+// 1. ROOM_ID에 해당하는 OPEN 토론방을 생성한다.
+// 2. USER_ID_BASE부터 예상 iteration 수만큼 users를 생성하고 token_version을 TOKEN_VERSION과 맞춘다.
+// 3. SPEECH_ID_BASE부터 SPEECH_COUNT 범위에 공감·신고 가능한 의견을 생성한다.
+// 4. 테스트 사용자가 대상 의견의 작성자와 겹치지 않게 구성한다.
+// 로컬 프로필의 LocalDataInitializer는 기능 확인용 소량 데이터만 만들기 때문에
+// Baseline/Load 테스트에는 별도의 성능 테스트 데이터 적재가 필요하다.
 const baseUrl = __ENV.BASE_URL || "http://localhost:8080";
 const mode = __ENV.MODE || "smoke";
 const roomId = Number(__ENV.ROOM_ID || "1");
 const speechIdBase = Number(__ENV.SPEECH_ID_BASE || __ENV.SPEECH_ID || "1");
 const speechCount = Number(__ENV.SPEECH_COUNT || "1");
 const userIdBase = Number(__ENV.USER_ID_BASE || "100000");
+const readUserIdBase = Number(__ENV.READ_USER_ID_BASE || userIdBase);
+const writeUserIdBase = Number(__ENV.WRITE_USER_ID_BASE || userIdBase + 100000);
 
 const requestFailed = new Rate("core_api_failure_rate");
 const requestDuration = new Trend("core_api_duration", true);
@@ -24,19 +33,19 @@ export const options = buildOptions();
 
 export default function () {
     const iteration = exec.scenario.iterationInTest;
-    const userId = userIdBase + iteration;
     const speechId = speechIdBase + (iteration % speechCount);
 
     if (exec.scenario.name === "readApis") {
-        readApis(userId);
+        readApis(readUserIdBase + iteration);
         return;
     }
 
     if (exec.scenario.name === "writeApis") {
-        writeApis(userId, speechId, iteration);
+        writeApis(writeUserIdBase + iteration, speechId, iteration);
         return;
     }
 
+    const userId = userIdBase + iteration;
     readApis(userId);
     writeApis(userId, speechId, iteration);
     sleep(Number(__ENV.SLEEP_SECONDS || "1"));
@@ -184,11 +193,13 @@ function del(path, userId, name, expectedStatuses) {
 }
 
 function request(method, path, userId, body, name, expectedStatuses) {
+    const params = authParams(userId, { name });
+    params.responseCallback = http.expectedStatuses(...expectedStatuses);
     const response = http.request(
         method,
         `${baseUrl}${path}`,
         body,
-        authParams(userId, { name })
+        params
     );
     requestDuration.add(response.timings.duration);
 

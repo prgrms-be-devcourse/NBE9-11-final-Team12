@@ -3,6 +3,11 @@ import { check } from "k6";
 import { Counter } from "k6/metrics";
 import { authParams } from "./lib/auth.js";
 
+// 실행 전 준비:
+// 1. ROOM_ID에 해당하는 OPEN 토론방을 생성한다.
+// 2. USER_ID_BASE부터 RATE * DURATION 이상 사용자를 생성한다.
+// 3. 생성한 사용자의 token_version을 TOKEN_VERSION과 맞춘다.
+// 이 스크립트는 발언권 신청 상태를 생성하므로 core-api-mixed.js와 사용자 범위를 분리한다.
 const baseUrl = __ENV.BASE_URL || "http://localhost:8080";
 const roomId = Number(__ENV.ROOM_ID || "910001");
 const userIdBase = Number(__ENV.USER_ID_BASE || "1000000");

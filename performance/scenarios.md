@@ -241,13 +241,30 @@ duration: 짧게
 - 네트워크 지연
 - 프론트 요청 중복 여부
 
-## 6. 현재 범위에서 제외
+## 6. WebSocket 채팅
+
+목적:
+
+- WebSocket handshake 성공률 확인
+- STOMP CONNECT와 SUBSCRIBE 처리 시간 확인
+- 동시 연결 유지 중 채팅 SEND와 브로드캐스트 확인
+- 채팅 Rate Limiter와 메시지 저장 부하 확인
+
+대상:
+
+- `CONNECT /api/v1/ws`
+- `SUBSCRIBE /topic/rooms/{roomId}/chat/events`
+- `SEND /app/rooms/{roomId}/chat/messages`
+
+HTTP API 테스트와 분리해 실행한다. 연결 수, 메시지 전송 주기, 테스트 시간을 각각 단계적으로 증가시킨다.
+
+## 7. 현재 범위에서 제외
 
 이번 성능 테스트 시나리오 작성 범위에서 제외한다.
 
 - 결제 API 부하 테스트
 - 실제 운영 서버 고부하 테스트 실행
-- WebSocket 대규모 접속 테스트
+- 운영 서버 WebSocket 한계·장시간 soak 테스트
 - Prometheus/Grafana 도입
 - 성능 병목 리팩토링
 - CI 성능 테스트 gate 적용

@@ -5,6 +5,11 @@ import { check } from "k6";
 import exec from "k6/execution";
 import { Counter, Rate, Trend } from "k6/metrics";
 
+// 실행 전 준비:
+// 1. ROOM_ID_BASE부터 ROOM_COUNT만큼 OPEN 토론방을 생성한다.
+// 2. USER_ID_BASE부터 INITIAL_USERS 이상 사용자를 생성한다.
+// 3. 생성한 사용자의 token_version을 TOKEN_VERSION과 맞춘다.
+// 4. 발언권 신청·순번 조회·종료가 같은 데이터 집합에서 이어지므로 다른 스크립트와 ID 범위를 분리한다.
 const baseUrl = __ENV.BASE_URL || "http://127.0.0.1:8080";
 const jwtSecret =
     __ENV.JWT_SECRET || "local-development-jwt-secret-key-must-be-at-least-32-bytes";

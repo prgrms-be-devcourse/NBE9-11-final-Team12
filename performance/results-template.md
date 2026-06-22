@@ -7,8 +7,6 @@
 | 테스트 일시 |  |
 | 작성자 |  |
 | 대상 환경 | local / dev / prod |
-| Git branch |  |
-| Git commit |  |
 | Backend URL |  |
 | DB | local / RDS / 기타 |
 | Redis | local / ElastiCache / 기타 |
@@ -28,7 +26,9 @@
 | VU |  |
 | duration |  |
 | 대상 API |  |
-| 테스트 데이터 |  |
+| 테스트 사용자 ID 범위 |  |
+| 테스트 토론방 ID |  |
+| 테스트 의견 ID 범위 |  |
 
 ## 4. 주요 결과
 
