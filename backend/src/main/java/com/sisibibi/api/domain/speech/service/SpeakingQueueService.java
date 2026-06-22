@@ -355,101 +355,137 @@ public class SpeakingQueueService {
 
     private void rebuildRedisProjection(Long roomId) {
         for (int attempt = 1; attempt <= REDIS_PROJECTION_REBUILD_MAX_ATTEMPTS; attempt++) {
-            long expectedVersion;
-            try {
-                expectedVersion = redisSpeakingQueueRepository.currentProjectionVersion(roomId);
-            } catch (RuntimeException versionException) {
-                if (attempt == REDIS_PROJECTION_REBUILD_MAX_ATTEMPTS) {
-                    log.error(
-                            "Failed to read speaking Redis projection version. "
-                                    + "roomId={}, attempts={}",
-                            roomId,
-                            attempt,
-                            versionException
-                    );
-                    return;
-                }
-                log.warn(
-                        "Retrying speaking Redis projection version read. "
-                                + "roomId={}, attempt={}",
+            RedisProjectionRebuildAttemptResult attemptResult =
+                    rebuildRedisProjectionOnce(roomId, attempt);
+            if (attemptResult.isFinished()) {
+                return;
+            }
+            if (!sleepBeforeRedisProjectionRebuildRetry(roomId, attempt)) {
+                return;
+            }
+        }
+    }
+
+    private RedisProjectionRebuildAttemptResult rebuildRedisProjectionOnce(
+            Long roomId,
+            int attempt
+    ) {
+        Optional<Long> expectedVersion = currentProjectionVersionForRebuild(roomId, attempt);
+        if (expectedVersion.isEmpty()) {
+            return retryOrStopRedisProjectionRebuild(attempt);
+        }
+
+        Optional<RedisProjectionSource> projectionSource = projectionSourceForRebuild(roomId);
+        if (projectionSource.isEmpty()) {
+            return RedisProjectionRebuildAttemptResult.STOP;
+        }
+
+        return replaceRedisProjectionForRebuild(
+                roomId,
+                projectionSource.get(),
+                expectedVersion.get(),
+                attempt
+        );
+    }
+
+    private Optional<Long> currentProjectionVersionForRebuild(Long roomId, int attempt) {
+        try {
+            return Optional.of(redisSpeakingQueueRepository.currentProjectionVersion(roomId));
+        } catch (RuntimeException versionException) {
+            if (attempt == REDIS_PROJECTION_REBUILD_MAX_ATTEMPTS) {
+                log.error(
+                        "Failed to read speaking Redis projection version. "
+                                + "roomId={}, attempts={}",
                         roomId,
                         attempt,
                         versionException
                 );
-                if (!sleepBeforeRedisProjectionRebuildRetry(roomId, attempt)) {
-                    return;
-                }
-                continue;
+                return Optional.empty();
             }
+            log.warn(
+                    "Retrying speaking Redis projection version read. "
+                            + "roomId={}, attempt={}",
+                    roomId,
+                    attempt,
+                    versionException
+            );
+            return Optional.empty();
+        }
+    }
 
-            List<SpeakingQueue> waitingQueues;
-            Optional<SpeakingQueue> currentSpeaker;
-            try {
-                waitingQueues =
-                        speakingQueuePersistenceService
-                                .findWaitingRequestsForRedisProjection(roomId);
-                currentSpeaker =
-                        speakingQueuePersistenceService
-                                .findCurrentSpeakerForRedisProjection(roomId);
-            } catch (RuntimeException projectionSourceException) {
-                log.error(
-                        "Failed to load speaking Redis projection source. roomId={}",
-                        roomId,
-                        projectionSourceException
-                );
-                return;
-            }
+    private Optional<RedisProjectionSource> projectionSourceForRebuild(Long roomId) {
+        try {
+            return Optional.of(new RedisProjectionSource(
+                    speakingQueuePersistenceService.findWaitingRequestsForRedisProjection(roomId),
+                    speakingQueuePersistenceService.findCurrentSpeakerForRedisProjection(roomId)
+            ));
+        } catch (RuntimeException projectionSourceException) {
+            log.error(
+                    "Failed to load speaking Redis projection source. roomId={}",
+                    roomId,
+                    projectionSourceException
+            );
+            return Optional.empty();
+        }
+    }
 
-            try {
-                boolean replaced =
-                        redisSpeakingQueueRepository.replaceRoomProjectionIfVersionMatches(
-                                roomId,
-                                waitingQueues,
-                                currentSpeaker,
-                                expectedVersion
-                        );
-                if (!replaced) {
-                    log.warn(
-                            "Skipped stale speaking Redis projection rebuild. "
-                                    + "roomId={}, attempt={}, expectedVersion={}",
+    private RedisProjectionRebuildAttemptResult replaceRedisProjectionForRebuild(
+            Long roomId,
+            RedisProjectionSource projectionSource,
+            long expectedVersion,
+            int attempt
+    ) {
+        try {
+            boolean replaced =
+                    redisSpeakingQueueRepository.replaceRoomProjectionIfVersionMatches(
                             roomId,
-                            attempt,
+                            projectionSource.waitingQueues(),
+                            projectionSource.currentSpeaker(),
                             expectedVersion
                     );
-                    if (!sleepBeforeRedisProjectionRebuildRetry(roomId, attempt)) {
-                        return;
-                    }
-                    continue;
-                }
-                log.info(
-                        "Speaking Redis projection rebuilt. "
+            if (!replaced) {
+                log.warn(
+                        "Skipped stale speaking Redis projection rebuild. "
                                 + "roomId={}, attempt={}, expectedVersion={}",
                         roomId,
                         attempt,
                         expectedVersion
                 );
-                return;
-            } catch (RuntimeException rebuildException) {
-                if (attempt == REDIS_PROJECTION_REBUILD_MAX_ATTEMPTS) {
-                    log.error(
-                            "Failed to rebuild speaking Redis projection. roomId={}, attempts={}",
-                            roomId,
-                            attempt,
-                            rebuildException
-                    );
-                    return;
-                }
-                log.warn(
-                        "Retrying speaking Redis projection rebuild. roomId={}, attempt={}",
+                return RedisProjectionRebuildAttemptResult.RETRY;
+            }
+            log.info(
+                    "Speaking Redis projection rebuilt. "
+                            + "roomId={}, attempt={}, expectedVersion={}",
+                    roomId,
+                    attempt,
+                    expectedVersion
+            );
+            return RedisProjectionRebuildAttemptResult.SUCCESS;
+        } catch (RuntimeException rebuildException) {
+            if (attempt == REDIS_PROJECTION_REBUILD_MAX_ATTEMPTS) {
+                log.error(
+                        "Failed to rebuild speaking Redis projection. roomId={}, attempts={}",
                         roomId,
                         attempt,
                         rebuildException
                 );
-                if (!sleepBeforeRedisProjectionRebuildRetry(roomId, attempt)) {
-                    return;
-                }
+                return RedisProjectionRebuildAttemptResult.STOP;
             }
+            log.warn(
+                    "Retrying speaking Redis projection rebuild. roomId={}, attempt={}",
+                    roomId,
+                    attempt,
+                    rebuildException
+            );
+            return RedisProjectionRebuildAttemptResult.RETRY;
         }
+    }
+
+    private RedisProjectionRebuildAttemptResult retryOrStopRedisProjectionRebuild(int attempt) {
+        if (attempt == REDIS_PROJECTION_REBUILD_MAX_ATTEMPTS) {
+            return RedisProjectionRebuildAttemptResult.STOP;
+        }
+        return RedisProjectionRebuildAttemptResult.RETRY;
     }
 
     private boolean sleepBeforeRedisProjectionRebuildRetry(Long roomId, int attempt) {
@@ -477,6 +513,22 @@ public class SpeakingQueueService {
             );
             return false;
         }
+    }
+
+    private enum RedisProjectionRebuildAttemptResult {
+        SUCCESS,
+        RETRY,
+        STOP;
+
+        private boolean isFinished() {
+            return this != RETRY;
+        }
+    }
+
+    private record RedisProjectionSource(
+            List<SpeakingQueue> waitingQueues,
+            Optional<SpeakingQueue> currentSpeaker
+    ) {
     }
 
 }
