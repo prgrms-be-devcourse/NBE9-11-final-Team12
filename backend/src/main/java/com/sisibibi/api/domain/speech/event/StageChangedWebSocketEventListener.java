@@ -2,9 +2,9 @@ package com.sisibibi.api.domain.speech.event;
 
 import com.sisibibi.api.domain.speech.dto.event.StageChangedEvent;
 import com.sisibibi.api.global.config.AsyncConfig;
+import com.sisibibi.api.global.realtime.RealtimeEventPublisher;
 import com.sisibibi.api.global.websocket.RoomWebSocketDestinations;
 import com.sisibibi.api.global.websocket.WebSocketEventEnvelope;
-import com.sisibibi.api.global.websocket.WebSocketEventPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -17,7 +17,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
 @RequiredArgsConstructor
 public class StageChangedWebSocketEventListener {
 
-    private final WebSocketEventPublisher webSocketEventPublisher;
+    private final RealtimeEventPublisher realtimeEventPublisher;
 
     @Async(AsyncConfig.DOMAIN_EVENT_TASK_EXECUTOR)
     @TransactionalEventListener(
@@ -26,7 +26,7 @@ public class StageChangedWebSocketEventListener {
     )
     public void handle(StageChangedEvent event) {
         try {
-            webSocketEventPublisher.publish(
+            realtimeEventPublisher.publish(
                     RoomWebSocketDestinations.stageEvents(event.roomId()),
                     WebSocketEventEnvelope.of(
                             event.type(),

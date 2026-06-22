@@ -8,7 +8,7 @@ public final class RoomWebSocketDestinations {
 
     private static final Pattern ALLOWED_ROOM_TOPIC_PATTERN = Pattern.compile(
             "^/topic/rooms/(\\d+)/"
-                    + "(chat/messages|stage/events|participants/events|room/events|"
+                    + "(chat/events|stage/events|participants/events|room/events|"
                     + "speech-reactions/events)$"
     );
     private static final Pattern ROOM_TOPIC_PATTERN = Pattern.compile("^/topic/rooms/[^/]+/.*$");
@@ -16,8 +16,8 @@ public final class RoomWebSocketDestinations {
     private RoomWebSocketDestinations() {
     }
 
-    public static String chatMessages(Long roomId) {
-        return "/topic/rooms/" + roomId + "/chat/messages";
+    public static String chatEvents(Long roomId) {
+        return "/topic/rooms/" + roomId + "/chat/events";
     }
 
     public static String stageEvents(Long roomId) {

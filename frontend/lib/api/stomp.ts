@@ -23,6 +23,22 @@ type RoomEventSubscriptionOptions<TEvent> = {
   onError?: (message: string) => void
 }
 
+type StompFrame = {
+  command: string
+  headers: Record<string, string>
+  body: string
+}
+
+const WS_ENDPOINT = "/api/v1/ws"
+
+function chatEventsDestination(roomId: number) {
+  return `/topic/rooms/${roomId}/chat/events`
+}
+
+function chatSendDestination(roomId: number) {
+  return `/app/rooms/${roomId}/chat/messages`
+}
+
 function wsUrl(path: string) {
   const url = new URL(API_BASE_URL)
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
@@ -36,13 +52,14 @@ function frame(command: string, headers: Record<string, string> = {}, body = "")
   return [command, ...headerLines, "", body].join("\n") + "\0"
 }
 
-function parseFrames(data: string) {
+function parseFrames(data: string): StompFrame[] {
   return data
     .split("\0")
-    .map((chunk) => chunk.trim())
     .filter(Boolean)
     .map((chunk) => {
-      const [head, ...bodyParts] = chunk.split(/\n\n/)
+      const separator = chunk.indexOf("\n\n")
+      const head = separator >= 0 ? chunk.slice(0, separator) : chunk
+      const body = separator >= 0 ? chunk.slice(separator + 2) : ""
       const [command, ...headerLines] = head.split("\n")
       const headers = Object.fromEntries(
         headerLines
@@ -54,12 +71,24 @@ function parseFrames(data: string) {
           .filter((line): line is [string, string] => Boolean(line)),
       )
 
-      return { command, headers, body: bodyParts.join("\n\n") }
+      return { command, headers, body }
     })
 }
 
+function parseJsonBody<TEvent>(
+  stompFrame: StompFrame,
+  onError?: (message: string) => void,
+): TEvent | null {
+  try {
+    return JSON.parse(stompFrame.body) as TEvent
+  } catch {
+    onError?.("Invalid WebSocket event payload.")
+    return null
+  }
+}
+
 export function subscribeRoomChat(roomId: number, options: ChatSubscriptionOptions): ChatSubscription {
-  const socket = new WebSocket(wsUrl("/api/v1/ws"))
+  const socket = new WebSocket(wsUrl(WS_ENDPOINT))
   let connected = false
 
   socket.addEventListener("open", () => {
@@ -78,13 +107,16 @@ export function subscribeRoomChat(roomId: number, options: ChatSubscriptionOptio
         options.onStatus?.(true)
         socket.send(frame("SUBSCRIBE", {
           id: `room-${roomId}-chat`,
-          destination: `/topic/rooms/${roomId}/chat/messages`,
+          destination: chatEventsDestination(roomId),
           ack: "auto",
         }))
       }
 
       if (stompFrame.command === "MESSAGE" && stompFrame.body) {
-        options.onEvent(JSON.parse(stompFrame.body) as ChatEvent)
+        const event = parseJsonBody<ChatEvent>(stompFrame, options.onError)
+        if (event) {
+          options.onEvent(event)
+        }
       }
 
       if (stompFrame.command === "ERROR") {
@@ -108,7 +140,7 @@ export function subscribeRoomChat(roomId: number, options: ChatSubscriptionOptio
       socket.send(frame(
         "SEND",
         {
-          destination: `/app/rooms/${roomId}/chat/messages`,
+          destination: chatSendDestination(roomId),
           "content-type": "application/json",
         },
         JSON.stringify({ content }),
@@ -128,7 +160,7 @@ export function subscribeRoomEvents<TEvent>(
   roomId: number,
   options: RoomEventSubscriptionOptions<TEvent>,
 ): RoomEventSubscription {
-  const socket = new WebSocket(wsUrl("/api/v1/ws"))
+  const socket = new WebSocket(wsUrl(WS_ENDPOINT))
   let connected = false
 
   socket.addEventListener("open", () => {
@@ -155,7 +187,10 @@ export function subscribeRoomEvents<TEvent>(
       }
 
       if (stompFrame.command === "MESSAGE" && stompFrame.body) {
-        options.onEvent(JSON.parse(stompFrame.body) as TEvent, stompFrame.headers.destination ?? "")
+        const event = parseJsonBody<TEvent>(stompFrame, options.onError)
+        if (event) {
+          options.onEvent(event, stompFrame.headers.destination ?? "")
+        }
       }
 
       if (stompFrame.command === "ERROR") {

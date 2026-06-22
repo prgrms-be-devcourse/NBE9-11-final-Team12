@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { ApiError } from "@/lib/api/client"
 import { chatApi } from "@/lib/api/services"
 import { subscribeRoomChat } from "@/lib/api/stomp"
-import type { ChatEvent, ChatMessage as ApiChatMessage } from "@/lib/api/types"
+import type { ChatMessageEventPayload, ChatMessage as ApiChatMessage } from "@/lib/api/types"
 import { useAuth } from "@/components/auth-provider"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -51,7 +51,7 @@ function toViewMessage(message: ApiChatMessage): ChatViewMessage {
   }
 }
 
-function eventToViewMessage(event: ChatEvent): ChatViewMessage | null {
+function eventToViewMessage(event: ChatMessageEventPayload): ChatViewMessage | null {
   if (!event.content) return null
   return toViewMessage({
     messageId: event.messageId,
@@ -105,12 +105,12 @@ export function ChatPanel({ roomId }: { roomId: number }) {
       },
       onEvent: (event) => {
         if (!mounted) return
-        if (event.type === "MESSAGE_DELETED") {
-          setMessages((prev) => prev.filter((message) => message.id !== String(event.messageId)))
+        if (event.eventType === "MESSAGE_DELETED") {
+          setMessages((prev) => prev.filter((message) => message.id !== String(event.data.messageId)))
           return
         }
 
-        const nextMessage = eventToViewMessage(event)
+        const nextMessage = eventToViewMessage(event.data)
         if (!nextMessage) return
         setMessages((prev) => {
           if (prev.some((message) => message.id === nextMessage.id)) return prev

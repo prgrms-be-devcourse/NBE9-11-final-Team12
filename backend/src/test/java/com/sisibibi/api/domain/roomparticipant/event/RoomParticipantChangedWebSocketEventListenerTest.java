@@ -3,9 +3,9 @@ package com.sisibibi.api.domain.roomparticipant.event;
 import com.sisibibi.api.domain.roomparticipant.dto.event.RoomParticipantChangedEvent;
 import com.sisibibi.api.domain.roomparticipant.dto.event.RoomParticipantEventPayload;
 import com.sisibibi.api.domain.roomparticipant.dto.event.RoomParticipantEventType;
+import com.sisibibi.api.global.realtime.RealtimeEventPublisher;
 import com.sisibibi.api.global.websocket.RoomWebSocketDestinations;
 import com.sisibibi.api.global.websocket.WebSocketEventEnvelope;
-import com.sisibibi.api.global.websocket.WebSocketEventPublisher;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -16,10 +16,10 @@ import static org.mockito.Mockito.verify;
 
 class RoomParticipantChangedWebSocketEventListenerTest {
 
-    private final WebSocketEventPublisher webSocketEventPublisher =
-            mock(WebSocketEventPublisher.class);
+    private final RealtimeEventPublisher realtimeEventPublisher =
+            mock(RealtimeEventPublisher.class);
     private final RoomParticipantChangedWebSocketEventListener listener =
-            new RoomParticipantChangedWebSocketEventListener(webSocketEventPublisher);
+            new RoomParticipantChangedWebSocketEventListener(realtimeEventPublisher);
 
     @Test
     void handle_publishesParticipantEnvelopeToParticipantEventTopic() {
@@ -39,7 +39,7 @@ class RoomParticipantChangedWebSocketEventListenerTest {
 
         listener.handle(event);
 
-        verify(webSocketEventPublisher).publish(
+        verify(realtimeEventPublisher).publish(
                 org.mockito.ArgumentMatchers.eq(RoomWebSocketDestinations.participantEvents(1L)),
                 envelopeCaptor.capture()
         );
@@ -65,7 +65,7 @@ class RoomParticipantChangedWebSocketEventListenerTest {
                 payload
         );
         org.mockito.BDDMockito.willThrow(new RuntimeException("broker down"))
-                .given(webSocketEventPublisher)
+                .given(realtimeEventPublisher)
                 .publish(
                         org.mockito.ArgumentMatchers.eq(
                                 RoomWebSocketDestinations.participantEvents(1L)

@@ -1,4 +1,4 @@
-package com.sisibibi.api.domain.chat.entity;
+package com.sisibibi.api.domain.chat.dto.event;
 
 public enum ChatEventType {
     MESSAGE_CREATED,

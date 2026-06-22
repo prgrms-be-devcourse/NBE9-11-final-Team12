@@ -5,9 +5,9 @@ import com.sisibibi.api.domain.speech.dto.event.StageEventPayload;
 import com.sisibibi.api.domain.speech.dto.event.StageEventType;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
+import com.sisibibi.api.global.realtime.RealtimeEventPublisher;
 import com.sisibibi.api.global.websocket.RoomWebSocketDestinations;
 import com.sisibibi.api.global.websocket.WebSocketEventEnvelope;
-import com.sisibibi.api.global.websocket.WebSocketEventPublisher;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -18,10 +18,10 @@ import static org.mockito.Mockito.verify;
 
 class StageChangedWebSocketEventListenerTest {
 
-    private final WebSocketEventPublisher webSocketEventPublisher =
-            mock(WebSocketEventPublisher.class);
+    private final RealtimeEventPublisher realtimeEventPublisher =
+            mock(RealtimeEventPublisher.class);
     private final StageChangedWebSocketEventListener listener =
-            new StageChangedWebSocketEventListener(webSocketEventPublisher);
+            new StageChangedWebSocketEventListener(realtimeEventPublisher);
 
     @Test
     void handle_publishesStageEnvelopeToStageEventTopic() {
@@ -46,7 +46,7 @@ class StageChangedWebSocketEventListenerTest {
 
         listener.handle(event);
 
-        verify(webSocketEventPublisher).publish(
+        verify(realtimeEventPublisher).publish(
                 org.mockito.ArgumentMatchers.eq(RoomWebSocketDestinations.stageEvents(1L)),
                 envelopeCaptor.capture()
         );
@@ -75,7 +75,7 @@ class StageChangedWebSocketEventListenerTest {
                 payload
         );
         org.mockito.BDDMockito.willThrow(new RuntimeException("broker down"))
-                .given(webSocketEventPublisher)
+                .given(realtimeEventPublisher)
                 .publish(
                         org.mockito.ArgumentMatchers.eq(RoomWebSocketDestinations.stageEvents(1L)),
                         org.mockito.ArgumentMatchers.any()
