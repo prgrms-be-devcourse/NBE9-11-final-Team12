@@ -58,6 +58,10 @@ public class RedisSpeakingQueueRepository {
                     local currentVersion = tonumber(redis.call('GET', KEYS[3]) or '0')
                     local expectedVersion = tonumber(ARGV[1])
 
+                    if #ARGV < 2 or ((#ARGV - 2) % 2) ~= 0 then
+                        return redis.error_reply('Invalid speaking projection arguments')
+                    end
+
                     if currentVersion ~= expectedVersion then
                         return 0
                     end
@@ -71,7 +75,7 @@ public class RedisSpeakingQueueRepository {
                     end
 
                     local index = 3
-                    while index <= #ARGV do
+                    while index < #ARGV do
                         redis.call('ZADD', KEYS[1], ARGV[index + 1], ARGV[index])
                         index = index + 2
                     end
