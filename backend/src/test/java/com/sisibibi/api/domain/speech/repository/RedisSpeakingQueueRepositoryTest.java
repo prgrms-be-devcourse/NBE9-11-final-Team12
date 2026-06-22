@@ -195,6 +195,24 @@ class RedisSpeakingQueueRepositoryTest {
     }
 
     @Test
+    void replaceRoomProjectionIfVersionMatches_recoversCorruptedProjectionVersion() {
+        redisTemplate.opsForValue().set(PROJECTION_VERSION_KEY, "corrupted");
+        SpeakingQueue waiting = waitingRequest(1L, 30L, 3);
+
+        boolean replaced = speakingQueueRepository.replaceRoomProjectionIfVersionMatches(
+                1L,
+                List.of(waiting),
+                Optional.empty(),
+                speakingQueueRepository.currentProjectionVersion(1L)
+        );
+
+        assertThat(replaced).isTrue();
+        assertThat(redisTemplate.opsForZSet().score(QUEUE_KEY, "30")).isEqualTo(3.0);
+        assertThat(redisTemplate.opsForValue().get(PROJECTION_VERSION_KEY)).isEqualTo("1");
+        assertThat(speakingQueueRepository.currentProjectionVersion(1L)).isEqualTo(1L);
+    }
+
+    @Test
     void replaceRoomProjectionIfVersionMatches_clearsCurrentSpeakerWhenRdbHasNoAssignedSpeaker() {
         redisTemplate.opsForValue().set(CURRENT_SPEAKER_KEY, "10");
         long expectedVersion = speakingQueueRepository.currentProjectionVersion(1L);

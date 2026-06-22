@@ -217,6 +217,50 @@ class SpeakingQueueServiceTest {
     }
 
     @Test
+    void requestSpeakingTurn_retriesRedisProjectionRebuildWhenProjectionSourceLoadFails() {
+        SpeakingQueue saved = persistedWaitingRequest(1L, 7L, 15);
+        given(speakingQueuePersistenceService.createWaitingRequest(1L, 7L, SpeechStance.PRO))
+                .willReturn(saved);
+        given(speakingQueueProperties.getTurnDuration())
+                .willReturn(Duration.ofMinutes(2));
+        given(speakingQueuePersistenceService.assignNextSpeaker(
+                eq(1L),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        )).willReturn(Optional.empty());
+        doThrow(new IllegalStateException("redis unavailable"))
+                .when(redisSpeakingQueueRepository)
+                .upsert(1L, 7L, 15);
+        given(speakingQueuePersistenceService.findWaitingRequestsForRedisProjection(1L))
+                .willThrow(new IllegalStateException("temporary source load failure"))
+                .willReturn(List.of(saved));
+        given(speakingQueuePersistenceService.findCurrentSpeakerForRedisProjection(1L))
+                .willReturn(Optional.empty());
+        given(redisSpeakingQueueRepository.replaceRoomProjectionIfVersionMatches(
+                1L,
+                List.of(saved),
+                Optional.empty(),
+                0L
+        )).willReturn(true);
+
+        StageRequestRes response =
+                speakingQueueService.requestSpeakingTurn(1L, 7L, SpeechStance.PRO);
+
+        assertThat(response.status()).isEqualTo(SpeakingQueueStatus.WAITING);
+        verify(speakingQueuePersistenceService, times(2))
+                .findWaitingRequestsForRedisProjection(1L);
+        verify(speakingQueuePersistenceService)
+                .findCurrentSpeakerForRedisProjection(1L);
+        verify(redisSpeakingQueueRepository)
+                .replaceRoomProjectionIfVersionMatches(
+                        1L,
+                        List.of(saved),
+                        Optional.empty(),
+                        0L
+                );
+    }
+
+    @Test
     void requestSpeakingTurn_reloadsRdbSnapshotWhenProjectionVersionChangesBeforeRebuild() {
         SpeakingQueue saved = persistedWaitingRequest(1L, 7L, 15);
         SpeakingQueue laterWaiting = persistedWaitingRequest(1L, 8L, 16);
@@ -276,7 +320,7 @@ class SpeakingQueueServiceTest {
     }
 
     @Test
-    void requestSpeakingTurn_doesNotRetryRedisProjectionWhenProjectionSourceLoadFails() {
+    void requestSpeakingTurn_stopsRedisProjectionRebuildAfterProjectionSourceLoadRetriesFail() {
         SpeakingQueue saved = persistedWaitingRequest(1L, 7L, 15);
         given(speakingQueuePersistenceService.createWaitingRequest(1L, 7L, SpeechStance.PRO))
                 .willReturn(saved);
@@ -297,7 +341,7 @@ class SpeakingQueueServiceTest {
                 speakingQueueService.requestSpeakingTurn(1L, 7L, SpeechStance.PRO);
 
         assertThat(response.status()).isEqualTo(SpeakingQueueStatus.WAITING);
-        verify(speakingQueuePersistenceService)
+        verify(speakingQueuePersistenceService, times(3))
                 .findWaitingRequestsForRedisProjection(1L);
         verify(speakingQueuePersistenceService, never())
                 .findCurrentSpeakerForRedisProjection(1L);

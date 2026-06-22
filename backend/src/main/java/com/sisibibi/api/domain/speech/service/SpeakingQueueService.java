@@ -375,9 +375,10 @@ public class SpeakingQueueService {
             return retryOrStopRedisProjectionRebuild(attempt);
         }
 
-        Optional<RedisProjectionSource> projectionSource = projectionSourceForRebuild(roomId);
+        Optional<RedisProjectionSource> projectionSource =
+                projectionSourceForRebuild(roomId, attempt);
         if (projectionSource.isEmpty()) {
-            return RedisProjectionRebuildAttemptResult.STOP;
+            return retryOrStopRedisProjectionRebuild(attempt);
         }
 
         return replaceRedisProjectionForRebuild(
@@ -413,16 +414,30 @@ public class SpeakingQueueService {
         }
     }
 
-    private Optional<RedisProjectionSource> projectionSourceForRebuild(Long roomId) {
+    private Optional<RedisProjectionSource> projectionSourceForRebuild(
+            Long roomId,
+            int attempt
+    ) {
         try {
             return Optional.of(new RedisProjectionSource(
                     speakingQueuePersistenceService.findWaitingRequestsForRedisProjection(roomId),
                     speakingQueuePersistenceService.findCurrentSpeakerForRedisProjection(roomId)
             ));
         } catch (RuntimeException projectionSourceException) {
-            log.error(
-                    "Failed to load speaking Redis projection source. roomId={}",
+            if (attempt == REDIS_PROJECTION_REBUILD_MAX_ATTEMPTS) {
+                log.error(
+                        "Failed to load speaking Redis projection source. "
+                                + "roomId={}, attempts={}",
+                        roomId,
+                        attempt,
+                        projectionSourceException
+                );
+                return Optional.empty();
+            }
+            log.warn(
+                    "Retrying speaking Redis projection source load. roomId={}, attempt={}",
                     roomId,
+                    attempt,
                     projectionSourceException
             );
             return Optional.empty();

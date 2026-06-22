@@ -62,6 +62,14 @@ public class RedisSpeakingQueueRepository {
                         return redis.error_reply('Invalid speaking projection arguments')
                     end
 
+                    if currentVersion == nil then
+                        currentVersion = 0
+                    end
+
+                    if expectedVersion == nil then
+                        return redis.error_reply('Invalid expected projection version')
+                    end
+
                     if currentVersion ~= expectedVersion then
                         return 0
                     end
@@ -80,7 +88,7 @@ public class RedisSpeakingQueueRepository {
                         index = index + 2
                     end
 
-                    redis.call('INCR', KEYS[3])
+                    redis.call('SET', KEYS[3], currentVersion + 1)
                     return 1
                     """,
                     Long.class
@@ -166,7 +174,11 @@ public class RedisSpeakingQueueRepository {
         if (version == null) {
             return 0L;
         }
-        return Long.parseLong(version);
+        try {
+            return Long.parseLong(version);
+        } catch (NumberFormatException ignored) {
+            return 0L;
+        }
     }
 
     public boolean replaceRoomProjectionIfVersionMatches(
