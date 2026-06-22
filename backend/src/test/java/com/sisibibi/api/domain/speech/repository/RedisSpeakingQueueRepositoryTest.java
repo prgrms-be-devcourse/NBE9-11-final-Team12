@@ -2,6 +2,11 @@ package com.sisibibi.api.domain.speech.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
+import com.sisibibi.api.domain.speech.entity.SpeechStance;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -154,5 +159,58 @@ class RedisSpeakingQueueRepositoryTest {
         speakingQueueRepository.removeCurrentSpeaker(1L, 10L);
 
         assertThat(redisTemplate.opsForValue().get(CURRENT_SPEAKER_KEY)).isEqualTo("20");
+    }
+
+    @Test
+    void replaceRoomProjection_rebuildsWaitingQueueAndCurrentSpeaker() {
+        speakingQueueRepository.upsert(1L, 10L, 1);
+        speakingQueueRepository.upsert(1L, 20L, 2);
+        redisTemplate.opsForValue().set(CURRENT_SPEAKER_KEY, "10");
+        SpeakingQueue waiting = waitingRequest(1L, 30L, 3);
+        SpeakingQueue currentSpeaker = assignedRequest(1L, 40L, 4);
+
+        speakingQueueRepository.replaceRoomProjection(
+                1L,
+                List.of(waiting),
+                Optional.of(currentSpeaker)
+        );
+
+        assertThat(redisTemplate.opsForZSet().score(QUEUE_KEY, "10")).isNull();
+        assertThat(redisTemplate.opsForZSet().score(QUEUE_KEY, "20")).isNull();
+        assertThat(redisTemplate.opsForZSet().score(QUEUE_KEY, "30")).isEqualTo(3.0);
+        assertThat(redisTemplate.opsForValue().get(CURRENT_SPEAKER_KEY)).isEqualTo("40");
+    }
+
+    @Test
+    void replaceRoomProjection_clearsCurrentSpeakerWhenRdbHasNoAssignedSpeaker() {
+        redisTemplate.opsForValue().set(CURRENT_SPEAKER_KEY, "10");
+
+        speakingQueueRepository.replaceRoomProjection(
+                1L,
+                List.of(),
+                Optional.empty()
+        );
+
+        assertThat(redisTemplate.opsForZSet().size(QUEUE_KEY)).isZero();
+        assertThat(redisTemplate.opsForValue().get(CURRENT_SPEAKER_KEY)).isNull();
+    }
+
+    private SpeakingQueue waitingRequest(Long roomId, Long userId, int queueOrder) {
+        return SpeakingQueue.waiting(
+                roomId,
+                userId,
+                queueOrder,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+    }
+
+    private SpeakingQueue assignedRequest(Long roomId, Long userId, int queueOrder) {
+        SpeakingQueue speakingQueue = waitingRequest(roomId, userId, queueOrder);
+        speakingQueue.assign(
+                LocalDateTime.of(2026, 6, 12, 11, 31),
+                LocalDateTime.of(2026, 6, 12, 11, 34)
+        );
+        return speakingQueue;
     }
 }

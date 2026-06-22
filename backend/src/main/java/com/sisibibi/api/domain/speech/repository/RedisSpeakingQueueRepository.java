@@ -1,6 +1,9 @@
 package com.sisibibi.api.domain.speech.repository;
 
+import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -27,6 +30,28 @@ public class RedisSpeakingQueueRepository {
                         return redis.call('DEL', KEYS[1])
                     end
                     return 0
+                    """,
+                    Long.class
+            );
+
+    private static final DefaultRedisScript<Long> REPLACE_ROOM_PROJECTION_SCRIPT =
+            new DefaultRedisScript<>(
+                    """
+                    redis.call('DEL', KEYS[1])
+                    redis.call('DEL', KEYS[2])
+
+                    local currentSpeakerUserId = ARGV[1]
+                    if currentSpeakerUserId ~= '' then
+                        redis.call('SET', KEYS[2], currentSpeakerUserId)
+                    end
+
+                    local index = 2
+                    while index <= #ARGV do
+                        redis.call('ZADD', KEYS[1], ARGV[index + 1], ARGV[index])
+                        index = index + 2
+                    end
+
+                    return 1
                     """,
                     Long.class
             );
@@ -94,6 +119,32 @@ public class RedisSpeakingQueueRepository {
                 REMOVE_CURRENT_SPEAKER_SCRIPT,
                 List.of(currentSpeakerKey(roomId)),
                 userId.toString()
+        );
+    }
+
+    public void replaceRoomProjection(
+            Long roomId,
+            List<SpeakingQueue> waitingQueues,
+            Optional<SpeakingQueue> currentSpeaker
+    ) {
+        List<String> arguments = new ArrayList<>();
+        arguments.add(currentSpeaker
+                .map(SpeakingQueue::getUserId)
+                .map(String::valueOf)
+                .orElse(""));
+
+        for (SpeakingQueue waitingQueue : waitingQueues) {
+            arguments.add(waitingQueue.getUserId().toString());
+            arguments.add(Objects.requireNonNull(
+                    waitingQueue.getQueueOrder(),
+                    "Queue order is required to rebuild Redis speaking queue."
+            ).toString());
+        }
+
+        redisTemplate.execute(
+                REPLACE_ROOM_PROJECTION_SCRIPT,
+                List.of(queueKey(roomId), currentSpeakerKey(roomId)),
+                arguments.toArray(Object[]::new)
         );
     }
 
