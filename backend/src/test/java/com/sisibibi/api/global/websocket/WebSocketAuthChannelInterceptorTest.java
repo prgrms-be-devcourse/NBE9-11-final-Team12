@@ -82,7 +82,7 @@ class WebSocketAuthChannelInterceptorTest {
                 2L,
                 RoomParticipantStatus.JOINED
         )).willReturn(true);
-        Message<byte[]> message = message(StompCommand.SUBSCRIBE, "/topic/rooms/1/chat/messages", user, null);
+        Message<byte[]> message = message(StompCommand.SUBSCRIBE, "/topic/rooms/1/chat/events", user, null);
 
         Message<?> result = interceptor.preSend(message, null);
 
@@ -131,7 +131,7 @@ class WebSocketAuthChannelInterceptorTest {
                 2L,
                 RoomParticipantStatus.JOINED
         )).willReturn(false);
-        Message<byte[]> message = message(StompCommand.SUBSCRIBE, "/topic/rooms/1/chat/messages", user, null);
+        Message<byte[]> message = message(StompCommand.SUBSCRIBE, "/topic/rooms/1/chat/events", user, null);
 
         assertThatThrownBy(() -> interceptor.preSend(message, null))
                 .isInstanceOf(AccessDeniedException.class);

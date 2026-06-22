@@ -138,7 +138,7 @@ export type ChatMessageCursorPage = {
 
 export type ChatEventType = "MESSAGE_CREATED" | "MESSAGE_DELETED"
 
-export type ChatEvent = {
+export type ChatMessageEventPayload = {
   type: ChatEventType
   messageId: number
   roomId: number
@@ -148,6 +148,8 @@ export type ChatEvent = {
   createdAt: string
   deletedAt: string | null
 }
+
+export type ChatEvent = WebSocketEventEnvelope<ChatMessageEventPayload, ChatEventType>
 
 export type SpeakingQueueStatus = "WAITING" | "ASSIGNED" | "CANCELED" | "COMPLETED"
 

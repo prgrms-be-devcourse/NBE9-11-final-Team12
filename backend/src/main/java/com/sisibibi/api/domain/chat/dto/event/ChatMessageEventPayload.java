@@ -1,10 +1,9 @@
-package com.sisibibi.api.domain.chat.dto.response;
+package com.sisibibi.api.domain.chat.dto.event;
 
-import com.sisibibi.api.domain.chat.entity.ChatEventType;
 import com.sisibibi.api.domain.chat.entity.ChatMessage;
 import java.time.LocalDateTime;
 
-public record ChatEventRes(
+public record ChatMessageEventPayload(
         ChatEventType type,
         Long messageId,
         Long roomId,
@@ -15,8 +14,8 @@ public record ChatEventRes(
         LocalDateTime deletedAt
 ) {
 
-    public static ChatEventRes created(ChatMessage message) {
-        return new ChatEventRes(
+    public static ChatMessageEventPayload created(ChatMessage message) {
+        return new ChatMessageEventPayload(
                 ChatEventType.MESSAGE_CREATED,
                 message.getId(),
                 message.getRoomId(),
@@ -28,8 +27,8 @@ public record ChatEventRes(
         );
     }
 
-    public static ChatEventRes deleted(ChatMessage message) {
-        return new ChatEventRes(
+    public static ChatMessageEventPayload deleted(ChatMessage message) {
+        return new ChatMessageEventPayload(
                 ChatEventType.MESSAGE_DELETED,
                 message.getId(),
                 message.getRoomId(),

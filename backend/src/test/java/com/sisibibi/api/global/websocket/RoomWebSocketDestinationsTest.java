@@ -8,8 +8,8 @@ class RoomWebSocketDestinationsTest {
 
     @Test
     void roomTopics_followWebSocketContract() {
-        assertThat(RoomWebSocketDestinations.chatMessages(1L))
-                .isEqualTo("/topic/rooms/1/chat/messages");
+        assertThat(RoomWebSocketDestinations.chatEvents(1L))
+                .isEqualTo("/topic/rooms/1/chat/events");
         assertThat(RoomWebSocketDestinations.stageEvents(1L))
                 .isEqualTo("/topic/rooms/1/stage/events");
         assertThat(RoomWebSocketDestinations.participantEvents(1L))
@@ -23,7 +23,7 @@ class RoomWebSocketDestinationsTest {
     @Test
     void findAllowedRoomTopicId_returnsRoomId_forWhitelistedRoomTopics() {
         assertThat(RoomWebSocketDestinations.findAllowedRoomTopicId(
-                "/topic/rooms/7/chat/messages"
+                "/topic/rooms/7/chat/events"
         )).contains(7L);
         assertThat(RoomWebSocketDestinations.findAllowedRoomTopicId(
                 "/topic/rooms/7/stage/events"
