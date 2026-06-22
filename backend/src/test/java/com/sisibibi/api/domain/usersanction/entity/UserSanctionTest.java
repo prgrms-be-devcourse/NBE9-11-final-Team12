@@ -63,6 +63,22 @@ class UserSanctionTest {
     }
 
     @Test
+    void create_allowsAccountSuspensionWithoutEndTime() {
+        UserSanction sanction = UserSanction.create(
+                10L,
+                99L,
+                null,
+                UserSanctionType.ACCOUNT_SUSPENSION,
+                "반복적인 운영 정책 위반",
+                NOW,
+                null
+        );
+
+        assertThat(sanction.isActiveAt(NOW)).isTrue();
+        assertThat(sanction.stateAt(NOW)).isEqualTo(UserSanctionState.ACTIVE);
+    }
+
+    @Test
     void create_throwsInvalidPeriod_whenRestrictionExceedsThirtyDays() {
         assertThatThrownBy(() -> UserSanction.create(
                 10L,

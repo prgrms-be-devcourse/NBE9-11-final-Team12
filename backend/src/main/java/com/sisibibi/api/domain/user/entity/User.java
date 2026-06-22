@@ -79,4 +79,12 @@ public class User {
     public void changeNickname(String nickname) {
         this.nickname = nickname;
     }
+
+    public void ban() {
+        this.status = UserStatus.BANNED;
+    }
+
+    public void activate() {
+        this.status = UserStatus.ACTIVE;
+    }
 }
