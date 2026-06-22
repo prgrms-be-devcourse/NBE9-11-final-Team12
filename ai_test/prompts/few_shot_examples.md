@@ -1,0 +1,124 @@
+### 입력
+
+{
+  "topic": "AI 면접 도입",
+  "description": "기업 채용 과정에서 AI 면접을 도입해야 하는지에 대한 예시 토론",
+  "totalTurns": 48,
+  "stanceCounts": {
+    "PRO": 19,
+    "CON": 18,
+    "NEUTRAL": 11
+  },
+  "clusterMeta": {
+    "algorithm": "tfidf+kmeans",
+    "vectorizer": "word_ngram+char_ngram_tfidf",
+    "grouping": "stance_then_topic",
+    "clusterCountStrategy": "stance_then_topic",
+    "selectedClusterCount": 3,
+    "candidateScores": [],
+    "groupScores": [
+      {
+        "stance": "PRO",
+        "speechCount": 19,
+        "selectedClusterCount": 1,
+        "strategy": "adaptive_silhouette",
+        "candidateScores": []
+      },
+      {
+        "stance": "CON",
+        "speechCount": 18,
+        "selectedClusterCount": 1,
+        "strategy": "adaptive_silhouette",
+        "candidateScores": []
+      },
+      {
+        "stance": "NEUTRAL",
+        "speechCount": 11,
+        "selectedClusterCount": 1,
+        "strategy": "adaptive_silhouette",
+        "candidateScores": []
+      }
+    ]
+  },
+  "clusters": [
+    {
+      "clusterId": 1,
+      "stanceGroup": "PRO",
+      "label": "채용 효율 / 평가 표준화 / 시간 절감",
+      "memberCount": 13,
+      "stanceDistribution": {
+        "PRO": 9,
+        "CON": 2,
+        "NEUTRAL": 2
+      },
+      "keywords": [
+        "채용 효율",
+        "평가 표준화",
+        "시간 절감",
+        "반복 업무"
+      ],
+      "summary": "찬성 의견이 많은 묶음입니다.",
+      "representativeOpinions": [
+        "[3] user-2 / PRO: AI 면접은 많은 지원자를 같은 기준으로 빠르게 평가할 수 있어 채용 담당자의 반복 업무를 줄여줍니다.",
+        "[14] user-8 / PRO: 질문과 평가 항목이 표준화되면 면접관의 기분이나 개인적 선호에 따른 편차를 줄일 수 있습니다."
+      ]
+    },
+    {
+      "clusterId": 2,
+      "stanceGroup": "CON",
+      "label": "알고리즘 편향 / 설명 가능성 / 개인정보",
+      "memberCount": 14,
+      "stanceDistribution": {
+        "PRO": 1,
+        "CON": 10,
+        "NEUTRAL": 3
+      },
+      "keywords": [
+        "알고리즘 편향",
+        "설명 가능성",
+        "개인정보",
+        "자동 평가"
+      ],
+      "summary": "반대 의견이 많은 묶음입니다.",
+      "representativeOpinions": [
+        "[6] user-5 / CON: AI가 과거 채용 데이터를 학습하면 기존 조직의 성별, 학력, 연령 편향을 그대로 반복할 수 있습니다.",
+        "[21] user-11 / CON: 지원자는 왜 낮은 점수를 받았는지 설명받기 어렵고, 표정이나 목소리 같은 민감한 정보가 과도하게 수집될 수 있습니다."
+      ]
+    },
+    {
+      "clusterId": 3,
+      "stanceGroup": "NEUTRAL",
+      "label": "보조 도구 / 사람 검토 / 이의제기",
+      "memberCount": 13,
+      "stanceDistribution": {
+        "PRO": 4,
+        "CON": 3,
+        "NEUTRAL": 6
+      },
+      "keywords": [
+        "보조 도구",
+        "사람 검토",
+        "이의제기",
+        "평가 기준 공개"
+      ],
+      "summary": "중립 또는 절충 의견이 많은 묶음입니다.",
+      "representativeOpinions": [
+        "[30] user-4 / NEUTRAL: AI 면접은 최종 합격 여부를 결정하기보다 질문 추천, 답변 요약, 일정 관리 같은 보조 역할에 먼저 쓰는 편이 안전합니다.",
+        "[42] user-9 / NEUTRAL: AI 평가 결과에 대해 사람이 재검토하고 지원자가 이의제기할 수 있는 절차가 있어야 합니다."
+      ]
+    }
+  ]
+}
+  
+### 출력
+{
+"핵심 한줄": "AI 면접은 채용 효율과 평가 표준화를 높일 수 있지만, 알고리즘 편향과 설명 가능성 부족을 막기 위한 사람의 검토 절차가 필요하다는 의견이 맞섰다.",
+"핵심 쟁점": [
+"AI 면접이 평가 기준을 일관되게 적용해 채용 공정성을 높이는지, 기존 데이터의 편향을 반복해 새로운 차별을 만들 수 있는지",
+"표정, 음성, 시선 같은 비언어적 정보를 지원자의 역량 판단 근거로 사용하는 것이 타당한지",
+"기업의 채용 효율성과 지원자의 설명받을 권리, 이의제기권, 개인정보 보호를 어떻게 함께 보장할 것인지"
+],
+"AI 종합 정리": "찬성 측은 AI 면접이 많은 지원자를 동일한 기준으로 평가하고 반복적인 초기 검토 업무를 줄여 채용 담당자가 핵심 판단에 집중할 수 있다고 보았다. 반대 측은 AI가 과거 채용 데이터의 편향을 학습하면 특정 성별, 학력, 연령, 말투를 가진 지원자에게 불리하게 작동할 수 있다고 우려했다. 중립 의견은 AI를 단독 평가자로 쓰기보다 질문 추천, 답변 요약, 일정 관리, 평가 보조처럼 제한된 역할에 먼저 적용해야 한다고 제안했다. 전체적으로는 AI 활용 여부와 평가 기준 공개, 정기적인 편향 점검, 개인정보 최소 수집, 사람에 의한 재검토 절차가 함께 필요하다는 논의가 중심을 이뤘다.",
+"공통 의견": "찬반 모두 채용 과정의 시간과 비용을 줄일 필요가 있다는 점에는 대체로 동의한다. 또한 AI 판단을 아무 검토 없이 최종 결과로 사용해서는 안 되며, 지원자가 평가 기준과 결과에 대해 설명을 요구하거나 이의를 제기할 수 있어야 한다는 점도 공통적으로 나타난다.",
+"AI의 개인적 소견": "AI는 면접관을 대체하는 최종 평가자보다 채용 과정을 보조하는 도구로 도입되는 것이 적절하다고 본다. 특히 표정이나 목소리처럼 직무 능력과 직접 관련성이 불명확한 정보는 평가 비중을 낮추고, 구조화된 답변과 직무 과제처럼 검증 가능한 자료를 중심으로 활용해야 한다. 기업은 AI 결과만으로 자동 탈락을 결정하기보다 사람이 재검토하는 절차를 두고, 편향 점검과 개인정보 최소 수집 원칙을 공개해야 한다."
+}
