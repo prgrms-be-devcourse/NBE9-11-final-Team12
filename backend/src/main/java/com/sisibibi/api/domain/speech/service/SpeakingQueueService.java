@@ -288,6 +288,7 @@ public class SpeakingQueueService {
                     speakingQueue.getQueueOrder(),
                     synchronizationException
             );
+            rebuildRedisProjection(speakingQueue.getRoomId());
         }
     }
 
@@ -306,6 +307,7 @@ public class SpeakingQueueService {
                     speakingQueue.getQueueOrder(),
                     synchronizationException
             );
+            rebuildRedisProjection(speakingQueue.getRoomId());
         }
     }
 
@@ -324,6 +326,7 @@ public class SpeakingQueueService {
                     speakingQueue.getQueueOrder(),
                     synchronizationException
             );
+            rebuildRedisProjection(speakingQueue.getRoomId());
         }
     }
 
@@ -341,6 +344,29 @@ public class SpeakingQueueService {
                     speakingQueue.getUserId(),
                     speakingQueue.getQueueOrder(),
                     synchronizationException
+            );
+            rebuildRedisProjection(speakingQueue.getRoomId());
+        }
+    }
+
+    private void rebuildRedisProjection(Long roomId) {
+        try {
+            List<SpeakingQueue> waitingQueues =
+                    speakingQueuePersistenceService.findWaitingRequestsForRedisProjection(roomId);
+            Optional<SpeakingQueue> currentSpeaker =
+                    speakingQueuePersistenceService.findCurrentSpeakerForRedisProjection(roomId);
+
+            redisSpeakingQueueRepository.replaceRoomProjection(
+                    roomId,
+                    waitingQueues,
+                    currentSpeaker
+            );
+            log.info("Speaking Redis projection rebuilt. roomId={}", roomId);
+        } catch (RuntimeException rebuildException) {
+            log.error(
+                    "Failed to rebuild speaking Redis projection. roomId={}",
+                    roomId,
+                    rebuildException
             );
         }
     }
