@@ -98,6 +98,14 @@ public enum ErrorCode {
     INVALID_STANCE(HttpStatus.BAD_REQUEST, "올바르지 않은 입장 값입니다."),
     IMAGE_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "이미지 업로드에 실패했습니다."),
 
+    // AI Report
+    AI_REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "AI 리포트를 찾을 수 없습니다."),
+    AI_REPORT_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 AI 리포트가 생성 중이거나 생성되었습니다."),
+    AI_REPORT_ROOM_NOT_CLOSED(HttpStatus.BAD_REQUEST, "종료된 토론방만 AI 리포트를 생성할 수 있습니다."),
+    AI_REPORT_CONFIG_MISSING(HttpStatus.INTERNAL_SERVER_ERROR, "AI 리포트 서버 설정이 누락되었습니다."),
+    AI_REPORT_GENERATE_FAILED(HttpStatus.BAD_GATEWAY, "AI 리포트 생성에 실패했습니다."),
+    AI_REPORT_INVALID_RESPONSE(HttpStatus.BAD_GATEWAY, "AI 리포트 서버 응답 형식이 올바르지 않습니다."),
+
     // Payment
     PAYMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 결제 내역입니다."),
     PAYMENT_FAILED(HttpStatus.BAD_REQUEST, "결제에 실패했습니다."),
