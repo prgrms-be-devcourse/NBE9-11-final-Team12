@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.speech.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
@@ -193,6 +194,29 @@ class RedisSpeakingQueueRepositoryTest {
 
         assertThat(redisTemplate.opsForZSet().size(QUEUE_KEY)).isZero();
         assertThat(redisTemplate.opsForValue().get(CURRENT_SPEAKER_KEY)).isNull();
+    }
+
+    @Test
+    void replaceRoomProjection_rejectsWaitingQueueWithoutQueueOrder() {
+        SpeakingQueue waitingWithoutQueueOrder = SpeakingQueue.waiting(
+                1L,
+                30L,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+
+        assertThatThrownBy(() -> speakingQueueRepository.replaceRoomProjection(
+                1L,
+                List.of(waitingWithoutQueueOrder),
+                Optional.empty()
+        ))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Waiting speaking queue must have queue order")
+                .hasMessageContaining("roomId=1")
+                .hasMessageContaining("userId=30");
+
+        assertThat(redisTemplate.hasKey(QUEUE_KEY)).isFalse();
+        assertThat(redisTemplate.hasKey(CURRENT_SPEAKER_KEY)).isFalse();
     }
 
     private SpeakingQueue waitingRequest(Long roomId, Long userId, int queueOrder) {

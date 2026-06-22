@@ -3,7 +3,6 @@ package com.sisibibi.api.domain.speech.repository;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -135,10 +134,7 @@ public class RedisSpeakingQueueRepository {
 
         for (SpeakingQueue waitingQueue : waitingQueues) {
             arguments.add(waitingQueue.getUserId().toString());
-            arguments.add(Objects.requireNonNull(
-                    waitingQueue.getQueueOrder(),
-                    "Queue order is required to rebuild Redis speaking queue."
-            ).toString());
+            arguments.add(requiredQueueOrder(waitingQueue));
         }
 
         redisTemplate.execute(
@@ -146,6 +142,18 @@ public class RedisSpeakingQueueRepository {
                 List.of(queueKey(roomId), currentSpeakerKey(roomId)),
                 arguments.toArray(Object[]::new)
         );
+    }
+
+    private String requiredQueueOrder(SpeakingQueue waitingQueue) {
+        Integer queueOrder = waitingQueue.getQueueOrder();
+        if (queueOrder == null) {
+            throw new IllegalStateException(
+                    "Waiting speaking queue must have queue order to rebuild Redis projection. "
+                            + "roomId=" + waitingQueue.getRoomId()
+                            + ", userId=" + waitingQueue.getUserId()
+            );
+        }
+        return queueOrder.toString();
     }
 
     private String queueKey(Long roomId) {
