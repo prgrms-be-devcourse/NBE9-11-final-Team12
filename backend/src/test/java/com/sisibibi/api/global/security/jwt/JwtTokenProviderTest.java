@@ -32,7 +32,7 @@ class JwtTokenProviderTest {
                 Duration.ofMinutes(30),
                 Duration.ofDays(14)
         ), clock);
-        AuthPrincipal principal = new AuthPrincipal(1L, "user@example.com", "USER");
+        AuthPrincipal principal = new AuthPrincipal(1L, "user@example.com", "USER", 3L);
 
         String token = tokenProvider.createAccessToken(principal);
 
@@ -40,6 +40,7 @@ class JwtTokenProviderTest {
         assertThat(claims.userId()).isEqualTo(1L);
         assertThat(claims.email()).isEqualTo("user@example.com");
         assertThat(claims.role()).isEqualTo("USER");
+        assertThat(claims.tokenVersion()).isEqualTo(3L);
         assertThat(claims.tokenType()).isEqualTo(TokenType.ACCESS);
         assertThat(claims.expiresAt()).isEqualTo(Instant.parse("2030-06-12T00:30:00Z"));
     }

@@ -101,6 +101,10 @@ class AuthServiceTest {
         assertThat(result.accessToken()).isEqualTo("access-token");
         assertThat(result.refreshToken()).isEqualTo("refresh-token");
         verify(refreshTokenStore).save(eq(1L), anyString(), eq("refresh-token"));
+        ArgumentCaptor<com.sisibibi.api.global.security.AuthPrincipal> principalCaptor =
+                ArgumentCaptor.forClass(com.sisibibi.api.global.security.AuthPrincipal.class);
+        verify(jwtTokenProvider).createAccessToken(principalCaptor.capture());
+        assertThat(principalCaptor.getValue().tokenVersion()).isEqualTo(0L);
     }
 
     @Test
@@ -241,6 +245,31 @@ class AuthServiceTest {
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.USER_BANNED);
+
+        verify(refreshTokenStore, never()).save(any(), anyString(), anyString());
+    }
+
+    @Test
+    void reissue_throwsInvalidToken_whenTokenVersionIsOld() {
+        TokenClaims claims = new TokenClaims(
+                1L,
+                "user@example.com",
+                "USER",
+                "old-token-id",
+                TokenType.REFRESH,
+                0L,
+                Instant.parse("2030-06-12T00:00:00Z")
+        );
+        User user = User.signup("user@example.com", "encoded-password", "tester");
+        ReflectionTestUtils.setField(user, "id", 1L);
+        user.invalidateTokens();
+        given(jwtTokenProvider.parseRefreshToken("old-refresh-token")).willReturn(claims);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> authService.reissue("old-refresh-token"))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_TOKEN);
 
         verify(refreshTokenStore, never()).save(any(), anyString(), anyString());
     }

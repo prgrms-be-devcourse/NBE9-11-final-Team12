@@ -167,6 +167,7 @@ class UserSanctionServiceTest {
         );
 
         assertThat(user.getStatus()).isEqualTo(com.sisibibi.api.domain.user.entity.UserStatus.BANNED);
+        assertThat(user.getTokenVersion()).isEqualTo(1L);
         assertThat(response.endsAt()).isNull();
         assertThat(response.state()).isEqualTo(UserSanctionState.ACTIVE);
     }

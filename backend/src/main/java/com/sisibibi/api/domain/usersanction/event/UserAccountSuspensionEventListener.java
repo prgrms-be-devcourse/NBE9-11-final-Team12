@@ -3,7 +3,6 @@ package com.sisibibi.api.domain.usersanction.event;
 import com.sisibibi.api.domain.usersanction.dto.event.UserSanctionChangedEvent;
 import com.sisibibi.api.domain.usersanction.dto.event.UserSanctionEventType;
 import com.sisibibi.api.domain.usersanction.entity.UserSanctionType;
-import com.sisibibi.api.global.security.account.UserAccountStatusStore;
 import com.sisibibi.api.global.security.refresh.RefreshTokenStore;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,7 +15,6 @@ import org.springframework.transaction.event.TransactionalEventListener;
 @RequiredArgsConstructor
 public class UserAccountSuspensionEventListener {
 
-    private final UserAccountStatusStore userAccountStatusStore;
     private final RefreshTokenStore refreshTokenStore;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -26,13 +24,7 @@ public class UserAccountSuspensionEventListener {
         }
 
         if (event.type() == UserSanctionEventType.SANCTION_CREATED) {
-            userAccountStatusStore.markBanned(event.userId());
             deleteRefreshTokens(event.userId());
-            return;
-        }
-
-        if (event.type() == UserSanctionEventType.SANCTION_REVOKED) {
-            userAccountStatusStore.markActive(event.userId());
         }
     }
 

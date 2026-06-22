@@ -50,6 +50,9 @@ public class User {
     @Column(nullable = false, length = 20)
     private UserStatus status;
 
+    @Column(name = "token_version", nullable = false, columnDefinition = "BIGINT DEFAULT 0")
+    private Long tokenVersion = 0L;
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -82,9 +85,14 @@ public class User {
 
     public void ban() {
         this.status = UserStatus.BANNED;
+        invalidateTokens();
     }
 
     public void activate() {
         this.status = UserStatus.ACTIVE;
+    }
+
+    public void invalidateTokens() {
+        this.tokenVersion++;
     }
 }

@@ -2,11 +2,11 @@ package com.sisibibi.api.global.security.filter;
 
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.security.AuthPrincipal;
-import com.sisibibi.api.global.security.account.UserAccountStatusStore;
 import com.sisibibi.api.global.security.cookie.AuthCookieProvider;
 import com.sisibibi.api.global.security.handler.SecurityExceptionHandler;
 import com.sisibibi.api.global.security.jwt.JwtTokenProvider;
 import com.sisibibi.api.global.security.jwt.JwtTokenProvider.TokenClaims;
+import com.sisibibi.api.global.security.session.TokenSessionValidator;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
@@ -28,16 +28,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
     private final SecurityExceptionHandler securityExceptionHandler;
-    private final UserAccountStatusStore userAccountStatusStore;
+    private final TokenSessionValidator tokenSessionValidator;
 
     public JwtAuthenticationFilter(
             JwtTokenProvider jwtTokenProvider,
             SecurityExceptionHandler securityExceptionHandler,
-            UserAccountStatusStore userAccountStatusStore
+            TokenSessionValidator tokenSessionValidator
     ) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.securityExceptionHandler = securityExceptionHandler;
-        this.userAccountStatusStore = userAccountStatusStore;
+        this.tokenSessionValidator = tokenSessionValidator;
     }
 
     @Override
@@ -55,12 +55,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         try {
             TokenClaims claims = jwtTokenProvider.parseAccessToken(accessToken);
-            if (!"ADMIN".equals(claims.role())
-                    && userAccountStatusStore.isBanned(claims.userId())) {
-                throw new CustomException(
-                        com.sisibibi.api.global.exception.ErrorCode.USER_BANNED
-                );
-            }
+            tokenSessionValidator.validate(claims);
             AuthPrincipal principal = claims.toPrincipal();
 
             UsernamePasswordAuthenticationToken authentication =

@@ -75,6 +75,7 @@ public class AuthService {
         User user = userRepository.findById(claims.userId())
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
         validateLoginAvailable(user);
+        validateTokenVersion(user, claims);
 
         return issueTokens(user, TokenReissueRes.from(user));
     }
@@ -84,7 +85,8 @@ public class AuthService {
         AuthPrincipal principal = new AuthPrincipal(
                 user.getId(),
                 user.getEmail(),
-                user.getRole().name()
+                user.getRole().name(),
+                user.getTokenVersion()
         );
 
         String accessToken = jwtTokenProvider.createAccessToken(principal);
@@ -104,4 +106,9 @@ public class AuthService {
         }
     }
 
+    private void validateTokenVersion(User user, TokenClaims claims) {
+        if (!user.getTokenVersion().equals(claims.tokenVersion())) {
+            throw new CustomException(ErrorCode.INVALID_TOKEN);
+        }
+    }
 }

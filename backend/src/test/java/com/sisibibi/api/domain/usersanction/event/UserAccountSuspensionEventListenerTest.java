@@ -5,7 +5,6 @@ import com.sisibibi.api.domain.usersanction.dto.event.UserSanctionEventPayload;
 import com.sisibibi.api.domain.usersanction.dto.event.UserSanctionEventType;
 import com.sisibibi.api.domain.usersanction.entity.UserSanctionState;
 import com.sisibibi.api.domain.usersanction.entity.UserSanctionType;
-import com.sisibibi.api.global.security.account.UserAccountStatusStore;
 import com.sisibibi.api.global.security.refresh.RefreshTokenStore;
 import org.junit.jupiter.api.Test;
 
@@ -17,25 +16,22 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 class UserAccountSuspensionEventListenerTest {
 
-    private final UserAccountStatusStore userAccountStatusStore =
-            mock(UserAccountStatusStore.class);
     private final RefreshTokenStore refreshTokenStore = mock(RefreshTokenStore.class);
     private final UserAccountSuspensionEventListener listener =
-            new UserAccountSuspensionEventListener(userAccountStatusStore, refreshTokenStore);
+            new UserAccountSuspensionEventListener(refreshTokenStore);
 
     @Test
     void handle_marksBannedAndDeletesRefreshTokens_whenAccountIsSuspended() {
         listener.handle(event(UserSanctionEventType.SANCTION_CREATED));
 
-        verify(userAccountStatusStore).markBanned(10L);
         verify(refreshTokenStore).deleteAll(10L);
     }
 
     @Test
-    void handle_marksActive_whenAccountSuspensionIsRevoked() {
+    void handle_doesNotDeleteRefreshTokens_whenAccountSuspensionIsRevoked() {
         listener.handle(event(UserSanctionEventType.SANCTION_REVOKED));
 
-        verify(userAccountStatusStore).markActive(10L);
+        verifyNoInteractions(refreshTokenStore);
     }
 
     @Test
@@ -55,7 +51,7 @@ class UserAccountSuspensionEventListenerTest {
 
         listener.handle(event);
 
-        verifyNoInteractions(userAccountStatusStore, refreshTokenStore);
+        verifyNoInteractions(refreshTokenStore);
     }
 
     private UserSanctionChangedEvent event(UserSanctionEventType eventType) {

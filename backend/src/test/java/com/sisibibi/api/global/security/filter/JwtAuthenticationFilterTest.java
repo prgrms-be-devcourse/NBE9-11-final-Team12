@@ -1,10 +1,10 @@
 package com.sisibibi.api.global.security.filter;
 
 import com.sisibibi.api.global.exception.ErrorCode;
-import com.sisibibi.api.global.security.account.UserAccountStatusStore;
 import com.sisibibi.api.global.security.cookie.AuthCookieProvider;
 import com.sisibibi.api.global.security.handler.SecurityExceptionHandler;
 import com.sisibibi.api.global.security.jwt.JwtTokenProvider;
+import com.sisibibi.api.global.security.session.TokenSessionValidator;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -22,12 +22,12 @@ class JwtAuthenticationFilterTest {
     private final JwtTokenProvider jwtTokenProvider = mock(JwtTokenProvider.class);
     private final SecurityExceptionHandler securityExceptionHandler =
             mock(SecurityExceptionHandler.class);
-    private final UserAccountStatusStore userAccountStatusStore =
-            mock(UserAccountStatusStore.class);
+    private final TokenSessionValidator tokenSessionValidator =
+            mock(TokenSessionValidator.class);
     private final JwtAuthenticationFilter filter = new JwtAuthenticationFilter(
             jwtTokenProvider,
             securityExceptionHandler,
-            userAccountStatusStore
+            tokenSessionValidator
     );
 
     @Test
@@ -45,7 +45,9 @@ class JwtAuthenticationFilterTest {
                 Instant.now().plusSeconds(300)
         );
         given(jwtTokenProvider.parseAccessToken("access-token")).willReturn(claims);
-        given(userAccountStatusStore.isBanned(10L)).willReturn(true);
+        org.mockito.BDDMockito.willThrow(
+                new com.sisibibi.api.global.exception.CustomException(ErrorCode.USER_BANNED)
+        ).given(tokenSessionValidator).validate(claims);
 
         filter.doFilter(request, response, filterChain);
 
