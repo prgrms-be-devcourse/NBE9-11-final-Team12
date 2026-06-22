@@ -32,6 +32,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
@@ -211,6 +212,53 @@ class AuthServiceTest {
         authService.logout("refresh-token");
 
         verify(refreshTokenStore).delete(1L, "token-id");
+    }
+
+    @Test
+    void logout_succeeds_whenRefreshTokenIsMissing() {
+        authService.logout(null);
+
+        verifyNoInteractions(jwtTokenProvider, refreshTokenStore);
+    }
+
+    @Test
+    void logout_succeeds_whenRefreshTokenIsExpired() {
+        given(jwtTokenProvider.parseRefreshToken("expired-refresh-token"))
+                .willThrow(new CustomException(ErrorCode.EXPIRED_TOKEN));
+
+        authService.logout("expired-refresh-token");
+
+        verifyNoInteractions(refreshTokenStore);
+    }
+
+    @Test
+    void logout_succeeds_whenRefreshTokenIsInvalid() {
+        given(jwtTokenProvider.parseRefreshToken("invalid-refresh-token"))
+                .willThrow(new CustomException(ErrorCode.INVALID_TOKEN));
+
+        authService.logout("invalid-refresh-token");
+
+        verifyNoInteractions(refreshTokenStore);
+    }
+
+    @Test
+    void logout_propagatesRedisFailure() {
+        TokenClaims claims = new TokenClaims(
+                1L,
+                "user@example.com",
+                "USER",
+                "token-id",
+                TokenType.REFRESH,
+                Instant.parse("2030-06-12T00:00:00Z")
+        );
+        given(jwtTokenProvider.parseRefreshToken("refresh-token")).willReturn(claims);
+        org.mockito.BDDMockito.willThrow(new RuntimeException("Redis unavailable"))
+                .given(refreshTokenStore)
+                .delete(1L, "token-id");
+
+        assertThatThrownBy(() -> authService.logout("refresh-token"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("Redis unavailable");
     }
 
     @Test

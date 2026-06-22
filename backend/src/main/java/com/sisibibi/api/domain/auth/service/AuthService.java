@@ -63,8 +63,18 @@ public class AuthService {
 
     @Transactional
     public void logout(String refreshToken) {
-        TokenClaims claims = jwtTokenProvider.parseRefreshToken(refreshToken);
-        refreshTokenStore.delete(claims.userId(), claims.tokenId());
+        if (refreshToken == null || refreshToken.isBlank()) {
+            return;
+        }
+
+        try {
+            TokenClaims claims = jwtTokenProvider.parseRefreshToken(refreshToken);
+            refreshTokenStore.delete(claims.userId(), claims.tokenId());
+        } catch (CustomException tokenException) {
+            if (!isIgnorableLogoutTokenError(tokenException.getErrorCode())) {
+                throw tokenException;
+            }
+        }
     }
 
     @Transactional
@@ -110,5 +120,10 @@ public class AuthService {
         if (!user.getTokenVersion().equals(claims.tokenVersion())) {
             throw new CustomException(ErrorCode.INVALID_TOKEN);
         }
+    }
+
+    private boolean isIgnorableLogoutTokenError(ErrorCode errorCode) {
+        return errorCode == ErrorCode.INVALID_TOKEN
+                || errorCode == ErrorCode.EXPIRED_TOKEN;
     }
 }
