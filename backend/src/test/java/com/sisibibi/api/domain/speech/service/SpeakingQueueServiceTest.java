@@ -3,6 +3,7 @@ package com.sisibibi.api.domain.speech.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doThrow;
@@ -137,6 +138,12 @@ class SpeakingQueueServiceTest {
                 .willReturn(List.of(saved));
         given(speakingQueuePersistenceService.findCurrentSpeakerForRedisProjection(1L))
                 .willReturn(Optional.empty());
+        given(redisSpeakingQueueRepository.replaceRoomProjectionIfVersionMatches(
+                1L,
+                List.of(saved),
+                Optional.empty(),
+                0L
+        )).willReturn(true);
 
         StageRequestRes response =
                 speakingQueueService.requestSpeakingTurn(1L, 7L, SpeechStance.PRO);
@@ -150,7 +157,12 @@ class SpeakingQueueServiceTest {
                 any(LocalDateTime.class)
         );
         verify(redisSpeakingQueueRepository)
-                .replaceRoomProjection(1L, List.of(saved), Optional.empty());
+                .replaceRoomProjectionIfVersionMatches(
+                        1L,
+                        List.of(saved),
+                        Optional.empty(),
+                        0L
+                );
         ArgumentCaptor<StageChangedEvent> eventCaptor =
                 ArgumentCaptor.forClass(StageChangedEvent.class);
         verify(eventPublisher).publishEvent(eventCaptor.capture());
@@ -177,21 +189,89 @@ class SpeakingQueueServiceTest {
                 .willReturn(List.of(saved));
         given(speakingQueuePersistenceService.findCurrentSpeakerForRedisProjection(1L))
                 .willReturn(Optional.empty());
-        doThrow(new IllegalStateException("temporary rebuild failure"))
-                .doThrow(new IllegalStateException("temporary rebuild failure"))
-                .doNothing()
-                .when(redisSpeakingQueueRepository)
-                .replaceRoomProjection(1L, List.of(saved), Optional.empty());
+        given(redisSpeakingQueueRepository.replaceRoomProjectionIfVersionMatches(
+                1L,
+                List.of(saved),
+                Optional.empty(),
+                0L
+        ))
+                .willThrow(new IllegalStateException("temporary rebuild failure"))
+                .willThrow(new IllegalStateException("temporary rebuild failure"))
+                .willReturn(true);
 
         StageRequestRes response =
                 speakingQueueService.requestSpeakingTurn(1L, 7L, SpeechStance.PRO);
 
         assertThat(response.status()).isEqualTo(SpeakingQueueStatus.WAITING);
         verify(redisSpeakingQueueRepository, times(3))
-                .replaceRoomProjection(1L, List.of(saved), Optional.empty());
-        verify(speakingQueuePersistenceService)
+                .replaceRoomProjectionIfVersionMatches(
+                        1L,
+                        List.of(saved),
+                        Optional.empty(),
+                        0L
+                );
+        verify(speakingQueuePersistenceService, times(3))
                 .findWaitingRequestsForRedisProjection(1L);
-        verify(speakingQueuePersistenceService)
+        verify(speakingQueuePersistenceService, times(3))
+                .findCurrentSpeakerForRedisProjection(1L);
+    }
+
+    @Test
+    void requestSpeakingTurn_reloadsRdbSnapshotWhenProjectionVersionChangesBeforeRebuild() {
+        SpeakingQueue saved = persistedWaitingRequest(1L, 7L, 15);
+        SpeakingQueue laterWaiting = persistedWaitingRequest(1L, 8L, 16);
+        given(speakingQueuePersistenceService.createWaitingRequest(1L, 7L, SpeechStance.PRO))
+                .willReturn(saved);
+        given(speakingQueueProperties.getTurnDuration())
+                .willReturn(Duration.ofMinutes(2));
+        given(speakingQueuePersistenceService.assignNextSpeaker(
+                eq(1L),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        )).willReturn(Optional.empty());
+        doThrow(new IllegalStateException("redis unavailable"))
+                .when(redisSpeakingQueueRepository)
+                .upsert(1L, 7L, 15);
+        given(redisSpeakingQueueRepository.currentProjectionVersion(1L))
+                .willReturn(0L, 1L);
+        given(speakingQueuePersistenceService.findWaitingRequestsForRedisProjection(1L))
+                .willReturn(List.of(saved), List.of(saved, laterWaiting));
+        given(speakingQueuePersistenceService.findCurrentSpeakerForRedisProjection(1L))
+                .willReturn(Optional.empty());
+        given(redisSpeakingQueueRepository.replaceRoomProjectionIfVersionMatches(
+                1L,
+                List.of(saved),
+                Optional.empty(),
+                0L
+        )).willReturn(false);
+        given(redisSpeakingQueueRepository.replaceRoomProjectionIfVersionMatches(
+                1L,
+                List.of(saved, laterWaiting),
+                Optional.empty(),
+                1L
+        )).willReturn(true);
+
+        StageRequestRes response =
+                speakingQueueService.requestSpeakingTurn(1L, 7L, SpeechStance.PRO);
+
+        assertThat(response.status()).isEqualTo(SpeakingQueueStatus.WAITING);
+        verify(redisSpeakingQueueRepository)
+                .replaceRoomProjectionIfVersionMatches(
+                        1L,
+                        List.of(saved),
+                        Optional.empty(),
+                        0L
+                );
+        verify(redisSpeakingQueueRepository)
+                .replaceRoomProjectionIfVersionMatches(
+                        1L,
+                        List.of(saved, laterWaiting),
+                        Optional.empty(),
+                        1L
+                );
+        verify(speakingQueuePersistenceService, times(2))
+                .findWaitingRequestsForRedisProjection(1L);
+        verify(speakingQueuePersistenceService, times(2))
                 .findCurrentSpeakerForRedisProjection(1L);
     }
 
@@ -222,7 +302,7 @@ class SpeakingQueueServiceTest {
         verify(speakingQueuePersistenceService, never())
                 .findCurrentSpeakerForRedisProjection(1L);
         verify(redisSpeakingQueueRepository, never())
-                .replaceRoomProjection(any(), any(), any());
+                .replaceRoomProjectionIfVersionMatches(any(), any(), any(), anyLong());
     }
 
     @Test
@@ -268,13 +348,24 @@ class SpeakingQueueServiceTest {
                 .willReturn(List.of());
         given(speakingQueuePersistenceService.findCurrentSpeakerForRedisProjection(1L))
                 .willReturn(Optional.of(assigned));
+        given(redisSpeakingQueueRepository.replaceRoomProjectionIfVersionMatches(
+                1L,
+                List.of(),
+                Optional.of(assigned),
+                0L
+        )).willReturn(true);
 
         Optional<SpeakingQueue> response = speakingQueueService.assignNextSpeaker(1L);
 
         assertThat(response).contains(assigned);
         verify(redisSpeakingQueueRepository).assign(1L, 7L);
         verify(redisSpeakingQueueRepository)
-                .replaceRoomProjection(1L, List.of(), Optional.of(assigned));
+                .replaceRoomProjectionIfVersionMatches(
+                        1L,
+                        List.of(),
+                        Optional.of(assigned),
+                        0L
+                );
         ArgumentCaptor<StageChangedEvent> eventCaptor =
                 ArgumentCaptor.forClass(StageChangedEvent.class);
         verify(eventPublisher).publishEvent(eventCaptor.capture());
@@ -360,13 +451,24 @@ class SpeakingQueueServiceTest {
                 .willReturn(List.of());
         given(speakingQueuePersistenceService.findCurrentSpeakerForRedisProjection(1L))
                 .willReturn(Optional.empty());
+        given(redisSpeakingQueueRepository.replaceRoomProjectionIfVersionMatches(
+                1L,
+                List.of(),
+                Optional.empty(),
+                0L
+        )).willReturn(true);
 
         speakingQueueService.cancelSpeakingRequest(1L, 7L);
 
         verify(speakingQueuePersistenceService).cancelWaitingRequest(1L, 7L);
         verify(redisSpeakingQueueRepository).remove(1L, 7L);
         verify(redisSpeakingQueueRepository)
-                .replaceRoomProjection(1L, List.of(), Optional.empty());
+                .replaceRoomProjectionIfVersionMatches(
+                        1L,
+                        List.of(),
+                        Optional.empty(),
+                        0L
+                );
         verify(speakingQueuePersistenceService).assignNextSpeaker(
                 eq(1L),
                 any(LocalDateTime.class),
@@ -504,13 +606,24 @@ class SpeakingQueueServiceTest {
                 .willReturn(List.of());
         given(speakingQueuePersistenceService.findCurrentSpeakerForRedisProjection(1L))
                 .willReturn(Optional.empty());
+        given(redisSpeakingQueueRepository.replaceRoomProjectionIfVersionMatches(
+                1L,
+                List.of(),
+                Optional.empty(),
+                0L
+        )).willReturn(true);
 
         speakingQueueService.completeSpeakingTurn(1L, 7L);
 
         verify(speakingQueuePersistenceService).completeCurrentSpeaker(1L, 7L);
         verify(redisSpeakingQueueRepository).removeCurrentSpeaker(1L, 7L);
         verify(redisSpeakingQueueRepository)
-                .replaceRoomProjection(1L, List.of(), Optional.empty());
+                .replaceRoomProjectionIfVersionMatches(
+                        1L,
+                        List.of(),
+                        Optional.empty(),
+                        0L
+                );
         verify(speakingQueuePersistenceService).assignNextSpeaker(
                 eq(1L),
                 any(LocalDateTime.class),

@@ -352,34 +352,73 @@ public class SpeakingQueueService {
     }
 
     private void rebuildRedisProjection(Long roomId) {
-        List<SpeakingQueue> waitingQueues;
-        Optional<SpeakingQueue> currentSpeaker;
-
-        try {
-            waitingQueues =
-                    speakingQueuePersistenceService.findWaitingRequestsForRedisProjection(roomId);
-            currentSpeaker =
-                    speakingQueuePersistenceService.findCurrentSpeakerForRedisProjection(roomId);
-        } catch (RuntimeException projectionSourceException) {
-            log.error(
-                    "Failed to load speaking Redis projection source. roomId={}",
-                    roomId,
-                    projectionSourceException
-            );
-            return;
-        }
-
         for (int attempt = 1; attempt <= REDIS_PROJECTION_REBUILD_MAX_ATTEMPTS; attempt++) {
+            long expectedVersion;
             try {
-                redisSpeakingQueueRepository.replaceRoomProjection(
+                expectedVersion = redisSpeakingQueueRepository.currentProjectionVersion(roomId);
+            } catch (RuntimeException versionException) {
+                if (attempt == REDIS_PROJECTION_REBUILD_MAX_ATTEMPTS) {
+                    log.error(
+                            "Failed to read speaking Redis projection version. "
+                                    + "roomId={}, attempts={}",
+                            roomId,
+                            attempt,
+                            versionException
+                    );
+                    return;
+                }
+                log.warn(
+                        "Retrying speaking Redis projection version read. "
+                                + "roomId={}, attempt={}",
                         roomId,
-                        waitingQueues,
-                        currentSpeaker
+                        attempt,
+                        versionException
                 );
-                log.info(
-                        "Speaking Redis projection rebuilt. roomId={}, attempt={}",
+                continue;
+            }
+
+            List<SpeakingQueue> waitingQueues;
+            Optional<SpeakingQueue> currentSpeaker;
+            try {
+                waitingQueues =
+                        speakingQueuePersistenceService
+                                .findWaitingRequestsForRedisProjection(roomId);
+                currentSpeaker =
+                        speakingQueuePersistenceService
+                                .findCurrentSpeakerForRedisProjection(roomId);
+            } catch (RuntimeException projectionSourceException) {
+                log.error(
+                        "Failed to load speaking Redis projection source. roomId={}",
                         roomId,
-                        attempt
+                        projectionSourceException
+                );
+                return;
+            }
+
+            try {
+                boolean replaced =
+                        redisSpeakingQueueRepository.replaceRoomProjectionIfVersionMatches(
+                                roomId,
+                                waitingQueues,
+                                currentSpeaker,
+                                expectedVersion
+                        );
+                if (!replaced) {
+                    log.warn(
+                            "Skipped stale speaking Redis projection rebuild. "
+                                    + "roomId={}, attempt={}, expectedVersion={}",
+                            roomId,
+                            attempt,
+                            expectedVersion
+                    );
+                    continue;
+                }
+                log.info(
+                        "Speaking Redis projection rebuilt. "
+                                + "roomId={}, attempt={}, expectedVersion={}",
+                        roomId,
+                        attempt,
+                        expectedVersion
                 );
                 return;
             } catch (RuntimeException rebuildException) {

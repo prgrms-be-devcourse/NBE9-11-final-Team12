@@ -28,6 +28,7 @@ class RedisSpeakingQueueRepositoryTest {
 
     private static final String QUEUE_KEY = "stage:queue:{1}";
     private static final String CURRENT_SPEAKER_KEY = "stage:current:{1}";
+    private static final String PROJECTION_VERSION_KEY = "stage:projection-version:{1}";
 
     @Container
     static final GenericContainer<?> REDIS =
@@ -50,6 +51,7 @@ class RedisSpeakingQueueRepositoryTest {
     void clearQueue() {
         redisTemplate.delete(QUEUE_KEY);
         redisTemplate.delete(CURRENT_SPEAKER_KEY);
+        redisTemplate.delete(PROJECTION_VERSION_KEY);
     }
 
     @Test
@@ -59,6 +61,7 @@ class RedisSpeakingQueueRepositoryTest {
 
         assertThat(redisTemplate.opsForZSet().score(QUEUE_KEY, "10")).isEqualTo(15.0);
         assertThat(redisTemplate.opsForZSet().score(QUEUE_KEY, "20")).isEqualTo(21.0);
+        assertThat(speakingQueueRepository.currentProjectionVersion(1L)).isEqualTo(2L);
     }
 
     @Test
@@ -78,6 +81,7 @@ class RedisSpeakingQueueRepositoryTest {
         speakingQueueRepository.remove(1L, 10L);
 
         assertThat(redisTemplate.opsForZSet().score(QUEUE_KEY, "10")).isNull();
+        assertThat(speakingQueueRepository.currentProjectionVersion(1L)).isEqualTo(2L);
     }
 
     @Test
@@ -131,6 +135,7 @@ class RedisSpeakingQueueRepositoryTest {
 
         assertThat(redisTemplate.opsForZSet().score(QUEUE_KEY, "10")).isNull();
         assertThat(redisTemplate.opsForValue().get("stage:current:{1}")).isEqualTo("10");
+        assertThat(speakingQueueRepository.currentProjectionVersion(1L)).isEqualTo(2L);
     }
 
     @Test
@@ -151,6 +156,7 @@ class RedisSpeakingQueueRepositoryTest {
         speakingQueueRepository.removeCurrentSpeaker(1L, 10L);
 
         assertThat(redisTemplate.opsForValue().get(CURRENT_SPEAKER_KEY)).isNull();
+        assertThat(speakingQueueRepository.currentProjectionVersion(1L)).isEqualTo(1L);
     }
 
     @Test
@@ -160,44 +166,53 @@ class RedisSpeakingQueueRepositoryTest {
         speakingQueueRepository.removeCurrentSpeaker(1L, 10L);
 
         assertThat(redisTemplate.opsForValue().get(CURRENT_SPEAKER_KEY)).isEqualTo("20");
+        assertThat(speakingQueueRepository.currentProjectionVersion(1L)).isZero();
     }
 
     @Test
-    void replaceRoomProjection_rebuildsWaitingQueueAndCurrentSpeaker() {
+    void replaceRoomProjectionIfVersionMatches_rebuildsWaitingQueueAndCurrentSpeaker() {
         speakingQueueRepository.upsert(1L, 10L, 1);
         speakingQueueRepository.upsert(1L, 20L, 2);
         redisTemplate.opsForValue().set(CURRENT_SPEAKER_KEY, "10");
+        long expectedVersion = speakingQueueRepository.currentProjectionVersion(1L);
         SpeakingQueue waiting = waitingRequest(1L, 30L, 3);
         SpeakingQueue currentSpeaker = assignedRequest(1L, 40L, 4);
 
-        speakingQueueRepository.replaceRoomProjection(
+        boolean replaced = speakingQueueRepository.replaceRoomProjectionIfVersionMatches(
                 1L,
                 List.of(waiting),
-                Optional.of(currentSpeaker)
+                Optional.of(currentSpeaker),
+                expectedVersion
         );
 
+        assertThat(replaced).isTrue();
         assertThat(redisTemplate.opsForZSet().score(QUEUE_KEY, "10")).isNull();
         assertThat(redisTemplate.opsForZSet().score(QUEUE_KEY, "20")).isNull();
         assertThat(redisTemplate.opsForZSet().score(QUEUE_KEY, "30")).isEqualTo(3.0);
         assertThat(redisTemplate.opsForValue().get(CURRENT_SPEAKER_KEY)).isEqualTo("40");
+        assertThat(speakingQueueRepository.currentProjectionVersion(1L))
+                .isEqualTo(expectedVersion + 1);
     }
 
     @Test
-    void replaceRoomProjection_clearsCurrentSpeakerWhenRdbHasNoAssignedSpeaker() {
+    void replaceRoomProjectionIfVersionMatches_clearsCurrentSpeakerWhenRdbHasNoAssignedSpeaker() {
         redisTemplate.opsForValue().set(CURRENT_SPEAKER_KEY, "10");
+        long expectedVersion = speakingQueueRepository.currentProjectionVersion(1L);
 
-        speakingQueueRepository.replaceRoomProjection(
+        boolean replaced = speakingQueueRepository.replaceRoomProjectionIfVersionMatches(
                 1L,
                 List.of(),
-                Optional.empty()
+                Optional.empty(),
+                expectedVersion
         );
 
+        assertThat(replaced).isTrue();
         assertThat(redisTemplate.opsForZSet().size(QUEUE_KEY)).isZero();
         assertThat(redisTemplate.opsForValue().get(CURRENT_SPEAKER_KEY)).isNull();
     }
 
     @Test
-    void replaceRoomProjection_rejectsWaitingQueueWithoutQueueOrder() {
+    void replaceRoomProjectionIfVersionMatches_rejectsWaitingQueueWithoutQueueOrder() {
         SpeakingQueue waitingWithoutQueueOrder = SpeakingQueue.waiting(
                 1L,
                 30L,
@@ -205,10 +220,11 @@ class RedisSpeakingQueueRepositoryTest {
                 LocalDateTime.of(2026, 6, 12, 11, 30)
         );
 
-        assertThatThrownBy(() -> speakingQueueRepository.replaceRoomProjection(
+        assertThatThrownBy(() -> speakingQueueRepository.replaceRoomProjectionIfVersionMatches(
                 1L,
                 List.of(waitingWithoutQueueOrder),
-                Optional.empty()
+                Optional.empty(),
+                0L
         ))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Waiting speaking queue must have queue order")
@@ -217,6 +233,24 @@ class RedisSpeakingQueueRepositoryTest {
 
         assertThat(redisTemplate.hasKey(QUEUE_KEY)).isFalse();
         assertThat(redisTemplate.hasKey(CURRENT_SPEAKER_KEY)).isFalse();
+    }
+
+    @Test
+    void replaceRoomProjectionIfVersionMatches_rejectsStaleProjection() {
+        speakingQueueRepository.upsert(1L, 10L, 1);
+        SpeakingQueue waiting = waitingRequest(1L, 20L, 2);
+
+        boolean replaced = speakingQueueRepository.replaceRoomProjectionIfVersionMatches(
+                1L,
+                List.of(waiting),
+                Optional.empty(),
+                0L
+        );
+
+        assertThat(replaced).isFalse();
+        assertThat(redisTemplate.opsForZSet().score(QUEUE_KEY, "10")).isEqualTo(1.0);
+        assertThat(redisTemplate.opsForZSet().score(QUEUE_KEY, "20")).isNull();
+        assertThat(speakingQueueRepository.currentProjectionVersion(1L)).isEqualTo(1L);
     }
 
     private SpeakingQueue waitingRequest(Long roomId, Long userId, int queueOrder) {

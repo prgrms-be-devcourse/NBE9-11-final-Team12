@@ -12,12 +12,30 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class RedisSpeakingQueueRepository {
 
+    private static final DefaultRedisScript<Long> UPSERT_SCRIPT =
+            new DefaultRedisScript<>(
+                    """
+                    redis.call('ZADD', KEYS[1], ARGV[2], ARGV[1])
+                    return redis.call('INCR', KEYS[2])
+                    """,
+                    Long.class
+            );
+
+    private static final DefaultRedisScript<Long> REMOVE_WAITING_SCRIPT =
+            new DefaultRedisScript<>(
+                    """
+                    redis.call('ZREM', KEYS[1], ARGV[1])
+                    return redis.call('INCR', KEYS[2])
+                    """,
+                    Long.class
+            );
+
     private static final DefaultRedisScript<Long> ASSIGN_SCRIPT =
             new DefaultRedisScript<>(
                     """
                     redis.call('ZREM', KEYS[1], ARGV[1])
                     redis.call('SET', KEYS[2], ARGV[1])
-                    return 1
+                    return redis.call('INCR', KEYS[3])
                     """,
                     Long.class
             );
@@ -26,7 +44,8 @@ public class RedisSpeakingQueueRepository {
             new DefaultRedisScript<>(
                     """
                     if redis.call('GET', KEYS[1]) == ARGV[1] then
-                        return redis.call('DEL', KEYS[1])
+                        redis.call('DEL', KEYS[1])
+                        return redis.call('INCR', KEYS[2])
                     end
                     return 0
                     """,
@@ -36,20 +55,28 @@ public class RedisSpeakingQueueRepository {
     private static final DefaultRedisScript<Long> REPLACE_ROOM_PROJECTION_SCRIPT =
             new DefaultRedisScript<>(
                     """
+                    local currentVersion = tonumber(redis.call('GET', KEYS[3]) or '0')
+                    local expectedVersion = tonumber(ARGV[1])
+
+                    if currentVersion ~= expectedVersion then
+                        return 0
+                    end
+
                     redis.call('DEL', KEYS[1])
                     redis.call('DEL', KEYS[2])
 
-                    local currentSpeakerUserId = ARGV[1]
+                    local currentSpeakerUserId = ARGV[2]
                     if currentSpeakerUserId ~= '' then
                         redis.call('SET', KEYS[2], currentSpeakerUserId)
                     end
 
-                    local index = 2
+                    local index = 3
                     while index <= #ARGV do
                         redis.call('ZADD', KEYS[1], ARGV[index + 1], ARGV[index])
                         index = index + 2
                     end
 
+                    redis.call('INCR', KEYS[3])
                     return 1
                     """,
                     Long.class
@@ -62,15 +89,20 @@ public class RedisSpeakingQueueRepository {
     }
 
     public void upsert(Long roomId, Long userId, int queueOrder) {
-        redisTemplate.opsForZSet().add(
-                queueKey(roomId),
+        redisTemplate.execute(
+                UPSERT_SCRIPT,
+                List.of(queueKey(roomId), projectionVersionKey(roomId)),
                 userId.toString(),
-                queueOrder
+                String.valueOf(queueOrder)
         );
     }
 
     public void remove(Long roomId, Long userId) {
-        redisTemplate.opsForZSet().remove(queueKey(roomId), userId.toString());
+        redisTemplate.execute(
+                REMOVE_WAITING_SCRIPT,
+                List.of(queueKey(roomId), projectionVersionKey(roomId)),
+                userId.toString()
+        );
     }
 
     public Optional<Integer> rank(Long roomId, Long userId) {
@@ -108,7 +140,11 @@ public class RedisSpeakingQueueRepository {
     public void assign(Long roomId, Long userId) {
         redisTemplate.execute(
                 ASSIGN_SCRIPT,
-                List.of(queueKey(roomId), currentSpeakerKey(roomId)),
+                List.of(
+                        queueKey(roomId),
+                        currentSpeakerKey(roomId),
+                        projectionVersionKey(roomId)
+                ),
                 userId.toString()
         );
     }
@@ -116,17 +152,27 @@ public class RedisSpeakingQueueRepository {
     public void removeCurrentSpeaker(Long roomId, Long userId) {
         redisTemplate.execute(
                 REMOVE_CURRENT_SPEAKER_SCRIPT,
-                List.of(currentSpeakerKey(roomId)),
+                List.of(currentSpeakerKey(roomId), projectionVersionKey(roomId)),
                 userId.toString()
         );
     }
 
-    public void replaceRoomProjection(
+    public long currentProjectionVersion(Long roomId) {
+        String version = redisTemplate.opsForValue().get(projectionVersionKey(roomId));
+        if (version == null) {
+            return 0L;
+        }
+        return Long.parseLong(version);
+    }
+
+    public boolean replaceRoomProjectionIfVersionMatches(
             Long roomId,
             List<SpeakingQueue> waitingQueues,
-            Optional<SpeakingQueue> currentSpeaker
+            Optional<SpeakingQueue> currentSpeaker,
+            long expectedVersion
     ) {
         List<String> arguments = new ArrayList<>();
+        arguments.add(String.valueOf(expectedVersion));
         arguments.add(currentSpeaker
                 .map(SpeakingQueue::getUserId)
                 .map(String::valueOf)
@@ -137,11 +183,16 @@ public class RedisSpeakingQueueRepository {
             arguments.add(requiredQueueOrder(waitingQueue));
         }
 
-        redisTemplate.execute(
+        Long result = redisTemplate.execute(
                 REPLACE_ROOM_PROJECTION_SCRIPT,
-                List.of(queueKey(roomId), currentSpeakerKey(roomId)),
+                List.of(
+                        queueKey(roomId),
+                        currentSpeakerKey(roomId),
+                        projectionVersionKey(roomId)
+                ),
                 arguments.toArray(Object[]::new)
         );
+        return result != null && result == 1L;
     }
 
     private String requiredQueueOrder(SpeakingQueue waitingQueue) {
@@ -162,5 +213,9 @@ public class RedisSpeakingQueueRepository {
 
     private String currentSpeakerKey(Long roomId) {
         return "stage:current:{" + roomId + "}";
+    }
+
+    private String projectionVersionKey(Long roomId) {
+        return "stage:projection-version:{" + roomId + "}";
     }
 }
