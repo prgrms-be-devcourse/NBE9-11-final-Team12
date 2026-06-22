@@ -124,7 +124,13 @@ class AiReportPersistenceServiceTest {
 
     @Test
     void prepareGeneration_throwsRoomNotClosed_whenRoomIsOpen() {
-        Room room = Room.open(1L, "진행 중인 토론방");
+        Room room = Room.open(
+                1L,
+                "진행 중인 토론방",
+                LocalDateTime.of(2026, 6, 22, 10, 0),
+                LocalDateTime.of(2026, 6, 22, 13, 0),
+                10
+        );
         ReflectionTestUtils.setField(room, "id", 10L);
 
         given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
@@ -177,9 +183,14 @@ class AiReportPersistenceServiceTest {
     }
 
     private Room closedRoom(Long roomId, Long topicId, String title) {
-        Room room = Room.open(topicId, title);
+        Room room = Room.open(
+                topicId,
+                title,
+                LocalDateTime.of(2026, 6, 22, 10, 0),
+                LocalDateTime.of(2026, 6, 22, 13, 0),
+                10
+        );
         ReflectionTestUtils.setField(room, "id", roomId);
-        ReflectionTestUtils.setField(room, "startedAt", LocalDateTime.of(2026, 6, 22, 10, 0));
         room.close(LocalDateTime.of(2026, 6, 22, 13, 0));
         assertThat(room.getStatus()).isEqualTo(RoomStatus.CLOSED);
         return room;

@@ -42,7 +42,7 @@ class AiReportSpeechSourceRepositoryTest {
                 LocalDateTime.of(2026, 6, 22, 10, 4));
 
         ReflectionTestUtils.setField(nullStance, "stance", null);
-        deleted.softDelete();
+        deleted.softDelete(LocalDateTime.of(2026, 6, 22, 10, 4));
         speechRepository.saveAllAndFlush(List.of(
                 first,
                 ready,
