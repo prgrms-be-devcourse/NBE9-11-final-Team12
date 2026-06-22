@@ -5,9 +5,9 @@ import com.sisibibi.api.domain.usersanction.dto.event.UserSanctionEventPayload;
 import com.sisibibi.api.domain.usersanction.dto.event.UserSanctionEventType;
 import com.sisibibi.api.domain.usersanction.entity.UserSanctionState;
 import com.sisibibi.api.domain.usersanction.entity.UserSanctionType;
+import com.sisibibi.api.global.realtime.RealtimeEventPublisher;
 import com.sisibibi.api.global.websocket.UserWebSocketDestinations;
 import com.sisibibi.api.global.websocket.WebSocketEventEnvelope;
-import com.sisibibi.api.global.websocket.WebSocketEventPublisher;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -23,10 +23,10 @@ import static org.mockito.Mockito.verify;
 
 class UserSanctionChangedWebSocketEventListenerTest {
 
-    private final WebSocketEventPublisher webSocketEventPublisher =
-            mock(WebSocketEventPublisher.class);
+    private final RealtimeEventPublisher realtimeEventPublisher =
+            mock(RealtimeEventPublisher.class);
     private final UserSanctionChangedWebSocketEventListener listener =
-            new UserSanctionChangedWebSocketEventListener(webSocketEventPublisher);
+            new UserSanctionChangedWebSocketEventListener(realtimeEventPublisher);
 
     @Test
     void handle_publishesSanctionEventToTargetUserTopic() {
@@ -36,7 +36,7 @@ class UserSanctionChangedWebSocketEventListenerTest {
 
         listener.handle(event);
 
-        verify(webSocketEventPublisher).publish(
+        verify(realtimeEventPublisher).publish(
                 eq(UserWebSocketDestinations.sanctionEvents(10L)),
                 envelopeCaptor.capture()
         );
@@ -49,7 +49,7 @@ class UserSanctionChangedWebSocketEventListenerTest {
     void handle_doesNotThrow_whenWebSocketPublishFails() {
         UserSanctionChangedEvent event = event();
         willThrow(new RuntimeException("broker down"))
-                .given(webSocketEventPublisher)
+                .given(realtimeEventPublisher)
                 .publish(
                         eq(UserWebSocketDestinations.sanctionEvents(10L)),
                         any()
