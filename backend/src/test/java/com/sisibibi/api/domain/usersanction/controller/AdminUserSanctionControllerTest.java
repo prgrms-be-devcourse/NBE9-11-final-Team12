@@ -113,6 +113,33 @@ class AdminUserSanctionControllerTest {
                 .andExpect(jsonPath("$.data.state").value("REVOKED"));
     }
 
+    @Test
+    void extendSanction_returnsOk() throws Exception {
+        given(userSanctionService.extendSanction(
+                10L,
+                200L,
+                99L,
+                168,
+                "반복 위반으로 제한 연장"
+        )).willReturn(response(UserSanctionState.ACTIVE));
+
+        mockMvc.perform(patch(
+                        "/api/v1/admin/users/{userId}/sanctions/{sanctionId}/extend",
+                        10L,
+                        200L
+                )
+                        .with(authPrincipal(99L))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "durationHours": 168,
+                                  "reason": "반복 위반으로 제한 연장"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.state").value("ACTIVE"));
+    }
+
     private UserSanctionRes response(UserSanctionState state) {
         LocalDateTime now = LocalDateTime.of(2026, 6, 21, 12, 0);
         return new UserSanctionRes(
@@ -128,6 +155,9 @@ class AdminUserSanctionControllerTest {
                 state == UserSanctionState.REVOKED ? now.plusHours(1) : null,
                 state == UserSanctionState.REVOKED ? 99L : null,
                 state == UserSanctionState.REVOKED ? "오인 제재 확인" : null,
+                null,
+                null,
+                null,
                 now
         );
     }

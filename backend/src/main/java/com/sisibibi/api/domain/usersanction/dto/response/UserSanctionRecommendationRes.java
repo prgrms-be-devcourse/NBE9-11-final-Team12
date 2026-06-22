@@ -17,6 +17,8 @@ public record UserSanctionRecommendationRes(
         UserSanctionType recommendedType,
         Integer recommendedDurationHours,
         boolean activeSameTypeSanction,
+        Long activeSameTypeSanctionId,
+        java.time.LocalDateTime activeSameTypeEndsAt,
         String recommendationReason
 ) {
 }

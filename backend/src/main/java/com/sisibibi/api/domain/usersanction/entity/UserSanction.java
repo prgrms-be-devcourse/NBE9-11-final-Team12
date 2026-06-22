@@ -78,6 +78,15 @@ public class UserSanction {
     @Column(name = "revocation_reason", length = 500)
     private String revocationReason;
 
+    @Column(name = "extended_at")
+    private LocalDateTime extendedAt;
+
+    @Column(name = "extended_by")
+    private Long extendedBy;
+
+    @Column(name = "extension_reason", length = 500)
+    private String extensionReason;
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -149,6 +158,25 @@ public class UserSanction {
         revokedAt = now;
         revokedBy = adminUserId;
         revocationReason = normalizeRequiredReason(reason);
+    }
+
+    public void extend(
+            Long adminUserId,
+            String reason,
+            LocalDateTime requestedEndsAt,
+            LocalDateTime now
+    ) {
+        if (!isActiveAt(now)
+                || requestedEndsAt == null
+                || !requestedEndsAt.isAfter(endsAt)
+                || Duration.between(now, requestedEndsAt).toHours() > MAX_RESTRICTION_HOURS) {
+            throw new CustomException(ErrorCode.USER_SANCTION_NOT_EXTENDABLE);
+        }
+
+        endsAt = requestedEndsAt;
+        extendedAt = now;
+        extendedBy = adminUserId;
+        extensionReason = normalizeRequiredReason(reason);
     }
 
     private void validatePeriod(

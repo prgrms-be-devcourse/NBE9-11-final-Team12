@@ -5,6 +5,7 @@ import com.sisibibi.api.domain.speechreport.entity.SpeechReportStatus;
 import com.sisibibi.api.domain.speechreport.repository.SpeechReportRepository;
 import com.sisibibi.api.domain.speechreport.repository.ViolationHistorySummaryProjection;
 import com.sisibibi.api.domain.usersanction.dto.response.UserSanctionRecommendationRes;
+import com.sisibibi.api.domain.usersanction.entity.UserSanction;
 import com.sisibibi.api.domain.usersanction.entity.UserSanctionType;
 import com.sisibibi.api.domain.usersanction.repository.UserSanctionRepository;
 import com.sisibibi.api.global.exception.CustomException;
@@ -40,7 +41,7 @@ public class UserSanctionRecommendationService {
         ViolationHistorySummary history = ViolationHistorySummary.from(projection);
         SanctionRecommendation recommendation =
                 recommendationPolicy.recommend(report.getSeverity(), history);
-        boolean activeSameTypeSanction = hasActiveSameTypeSanction(
+        UserSanction activeSameTypeSanction = findActiveSameTypeSanction(
                 userId,
                 recommendation.type(),
                 now
@@ -59,7 +60,9 @@ public class UserSanctionRecommendationService {
                 history.weightedScore(),
                 recommendation.type(),
                 recommendation.durationHours(),
-                activeSameTypeSanction,
+                activeSameTypeSanction != null,
+                activeSameTypeSanction == null ? null : activeSameTypeSanction.getId(),
+                activeSameTypeSanction == null ? null : activeSameTypeSanction.getEndsAt(),
                 recommendation.reason()
         );
     }
@@ -73,14 +76,15 @@ public class UserSanctionRecommendationService {
         }
     }
 
-    private boolean hasActiveSameTypeSanction(
+    private UserSanction findActiveSameTypeSanction(
             Long userId,
             UserSanctionType type,
             LocalDateTime now
     ) {
         if (type == UserSanctionType.WARNING) {
-            return false;
+            return null;
         }
-        return userSanctionRepository.existsActive(userId, type, now);
+        return userSanctionRepository.findFirstActive(userId, type, now)
+                .orElse(null);
     }
 }

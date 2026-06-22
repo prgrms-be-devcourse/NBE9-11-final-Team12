@@ -54,6 +54,8 @@ class AdminUserSanctionRecommendationControllerTest {
                         UserSanctionType.SPEECH_RESTRICTION,
                         24,
                         false,
+                        null,
+                        null,
                         "최근 90일 누적 위반 점수가 4점 이상입니다."
                 ));
 

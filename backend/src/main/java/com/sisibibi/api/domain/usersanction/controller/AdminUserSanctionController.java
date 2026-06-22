@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.usersanction.controller;
 
 import com.sisibibi.api.domain.usersanction.dto.request.UserSanctionCreateReq;
+import com.sisibibi.api.domain.usersanction.dto.request.UserSanctionExtendReq;
 import com.sisibibi.api.domain.usersanction.dto.request.UserSanctionRevokeReq;
 import com.sisibibi.api.domain.usersanction.dto.response.UserSanctionRes;
 import com.sisibibi.api.domain.usersanction.dto.response.UserSanctionRecommendationRes;
@@ -94,5 +95,23 @@ public class AdminUserSanctionController {
         );
 
         return ResponseEntity.ok(ApiResponse.ok("사용자 제재가 해제되었습니다.", response));
+    }
+
+    @PatchMapping("/{sanctionId}/extend")
+    public ResponseEntity<ApiResponse<UserSanctionRes>> extendSanction(
+            @PathVariable @Positive Long userId,
+            @PathVariable @Positive Long sanctionId,
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @Valid @RequestBody UserSanctionExtendReq request
+    ) {
+        UserSanctionRes response = userSanctionService.extendSanction(
+                userId,
+                sanctionId,
+                principal.userId(),
+                request.durationHours(),
+                request.reason()
+        );
+
+        return ResponseEntity.ok(ApiResponse.ok("사용자 제재가 연장되었습니다.", response));
     }
 }

@@ -140,6 +140,38 @@ public class UserSanctionService {
         return UserSanctionRes.from(sanction, now);
     }
 
+    @Transactional
+    public UserSanctionRes extendSanction(
+            Long userId,
+            Long sanctionId,
+            Long adminUserId,
+            Integer durationHours,
+            String reason
+    ) {
+        UserSanction sanction = userSanctionRepository
+                .findByIdAndUserIdForUpdate(sanctionId, userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_SANCTION_NOT_FOUND));
+
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime requestedEndsAt = now.plusHours(durationHours);
+        sanction.extend(adminUserId, reason, requestedEndsAt, now);
+        publishSanctionChangedEvent(
+                UserSanctionEventType.SANCTION_EXTENDED,
+                sanction,
+                now
+        );
+        log.info(
+                "User sanction extended. sanctionId={}, userId={}, adminUserId={}, type={}, endsAt={}",
+                sanctionId,
+                userId,
+                adminUserId,
+                sanction.getType(),
+                sanction.getEndsAt()
+        );
+
+        return UserSanctionRes.from(sanction, now);
+    }
+
     private void publishSanctionChangedEvent(
             UserSanctionEventType eventType,
             UserSanction sanction,

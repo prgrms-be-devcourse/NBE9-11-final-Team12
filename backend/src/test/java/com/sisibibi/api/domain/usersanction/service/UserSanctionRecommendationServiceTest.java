@@ -58,11 +58,11 @@ class UserSanctionRecommendationServiceTest {
                 24,
                 "최근 90일 누적 위반 점수가 4점 이상입니다."
         ));
-        given(userSanctionRepository.existsActive(
+        given(userSanctionRepository.findFirstActive(
                 eq(10L),
                 eq(UserSanctionType.SPEECH_RESTRICTION),
                 any(LocalDateTime.class)
-        )).willReturn(true);
+        )).willReturn(Optional.of(activeSanction()));
 
         var response = recommendationService.recommend(10L, 100L);
 
@@ -72,6 +72,7 @@ class UserSanctionRecommendationServiceTest {
         assertThat(response.weightedScore()).isEqualTo(5);
         assertThat(response.recommendedDurationHours()).isEqualTo(24);
         assertThat(response.activeSameTypeSanction()).isTrue();
+        assertThat(response.activeSameTypeSanctionId()).isEqualTo(200L);
     }
 
     @Test
@@ -150,5 +151,20 @@ class UserSanctionRecommendationServiceTest {
                 return critical;
             }
         };
+    }
+
+    private com.sisibibi.api.domain.usersanction.entity.UserSanction activeSanction() {
+        LocalDateTime now = LocalDateTime.now();
+        var sanction = com.sisibibi.api.domain.usersanction.entity.UserSanction.create(
+                10L,
+                99L,
+                null,
+                UserSanctionType.SPEECH_RESTRICTION,
+                "의견 제한",
+                now.minusHours(1),
+                now.plusHours(24)
+        );
+        ReflectionTestUtils.setField(sanction, "id", 200L);
+        return sanction;
     }
 }
