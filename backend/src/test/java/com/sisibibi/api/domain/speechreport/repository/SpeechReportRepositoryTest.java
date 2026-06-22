@@ -3,6 +3,8 @@ package com.sisibibi.api.domain.speechreport.repository;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReport;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportReason;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportStatus;
+import com.sisibibi.api.domain.speechreport.entity.SpeechReportReviewAction;
+import com.sisibibi.api.domain.speechreport.entity.ViolationSeverity;
 import com.sisibibi.api.global.config.JpaAuditingConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,6 +14,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
+
+import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -124,5 +128,62 @@ class SpeechReportRepositoryTest {
 
         assertThat(speechReportRepository.findByIdForUpdate(savedReport.getId()))
                 .contains(savedReport);
+    }
+
+    @Test
+    void summarizeResolvedViolations_countsOnlyRecentResolvedReports() {
+        LocalDateTime now = LocalDateTime.of(2026, 6, 22, 12, 0);
+        SpeechReport low = resolvedReport(10L, ViolationSeverity.LOW, now.minusDays(10));
+        SpeechReport high = resolvedReport(10L, ViolationSeverity.HIGH, now.minusDays(20));
+        SpeechReport old = resolvedReport(10L, ViolationSeverity.CRITICAL, now.minusDays(100));
+        SpeechReport otherUser =
+                resolvedReport(11L, ViolationSeverity.MEDIUM, now.minusDays(5));
+        speechReportRepository.saveAllAndFlush(java.util.List.of(
+                low,
+                high,
+                old,
+                otherUser
+        ));
+
+        ViolationHistorySummaryProjection summary =
+                speechReportRepository.summarizeResolvedViolations(
+                        10L,
+                        now.minusDays(90)
+                );
+
+        assertThat(summary.getLowCount()).isEqualTo(1);
+        assertThat(summary.getMediumCount()).isZero();
+        assertThat(summary.getHighCount()).isEqualTo(1);
+        assertThat(summary.getCriticalCount()).isZero();
+    }
+
+    private SpeechReport resolvedReport(
+            Long userId,
+            ViolationSeverity severity,
+            LocalDateTime reviewedAt
+    ) {
+        SpeechReport report = SpeechReport.create(
+                Math.abs(java.util.UUID.randomUUID().getMostSignificantBits()),
+                userId,
+                Math.abs(java.util.UUID.randomUUID().getLeastSignificantBits()),
+                "신고 대상 의견",
+                SpeechReportReason.SPAM,
+                null
+        );
+        report.review(
+                SpeechReportReviewAction.START_REVIEW,
+                99L,
+                null,
+                null,
+                reviewedAt.minusMinutes(1)
+        );
+        report.review(
+                SpeechReportReviewAction.RESOLVE,
+                99L,
+                "위반 확인",
+                severity,
+                reviewedAt
+        );
+        return report;
     }
 }

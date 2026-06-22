@@ -4,6 +4,7 @@ import com.sisibibi.api.ApiApplication;
 import com.sisibibi.api.domain.usersanction.dto.response.UserSanctionRes;
 import com.sisibibi.api.domain.usersanction.entity.UserSanctionState;
 import com.sisibibi.api.domain.usersanction.entity.UserSanctionType;
+import com.sisibibi.api.domain.usersanction.service.UserSanctionRecommendationService;
 import com.sisibibi.api.domain.usersanction.service.UserSanctionService;
 import com.sisibibi.api.global.exception.GlobalExceptionHandler;
 import com.sisibibi.api.global.security.AuthPrincipal;
@@ -45,6 +46,9 @@ class AdminUserSanctionControllerTest {
 
     @MockitoBean
     private UserSanctionService userSanctionService;
+
+    @MockitoBean
+    private UserSanctionRecommendationService recommendationService;
 
     @AfterEach
     void tearDown() {
