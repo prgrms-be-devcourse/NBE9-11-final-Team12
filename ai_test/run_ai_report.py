@@ -1,6 +1,10 @@
 import json
+import logging
 import sys
 from pathlib import Path
+
+
+logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
@@ -73,6 +77,8 @@ def run_report():
         temperature=config.temperature,
         gpu_layers=config.gpu_layers,
     )
+    print("모델 warm-up을 시작합니다. 첫 로딩은 시간이 걸릴 수 있습니다.", flush=True)
+    client.warm_up()
     generator = ReportGenerator(
         client,
         prompt_template=prompt_template,

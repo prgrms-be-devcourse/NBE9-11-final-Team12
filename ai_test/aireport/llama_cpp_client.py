@@ -1,5 +1,10 @@
+import logging
+import threading
 import time
 from pathlib import Path
+
+
+logger = logging.getLogger(__name__)
 
 
 class LlamaCppClient:
@@ -23,16 +28,31 @@ class LlamaCppClient:
         self.n_threads = n_threads
         self._llama_factory = llama_factory
         self._llm = None
+        self._load_lock = threading.Lock()
+
+    def warm_up(self):
+        # 서비스 요청 흐름에서 첫 모델 로딩이 발생하지 않도록 애플리케이션 초기화 시점에 호출합니다.
+        self._load_model()
 
     def generate(self, prompt):
         # ReportGenerator는 문자열 프롬프트만 넘기고, 이 클래스가 llama.cpp 호출 세부사항을 책임집니다.
         llm = self._load_model()
         prompt_char_count = len(prompt)
-        print("성능 측정 시작", flush=True)
-        print(f"- 프롬프트 글자 수: {prompt_char_count}", flush=True)
-        print(f"- 설정: n_ctx={self.context_size}, max_tokens={self.max_tokens}, temperature={self.temperature}", flush=True)
-        print(f"- 실행: n_gpu_layers={self.gpu_layers}, n_batch={self.n_batch}, n_threads={self.n_threads}", flush=True)
-        print("모델 답변 생성을 시작했습니다. 긴 토론 샘플은 몇 분 걸릴 수 있습니다.", flush=True)
+        logger.info("성능 측정 시작")
+        logger.info("- 프롬프트 글자 수: %s", prompt_char_count)
+        logger.info(
+            "- 설정: n_ctx=%s, max_tokens=%s, temperature=%s",
+            self.context_size,
+            self.max_tokens,
+            self.temperature,
+        )
+        logger.info(
+            "- 실행: n_gpu_layers=%s, n_batch=%s, n_threads=%s",
+            self.gpu_layers,
+            self.n_batch,
+            self.n_threads,
+        )
+        logger.info("모델 답변 생성을 시작했습니다. 긴 토론 샘플은 몇 분 걸릴 수 있습니다.")
         started_at = time.perf_counter()
         response = llm.create_chat_completion(
             messages=[
@@ -46,7 +66,7 @@ class LlamaCppClient:
         )
         elapsed_seconds = time.perf_counter() - started_at
         content = response["choices"][0]["message"]["content"]
-        print("모델 답변 생성을 완료했습니다.", flush=True)
+        logger.info("모델 답변 생성을 완료했습니다.")
         _print_generation_metrics(
             response=response,
             llm=llm,
@@ -63,27 +83,31 @@ class LlamaCppClient:
         if self._llm is not None:
             return self._llm
 
-        if not self.model_path.exists() and self._llama_factory is None:
-            raise RuntimeError(
-                "GGUF model file was not found. Run download_model.py in the IDE "
-                f"or place the model at: {self.model_path}"
-            )
+        with self._load_lock:
+            if self._llm is not None:
+                return self._llm
 
-        print(f"CUDA GPU 사용 설정: n_gpu_layers={self.gpu_layers}", flush=True)
-        print("GGUF 모델 파일을 메모리에 로딩하는 중입니다.", flush=True)
-        factory = self._llama_factory or _import_llama
-        started_at = time.perf_counter()
-        self._llm = factory(
-            model_path=str(self.model_path),
-            n_ctx=self.context_size,
-            n_gpu_layers=self.gpu_layers,
-            n_batch=self.n_batch,
-            n_threads=self.n_threads,
-            verbose=False,
-        )
-        elapsed_seconds = time.perf_counter() - started_at
-        print(f"GGUF 모델 로딩을 완료했습니다. 로딩 시간: {elapsed_seconds:.2f}초", flush=True)
-        return self._llm
+            if not self.model_path.exists() and self._llama_factory is None:
+                raise FileNotFoundError(
+                    "GGUF 모델 파일을 찾을 수 없습니다. download_model.py를 IDE에서 실행하거나 "
+                    f"모델 경로를 확인하세요: {self.model_path}"
+                )
+
+            logger.info("CUDA GPU 사용 설정: n_gpu_layers=%s", self.gpu_layers)
+            logger.info("GGUF 모델 파일을 메모리에 로딩하는 중입니다.")
+            factory = self._llama_factory or _import_llama
+            started_at = time.perf_counter()
+            self._llm = factory(
+                model_path=str(self.model_path),
+                n_ctx=self.context_size,
+                n_gpu_layers=self.gpu_layers,
+                n_batch=self.n_batch,
+                n_threads=self.n_threads,
+                verbose=False,
+            )
+            elapsed_seconds = time.perf_counter() - started_at
+            logger.info("GGUF 모델 로딩을 완료했습니다. 로딩 시간: %.2f초", elapsed_seconds)
+            return self._llm
 
 
 def _print_generation_metrics(
@@ -110,24 +134,24 @@ def _print_generation_metrics(
     if total_tokens is None and prompt_tokens is not None and completion_tokens is not None:
         total_tokens = prompt_tokens + completion_tokens
 
-    print("성능 측정 결과", flush=True)
-    print(f"- 입력 토큰 수: {_format_metric(prompt_tokens)}", flush=True)
-    print(f"- 출력 토큰 수: {_format_metric(completion_tokens)}", flush=True)
-    print(f"- 전체 토큰 수: {_format_metric(total_tokens)}", flush=True)
-    print(f"- 토큰 산정 방식: {token_source}", flush=True)
-    print(f"- 생성 소요 시간: {elapsed_seconds:.2f}초", flush=True)
-    print(f"- 출력 글자 수: {len(completion)}", flush=True)
-    print(f"- 요청 최대 출력 토큰: {max_tokens}", flush=True)
+    logger.info("성능 측정 결과")
+    logger.info("- 입력 토큰 수: %s", _format_metric(prompt_tokens))
+    logger.info("- 출력 토큰 수: %s", _format_metric(completion_tokens))
+    logger.info("- 전체 토큰 수: %s", _format_metric(total_tokens))
+    logger.info("- 토큰 산정 방식: %s", token_source)
+    logger.info("- 생성 소요 시간: %.2f초", elapsed_seconds)
+    logger.info("- 출력 글자 수: %s", len(completion))
+    logger.info("- 요청 최대 출력 토큰: %s", max_tokens)
 
     if completion_tokens and elapsed_seconds > 0:
-        print(f"- 출력 속도: {completion_tokens / elapsed_seconds:.2f} tokens/sec", flush=True)
+        logger.info("- 출력 속도: %.2f tokens/sec", completion_tokens / elapsed_seconds)
     if total_tokens and elapsed_seconds > 0:
-        print(f"- 전체 처리 속도: {total_tokens / elapsed_seconds:.2f} tokens/sec", flush=True)
+        logger.info("- 전체 처리 속도: %.2f tokens/sec", total_tokens / elapsed_seconds)
     if prompt_tokens:
         context_usage = prompt_tokens / context_size * 100
         remaining_context = max(context_size - prompt_tokens, 0)
-        print(f"- 컨텍스트 사용률: {context_usage:.2f}% ({prompt_tokens}/{context_size})", flush=True)
-        print(f"- 남은 입력 컨텍스트 여유: {remaining_context} tokens", flush=True)
+        logger.info("- 컨텍스트 사용률: %.2f%% (%s/%s)", context_usage, prompt_tokens, context_size)
+        logger.info("- 남은 입력 컨텍스트 여유: %s tokens", remaining_context)
 
 
 def _safe_count_tokens(llm, text):
