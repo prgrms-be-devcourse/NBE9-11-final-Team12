@@ -352,13 +352,25 @@ public class SpeakingQueueService {
     }
 
     private void rebuildRedisProjection(Long roomId) {
+        List<SpeakingQueue> waitingQueues;
+        Optional<SpeakingQueue> currentSpeaker;
+
+        try {
+            waitingQueues =
+                    speakingQueuePersistenceService.findWaitingRequestsForRedisProjection(roomId);
+            currentSpeaker =
+                    speakingQueuePersistenceService.findCurrentSpeakerForRedisProjection(roomId);
+        } catch (RuntimeException projectionSourceException) {
+            log.error(
+                    "Failed to load speaking Redis projection source. roomId={}",
+                    roomId,
+                    projectionSourceException
+            );
+            return;
+        }
+
         for (int attempt = 1; attempt <= REDIS_PROJECTION_REBUILD_MAX_ATTEMPTS; attempt++) {
             try {
-                List<SpeakingQueue> waitingQueues =
-                        speakingQueuePersistenceService.findWaitingRequestsForRedisProjection(roomId);
-                Optional<SpeakingQueue> currentSpeaker =
-                        speakingQueuePersistenceService.findCurrentSpeakerForRedisProjection(roomId);
-
                 redisSpeakingQueueRepository.replaceRoomProjection(
                         roomId,
                         waitingQueues,
