@@ -54,6 +54,10 @@ app:
     expiration:
       enabled: ${SPEAKING_EXPIRATION_ENABLED:true}
       fixed-delay-ms: ${SPEAKING_EXPIRATION_FIXED_DELAY_MS:1000}
+  ai-report:
+    base-url: ${AI_REPORT_BASE_URL:http://localhost:8000}
+    generate-path: ${AI_REPORT_GENERATE_PATH:/report}
+    timeout: ${AI_REPORT_TIMEOUT:5s}
   auth:
     jwt:
       secret: ${JWT_SECRET:local-development-jwt-secret-key-must-be-at-least-32-bytes}
