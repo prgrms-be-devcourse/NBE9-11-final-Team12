@@ -80,10 +80,19 @@ class CustomPromptPayload(BaseModel):
     prompt: str
 
 
+class BaseReportPayload(BaseModel):
+    coreLine: str | None = None
+    keyIssues: list[str] = Field(default_factory=list)
+    aiSummary: str | None = None
+    commonGround: str | None = None
+    aiOpinion: str | None = None
+
+
 class AiReportGenerateRequest(BaseModel):
     room: RoomPayload | None = None
     topic: TopicPayload | None = None
     speeches: list[SpeechPayload] = Field(default_factory=list)
+    baseReport: BaseReportPayload | None = None
     customPrompts: list[CustomPromptPayload] = Field(default_factory=list)
 
 

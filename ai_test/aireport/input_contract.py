@@ -1,6 +1,13 @@
 SUPPORTED_STANCE_VALUES = ("PRO", "CON", "NEUTRAL")
 MAX_CUSTOM_PROMPTS = 5
 MAX_CUSTOM_PROMPT_LENGTH = 1000
+BASE_REPORT_FIELD_MAP = {
+    "coreLine": ("coreLine", "core_line", "핵심 한줄"),
+    "keyIssues": ("keyIssues", "key_issues", "핵심 쟁점"),
+    "aiSummary": ("aiSummary", "ai_summary", "AI 종합 정리"),
+    "commonGround": ("commonGround", "common_ground", "공통 의견"),
+    "aiOpinion": ("aiOpinion", "ai_opinion", "AI의 개인적 소견"),
+}
 
 
 def normalize_report_request(payload):
@@ -24,6 +31,30 @@ def normalize_report_request(payload):
     custom_prompts = _normalize_custom_prompts(payload.get("customPrompts") or [])
     if custom_prompts:
         normalized["customPrompts"] = custom_prompts
+    base_report = _normalize_base_report(payload.get("baseReport") or {})
+    if base_report:
+        normalized["baseReport"] = base_report
+    return normalized
+
+
+def _normalize_base_report(base_report):
+    normalized = {}
+    for output_key, input_keys in BASE_REPORT_FIELD_MAP.items():
+        value = _first_present(base_report, input_keys)
+        if output_key == "keyIssues":
+            issues = [
+                _compact_content(item)
+                for item in (value or [])
+                if _compact_content(item)
+            ]
+            if issues:
+                normalized[output_key] = issues
+            continue
+
+        text = _compact_content(value)
+        if text:
+            normalized[output_key] = text
+
     return normalized
 
 
@@ -158,6 +189,13 @@ def _first_text(*values):
         if isinstance(value, str) and value.strip():
             return value.strip()
     return ""
+
+
+def _first_present(data, keys):
+    for key in keys:
+        if key in data:
+            return data.get(key)
+    return None
 
 
 def _drop_empty_values(data):

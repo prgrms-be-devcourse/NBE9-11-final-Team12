@@ -174,7 +174,7 @@ class ReportGeneratorPromptSecurityTest(unittest.TestCase):
         self.clustering_patch.stop()
 
     def test_blocks_unsafe_custom_prompt_before_model_call(self):
-        model_client = _FakeModelClient(_report_json())
+        model_client = _FakeModelClient(_report_json(custom_reports=[{"label": "Personalized view", "content": "summary"}]))
         generator = ReportGenerator(
             model_client,
             prompt_template=_prompt_template(),
@@ -200,7 +200,9 @@ class ReportGeneratorPromptSecurityTest(unittest.TestCase):
         self.assertEqual(model_client.prompts, [])
 
     def test_final_prompt_separates_custom_prompts_as_untrusted_data(self):
-        model_client = _FakeModelClient(_report_json())
+        model_client = _FakeModelClient(
+            _report_json(custom_reports=[{"label": "Personalized view", "content": "summary"}])
+        )
         generator = ReportGenerator(
             model_client,
             prompt_template=_prompt_template(),
@@ -390,18 +392,18 @@ def _payload_with_custom_prompts(prompts):
     }
 
 
-def _report_json(core_line="핵심"):
+def _report_json(core_line="핵심", custom_reports=None):
     fields = AiReportModel.model_fields
-    return json.dumps(
-        {
-            fields["core_line"].alias: core_line,
-            fields["key_issues"].alias: ["쟁점"],
-            fields["ai_summary"].alias: "요약",
-            fields["common_ground"].alias: "공통점",
-            fields["ai_opinion"].alias: "소견",
-        },
-        ensure_ascii=False,
-    )
+    report = {
+        fields["core_line"].alias: core_line,
+        fields["key_issues"].alias: ["쟁점"],
+        fields["ai_summary"].alias: "요약",
+        fields["common_ground"].alias: "공통점",
+        fields["ai_opinion"].alias: "소견",
+    }
+    if custom_reports is not None:
+        report["customReports"] = custom_reports
+    return json.dumps(report, ensure_ascii=False)
 
 
 if __name__ == "__main__":
