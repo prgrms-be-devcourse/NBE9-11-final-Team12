@@ -830,6 +830,70 @@ class SpeakingQueuePersistenceServiceTest {
     }
 
     @Test
+    void completeCurrentSpeakerIfMatches_completesAssignedRequestWhenUserMatches() {
+        SpeakingQueue assigned = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                SpeechStance.PRO,
+                java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        assign(assigned);
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(openRoom(1L, "토론방")));
+        given(speakingQueueRepository.findByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        )).willReturn(Optional.of(assigned));
+
+        Optional<SpeakingQueue> completed =
+                speakingQueuePersistenceService.completeCurrentSpeakerIfMatches(1L, 7L);
+
+        assertThat(completed).contains(assigned);
+        assertThat(assigned.getStatus()).isEqualTo(SpeakingQueueStatus.COMPLETED);
+        assertThat(assigned.getActiveRequest()).isNull();
+    }
+
+    @Test
+    void completeCurrentSpeakerIfMatches_returnsEmptyWhenUserDoesNotMatch() {
+        SpeakingQueue assigned = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                SpeechStance.PRO,
+                java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        assign(assigned);
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(openRoom(1L, "토론방")));
+        given(speakingQueueRepository.findByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        )).willReturn(Optional.of(assigned));
+
+        Optional<SpeakingQueue> completed =
+                speakingQueuePersistenceService.completeCurrentSpeakerIfMatches(1L, 8L);
+
+        assertThat(completed).isEmpty();
+        assertThat(assigned.getStatus()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
+    }
+
+    @Test
+    void completeCurrentSpeakerIfMatches_returnsEmptyWhenCurrentSpeakerDoesNotExist() {
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(openRoom(1L, "토론방")));
+        given(speakingQueueRepository.findByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        )).willReturn(Optional.empty());
+
+        Optional<SpeakingQueue> completed =
+                speakingQueuePersistenceService.completeCurrentSpeakerIfMatches(1L, 7L);
+
+        assertThat(completed).isEmpty();
+    }
+
+    @Test
     void findCurrentSpeaker_returnsAssignedSpeaker() {
         CurrentSpeakerProjection assigned = currentSpeakerProjection();
         given(roomRepository.existsById(1L)).willReturn(true);

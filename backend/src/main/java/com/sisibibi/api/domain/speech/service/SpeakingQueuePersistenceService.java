@@ -272,6 +272,27 @@ public class SpeakingQueuePersistenceService {
         return currentSpeaker;
     }
 
+    @Transactional
+    public Optional<SpeakingQueue> completeCurrentSpeakerIfMatches(Long roomId, Long userId) {
+        roomRepository.findByIdForUpdate(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+        Optional<SpeakingQueue> currentSpeaker =
+                speakingQueueRepository.findByRoomIdAndStatus(
+                        roomId,
+                        SpeakingQueueStatus.ASSIGNED
+                );
+
+        if (currentSpeaker.isEmpty()
+                || !currentSpeaker.get().getUserId().equals(userId)) {
+            return Optional.empty();
+        }
+
+        SpeakingQueue assigned = currentSpeaker.get();
+        assigned.complete();
+        return Optional.of(assigned);
+    }
+
     @Transactional(readOnly = true)
     public Optional<CurrentSpeakerProjection> findCurrentSpeaker(Long roomId) {
         if (!roomRepository.existsById(roomId)) {

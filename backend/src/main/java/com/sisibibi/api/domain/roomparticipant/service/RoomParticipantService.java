@@ -12,6 +12,7 @@ import com.sisibibi.api.domain.roomparticipant.dto.response.RoomParticipantRes;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipant;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
+import com.sisibibi.api.domain.speech.service.SpeakingQueueService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,7 @@ public class RoomParticipantService {
   private final RoomRepository roomRepository;
   private final RoomParticipantRepository roomParticipantRepository;
   private final ApplicationEventPublisher eventPublisher;
+  private final SpeakingQueueService speakingQueueService;
 
   @Transactional
   public RoomParticipantRes joinRoom(Long roomId, Long userId) {
@@ -103,6 +105,7 @@ public class RoomParticipantService {
     );
 
     if (wasJoined) {
+      speakingQueueService.completeCurrentSpeakerWhenParticipantLeft(roomId, userId);
       publishRoomParticipantChangedEvent(
           RoomParticipantEventType.PARTICIPANT_LEFT,
           roomId,

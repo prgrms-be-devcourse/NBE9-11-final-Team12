@@ -20,6 +20,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -142,6 +144,12 @@ public class SpeakingQueueService {
         tryAssignNextSpeaker(roomId);
     }
 
+    public void completeCurrentSpeakerWhenParticipantLeft(Long roomId, Long userId) {
+        Optional<SpeakingQueue> completed =
+                speakingQueuePersistenceService.completeCurrentSpeakerIfMatches(roomId, userId);
+        completed.ifPresent(this::handleParticipantLeftTurnCompletionAfterCommit);
+    }
+
     public StageCurrentSpeakerRes getCurrentSpeaker(Long roomId) {
         Optional<CurrentSpeakerProjection> currentSpeaker =
                 speakingQueuePersistenceService.findCurrentSpeaker(roomId);
@@ -231,6 +239,39 @@ public class SpeakingQueueService {
                 speakingQueue.getRoomId(),
                 StageEventPayload.from(speakingQueue, endReason)
         ));
+    }
+
+    private void handleParticipantLeftTurnCompletionAfterCommit(SpeakingQueue completed) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            handleParticipantLeftTurnCompletion(completed);
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        handleParticipantLeftTurnCompletion(completed);
+                    }
+                }
+        );
+    }
+
+    private void handleParticipantLeftTurnCompletion(SpeakingQueue completed) {
+        synchronizeCompletedRedisProjection(completed);
+        log.info(
+                "Speaking request completed because participant left room. "
+                        + "roomId={}, userId={}, queueOrder={}",
+                completed.getRoomId(),
+                completed.getUserId(),
+                completed.getQueueOrder()
+        );
+        publishStageChanged(
+                StageEventType.SPEAKER_COMPLETED,
+                completed,
+                StageTurnEndReason.LEFT_ROOM
+        );
+        tryAssignNextSpeaker(completed.getRoomId());
     }
 
     private Optional<SpeakingQueue> tryAssignNextSpeaker(Long roomId) {

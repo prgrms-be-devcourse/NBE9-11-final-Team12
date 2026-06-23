@@ -715,6 +715,54 @@ class SpeakingQueueServiceTest {
     }
 
     @Test
+    void completeCurrentSpeakerWhenParticipantLeft_completesTurnWithLeftRoomReason() {
+        SpeakingQueue completed = completedRequest(1L, 7L, 15);
+        given(speakingQueuePersistenceService.completeCurrentSpeakerIfMatches(1L, 7L))
+                .willReturn(Optional.of(completed));
+        given(speakingQueueProperties.getTurnDuration())
+                .willReturn(Duration.ofMinutes(2));
+        given(speakingQueuePersistenceService.assignNextSpeaker(
+                eq(1L),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        )).willReturn(SpeakingQueueAssignmentResult.empty());
+
+        speakingQueueService.completeCurrentSpeakerWhenParticipantLeft(1L, 7L);
+
+        verify(speakingQueuePersistenceService).completeCurrentSpeakerIfMatches(1L, 7L);
+        verify(redisSpeakingQueueRepository).removeCurrentSpeaker(1L, 7L);
+        verify(speakingQueuePersistenceService).assignNextSpeaker(
+                eq(1L),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        );
+        ArgumentCaptor<StageChangedEvent> eventCaptor =
+                ArgumentCaptor.forClass(StageChangedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().type())
+                .isEqualTo(StageEventType.SPEAKER_COMPLETED);
+        assertThat(eventCaptor.getValue().payload().endReason())
+                .isEqualTo(StageTurnEndReason.LEFT_ROOM);
+    }
+
+    @Test
+    void completeCurrentSpeakerWhenParticipantLeft_doesNothingWhenLeavingUserIsNotCurrentSpeaker() {
+        given(speakingQueuePersistenceService.completeCurrentSpeakerIfMatches(1L, 8L))
+                .willReturn(Optional.empty());
+
+        speakingQueueService.completeCurrentSpeakerWhenParticipantLeft(1L, 8L);
+
+        verify(speakingQueuePersistenceService).completeCurrentSpeakerIfMatches(1L, 8L);
+        verify(redisSpeakingQueueRepository, never()).removeCurrentSpeaker(anyLong(), anyLong());
+        verify(speakingQueuePersistenceService, never()).assignNextSpeaker(
+                eq(1L),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        );
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
     void expireCurrentSpeaker_removesExpiredSpeakerFromRedis() {
         SpeakingQueue completed = completedRequest(1L, 7L, 15);
         LocalDateTime now = LocalDateTime.of(2026, 6, 12, 11, 34);
