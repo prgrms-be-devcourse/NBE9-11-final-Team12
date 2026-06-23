@@ -10,6 +10,7 @@ import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipant;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
+import com.sisibibi.api.domain.speech.service.SpeakingQueueService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import org.junit.jupiter.api.Test;
@@ -42,6 +43,9 @@ class RoomParticipantServiceTest {
 
   @Mock
   private ApplicationEventPublisher eventPublisher;
+
+  @Mock
+  private SpeakingQueueService speakingQueueService;
 
   @InjectMocks
   private RoomParticipantService roomParticipantService;
@@ -202,6 +206,7 @@ class RoomParticipantServiceTest {
     assertThat(eventCaptor.getValue().payload().userId()).isEqualTo(2L);
     assertThat(eventCaptor.getValue().payload().participantCount()).isEqualTo(1);
     assertThat(eventCaptor.getValue().payload().occurredAt()).isNotNull();
+    verify(speakingQueueService).completeCurrentSpeakerWhenParticipantLeft(1L, 2L);
   }
 
   @Test
@@ -219,6 +224,8 @@ class RoomParticipantServiceTest {
     assertThat(participant.getStatus()).isEqualTo(RoomParticipantStatus.LEFT);
     assertThat(participant.getLeftAt()).isEqualTo(firstLeftAt);
     verify(eventPublisher, never()).publishEvent(any());
+    verify(speakingQueueService, never())
+        .completeCurrentSpeakerWhenParticipantLeft(any(), any());
     verify(roomParticipantRepository, never()).countByRoomIdAndStatus(any(), any());
   }
 
@@ -232,6 +239,8 @@ class RoomParticipantServiceTest {
         .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
 
     verify(eventPublisher, never()).publishEvent(any());
+    verify(speakingQueueService, never())
+        .completeCurrentSpeakerWhenParticipantLeft(any(), any());
   }
 
   @Test
@@ -246,6 +255,8 @@ class RoomParticipantServiceTest {
         .isEqualTo(ErrorCode.ROOM_PARTICIPANT_NOT_FOUND);
 
     verify(eventPublisher, never()).publishEvent(any());
+    verify(speakingQueueService, never())
+        .completeCurrentSpeakerWhenParticipantLeft(any(), any());
   }
 
   @Test

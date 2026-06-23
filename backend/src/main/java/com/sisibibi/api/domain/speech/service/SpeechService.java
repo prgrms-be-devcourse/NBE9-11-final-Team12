@@ -1,7 +1,6 @@
 package com.sisibibi.api.domain.speech.service;
 
 import com.sisibibi.api.domain.room.entity.Room;
-import com.sisibibi.api.domain.room.entity.RoomStatus;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
@@ -56,9 +55,7 @@ public class SpeechService {
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
 
-        if (room.getStatus() != RoomStatus.OPEN) {
-            throw new CustomException(ErrorCode.ROOM_CLOSED);
-        }
+        validateRoomActive(room, LocalDateTime.now());
 
         boolean isParticipating = roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
                 roomId,
@@ -173,15 +170,18 @@ public class SpeechService {
             throw new CustomException(ErrorCode.SPEECH_NOT_EDITABLE);
         }
 
-        validateRoomOpen(speech.getRoomId());
+        validateRoomActive(speech.getRoomId());
         return speech;
     }
 
-    private void validateRoomOpen(Long roomId) {
+    private void validateRoomActive(Long roomId) {
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+        validateRoomActive(room, LocalDateTime.now());
+    }
 
-        if (room.getStatus() != RoomStatus.OPEN) {
+    private void validateRoomActive(Room room, LocalDateTime now) {
+        if (!room.isActiveAt(now)) {
             throw new CustomException(ErrorCode.ROOM_CLOSED);
         }
     }

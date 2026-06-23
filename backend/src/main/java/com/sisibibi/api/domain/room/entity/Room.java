@@ -88,4 +88,9 @@ public class Room {
         return status == RoomStatus.OPEN
             && (endedAt == null || endedAt.isAfter(now));
     }
+
+    public boolean isActiveAt(LocalDateTime now) {
+        return status == RoomStatus.OPEN
+            && (endedAt == null || endedAt.isAfter(now));
+    }
 }

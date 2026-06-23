@@ -1,5 +1,6 @@
 package com.sisibibi.api.domain.speech.service;
 
+import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
@@ -47,8 +48,9 @@ public class SpeakingQueuePersistenceService {
     ) {
         userSanctionPolicyService.validateStageAllowed(userId);
 
-        roomRepository.findByIdForUpdate(roomId)
-                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+        LocalDateTime requestedAt = LocalDateTime.now();
+        Room room = findRoomForUpdate(roomId);
+        validateRoomActive(room, requestedAt);
         validateJoinedParticipant(roomId, userId);
 
         if (speakingQueueRepository.existsByRoomIdAndUserIdAndStatusIn(
@@ -66,7 +68,7 @@ public class SpeakingQueuePersistenceService {
                 userId,
                 nextQueueOrder,
                 stance,
-                LocalDateTime.now()
+                requestedAt
         );
         return speakingQueueRepository.save(speakingQueue);
     }
@@ -150,8 +152,10 @@ public class SpeakingQueuePersistenceService {
             LocalDateTime assignedAt,
             LocalDateTime expiresAt
     ) {
-        roomRepository.findByIdForUpdate(roomId)
-                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+        Room room = findRoomForUpdate(roomId);
+        if (!room.isActiveAt(assignedAt)) {
+            return SpeakingQueueAssignmentResult.empty();
+        }
 
         if (speakingQueueRepository.existsByRoomIdAndStatus(
                 roomId,
@@ -181,6 +185,17 @@ public class SpeakingQueuePersistenceService {
     private void validateJoinedParticipant(Long roomId, Long userId) {
         if (!isJoinedParticipant(roomId, userId)) {
             throw new CustomException(ErrorCode.ROOM_PARTICIPATION_REQUIRED);
+        }
+    }
+
+    private Room findRoomForUpdate(Long roomId) {
+        return roomRepository.findByIdForUpdate(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+    }
+
+    private void validateRoomActive(Room room, LocalDateTime now) {
+        if (!room.isActiveAt(now)) {
+            throw new CustomException(ErrorCode.ROOM_CLOSED);
         }
     }
 
@@ -255,6 +270,27 @@ public class SpeakingQueuePersistenceService {
 
         currentSpeaker.complete();
         return currentSpeaker;
+    }
+
+    @Transactional
+    public Optional<SpeakingQueue> completeCurrentSpeakerIfMatches(Long roomId, Long userId) {
+        roomRepository.findByIdForUpdate(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+        Optional<SpeakingQueue> currentSpeaker =
+                speakingQueueRepository.findByRoomIdAndStatus(
+                        roomId,
+                        SpeakingQueueStatus.ASSIGNED
+                );
+
+        if (currentSpeaker.isEmpty()
+                || !currentSpeaker.get().getUserId().equals(userId)) {
+            return Optional.empty();
+        }
+
+        SpeakingQueue assigned = currentSpeaker.get();
+        assigned.complete();
+        return Optional.of(assigned);
     }
 
     @Transactional(readOnly = true)

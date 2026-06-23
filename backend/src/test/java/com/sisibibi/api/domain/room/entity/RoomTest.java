@@ -34,4 +34,22 @@ class RoomTest {
     assertThat(room.getStartedAt()).isEqualTo(startedAt);
     assertThat(room.getEndedAt()).isEqualTo(endedAt);
   }
+
+  @Test
+  void isActiveAt_returnsTrue_whenRoomIsOpenAndEndTimeIsFuture() {
+    LocalDateTime now = LocalDateTime.of(2026, 6, 18, 10, 0);
+    Room room = Room.open(1L, "토론방", now.minusMinutes(10), now.plusMinutes(10), 100);
+
+    assertThat(room.isActiveAt(now)).isTrue();
+    assertThat(room.isJoinableAt(now)).isTrue();
+  }
+
+  @Test
+  void isActiveAt_returnsFalse_whenRoomEndTimeHasPassed() {
+    LocalDateTime now = LocalDateTime.of(2026, 6, 18, 10, 0);
+    Room room = Room.open(1L, "토론방", now.minusMinutes(20), now.minusMinutes(1), 100);
+
+    assertThat(room.isActiveAt(now)).isFalse();
+    assertThat(room.isJoinableAt(now)).isFalse();
+  }
 }
