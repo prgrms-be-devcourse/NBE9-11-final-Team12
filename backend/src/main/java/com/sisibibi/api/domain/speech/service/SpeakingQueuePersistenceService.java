@@ -161,23 +161,21 @@ public class SpeakingQueuePersistenceService {
         }
 
         List<SpeakingQueue> canceledRequests = new ArrayList<>();
-        while (true) {
-            Optional<SpeakingQueue> waitingRequest = findNextWaitingRequest(roomId);
-
-            if (waitingRequest.isEmpty()) {
-                return SpeakingQueueAssignmentResult.of(Optional.empty(), canceledRequests);
-            }
-
+        Optional<SpeakingQueue> waitingRequest = findNextWaitingRequest(roomId);
+        while (waitingRequest.isPresent()) {
             SpeakingQueue nextSpeaker = waitingRequest.get();
             if (!isJoinedParticipant(roomId, nextSpeaker.getUserId())) {
                 nextSpeaker.cancel(assignedAt);
                 canceledRequests.add(nextSpeaker);
+                waitingRequest = findNextWaitingRequest(roomId);
                 continue;
             }
 
             nextSpeaker.assign(assignedAt, expiresAt);
             return SpeakingQueueAssignmentResult.of(Optional.of(nextSpeaker), canceledRequests);
         }
+
+        return SpeakingQueueAssignmentResult.of(Optional.empty(), canceledRequests);
     }
 
     private void validateJoinedParticipant(Long roomId, Long userId) {
