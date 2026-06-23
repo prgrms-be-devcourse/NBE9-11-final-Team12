@@ -3,6 +3,8 @@ package com.sisibibi.api.domain.report.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sisibibi.api.domain.report.client.dto.AiReportGenerateReq;
 import com.sisibibi.api.domain.report.client.dto.AiReportGenerateRes;
+import com.sisibibi.api.domain.report.client.dto.AiReportCustomReportPayload;
+import com.sisibibi.api.domain.report.entity.AiReportCustomReport;
 import com.sisibibi.api.domain.report.entity.AiReportCustomPrompt;
 import com.sisibibi.api.domain.report.entity.AiReport;
 import com.sisibibi.api.domain.report.entity.AiReportStatus;
@@ -95,6 +97,7 @@ class AiReportPersistenceServiceTest {
         String requestJson = new ObjectMapper().findAndRegisterModules().writeValueAsString(request);
 
         assertThat(context.shouldCallAi()).isTrue();
+        assertThat(context.generationType()).isEqualTo(AiReportGenerationType.BASE_WITH_CUSTOM);
         assertThat(context.reportId()).isEqualTo(55L);
         assertThat(reportCaptor.getValue().getRoomId()).isEqualTo(10L);
         assertThat(reportCaptor.getValue().getCustomPrompts())
@@ -106,12 +109,58 @@ class AiReportPersistenceServiceTest {
         assertThat(requestJson).contains("\"stance\":\"PRO\"");
         assertThat(requestJson).contains("\"content\":\"발언 내용 정리\"");
         assertThat(requestJson).contains("\"customPrompts\":[{\"label\":\"custom 1\",\"prompt\":\"핵심 쟁점을 더 자세히 정리해줘\"}]");
+        assertThat(requestJson).contains("\"baseReport\":null");
         assertThat(requestJson).doesNotContain("nickname");
         assertThat(requestJson).doesNotContain("email");
         assertThat(requestJson).doesNotContain("password");
         assertThat(requestJson).doesNotContain("linkUrl");
         assertThat(requestJson).doesNotContain("imageUrl");
         assertThat(requestJson).doesNotContain("updatedAt");
+    }
+
+    @Test
+    void prepareGeneration_buildsCustomOnlyRequestWithSavedBaseReport_whenBaseReportIsCompleted() throws Exception {
+        Room room = closedRoom(10L, 1L, "토론방 제목");
+        Topic topic = Topic.approved("토픽 제목", "토픽 설명", "IT", "https://example.com");
+        ReflectionTestUtils.setField(topic, "id", 1L);
+        Speech speech = completedSpeech(
+                100L,
+                10L,
+                7L,
+                "표현의 자유 반박 발언",
+                SpeechStance.CON,
+                LocalDateTime.of(2026, 6, 22, 10, 0)
+        );
+        AiReport existing = AiReport.pending(10L);
+        ReflectionTestUtils.setField(existing, "id", 55L);
+        existing.complete(new AiReportGenerateRes(
+                "기본 핵심 한줄",
+                List.of("기본 쟁점"),
+                "기본 종합 정리",
+                "기본 공통 의견",
+                "기본 개인 소견",
+                List.of()
+        ));
+        List<CustomPromptCommand> customPrompts = List.of(
+                new CustomPromptCommand("custom 1", "표현의 자유를 반박하는 의견 정리해줘")
+        );
+
+        given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
+        given(aiReportRepository.findByRoomIdForUpdate(10L)).willReturn(Optional.of(existing));
+        given(topicRepository.findById(1L)).willReturn(Optional.of(topic));
+        given(speechRepository.findAiReportSourceSpeeches(10L)).willReturn(List.of(speech));
+
+        AiReportGenerationContext context = aiReportPersistenceService.prepareGeneration(10L, customPrompts);
+
+        String requestJson = new ObjectMapper().findAndRegisterModules().writeValueAsString(context.request());
+
+        assertThat(context.shouldCallAi()).isTrue();
+        assertThat(context.generationType()).isEqualTo(AiReportGenerationType.CUSTOM_ONLY);
+        assertThat(context.reportId()).isEqualTo(55L);
+        assertThat(requestJson).contains("\"coreLine\":\"기본 핵심 한줄\"");
+        assertThat(requestJson).contains("\"aiSummary\":\"기본 종합 정리\"");
+        assertThat(requestJson).contains("\"customPrompts\":[{\"label\":\"custom 1\",\"prompt\":\"표현의 자유를 반박하는 의견 정리해줘\"}]");
+        verify(aiReportRepository, never()).save(any());
     }
 
     @Test
@@ -154,7 +203,10 @@ class AiReportPersistenceServiceTest {
 
     @Test
     void complete_savesCompletedReportFields() {
-        AiReport report = AiReport.pending(10L);
+        AiReport report = AiReport.pending(10L, List.of(new AiReportCustomPrompt(
+                "custom 1",
+                "표현의 자유를 반박하는 의견 정리해줘"
+        )));
         ReflectionTestUtils.setField(report, "id", 55L);
         given(aiReportRepository.findById(55L)).willReturn(Optional.of(report));
 
@@ -163,7 +215,8 @@ class AiReportPersistenceServiceTest {
                 List.of("쟁점 1", "쟁점 2"),
                 "종합 정리",
                 "공통 의견",
-                "개인적 소견"
+                "개인적 소견",
+                List.of(new AiReportCustomReportPayload("표현의 자유 주장 반박 의견", "반박 내용"))
         ));
 
         assertThat(report.getStatus()).isEqualTo(AiReportStatus.COMPLETED);
@@ -172,9 +225,51 @@ class AiReportPersistenceServiceTest {
         assertThat(report.getAiSummary()).isEqualTo("종합 정리");
         assertThat(report.getCommonGround()).isEqualTo("공통 의견");
         assertThat(report.getAiOpinion()).isEqualTo("개인적 소견");
+        assertThat(report.getCustomReports()).containsExactly(new AiReportCustomReport(
+                "custom 1",
+                "표현의 자유를 반박하는 의견 정리해줘",
+                "표현의 자유 주장 반박 의견",
+                "반박 내용"
+        ));
         assertThat(report.getCompletedAt()).isNotNull();
         assertThat(report.getErrorMessage()).isNull();
         assertThat(result.status()).isEqualTo("COMPLETED");
+        assertThat(result.customReports()).hasSize(1);
+    }
+
+    @Test
+    void appendCustomReports_keepsBaseReportCompletedAndAddsCustomResults() {
+        AiReport report = AiReport.pending(10L);
+        ReflectionTestUtils.setField(report, "id", 55L);
+        report.complete(new AiReportGenerateRes(
+                "기본 핵심 한줄",
+                List.of("기본 쟁점"),
+                "기본 종합 정리",
+                "기본 공통 의견",
+                "기본 개인 소견",
+                List.of()
+        ));
+        List<CustomPromptCommand> prompts = List.of(
+                new CustomPromptCommand("custom 1", "소수 의견도 정리해줘")
+        );
+
+        given(aiReportRepository.findById(55L)).willReturn(Optional.of(report));
+
+        AiReportRes result = aiReportPersistenceService.appendCustomReports(
+                55L,
+                prompts,
+                List.of(new AiReportCustomReportPayload("소수 의견", "소수 의견 내용"))
+        );
+
+        assertThat(report.getStatus()).isEqualTo(AiReportStatus.COMPLETED);
+        assertThat(report.getCoreLine()).isEqualTo("기본 핵심 한줄");
+        assertThat(report.getCustomReports()).containsExactly(new AiReportCustomReport(
+                "custom 1",
+                "소수 의견도 정리해줘",
+                "소수 의견",
+                "소수 의견 내용"
+        ));
+        assertThat(result.customReports()).hasSize(1);
     }
 
     @Test

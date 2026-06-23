@@ -8,6 +8,7 @@ public record AiReportGenerateReq(
         AiReportRoomPayload room,
         AiReportTopicPayload topic,
         List<AiReportSpeechPayload> speeches,
+        AiReportBaseReportPayload baseReport,
         List<CustomPromptCommand> customPrompts
 ) {
 
@@ -16,7 +17,16 @@ public record AiReportGenerateReq(
             AiReportTopicPayload topic,
             List<AiReportSpeechPayload> speeches
     ) {
-        this(room, topic, speeches, List.of());
+        this(room, topic, speeches, null, List.of());
+    }
+
+    public AiReportGenerateReq(
+            AiReportRoomPayload room,
+            AiReportTopicPayload topic,
+            List<AiReportSpeechPayload> speeches,
+            List<CustomPromptCommand> customPrompts
+    ) {
+        this(room, topic, speeches, null, customPrompts);
     }
 
     public AiReportGenerateReq {

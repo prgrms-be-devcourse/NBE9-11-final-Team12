@@ -97,6 +97,12 @@ class AiReportControllerTest {
                 "종합 정리",
                 "공통 의견",
                 "개인적 소견",
+                List.of(new AiReportRes.CustomReportRes(
+                        "custom 1",
+                        "핵심 쟁점을 더 자세히 정리해줘",
+                        "핵심 쟁점 상세",
+                        "핵심 쟁점 상세 내용"
+                )),
                 null,
                 LocalDateTime.of(2026, 6, 22, 13, 0),
                 LocalDateTime.of(2026, 6, 22, 13, 1)
@@ -114,7 +120,10 @@ class AiReportControllerTest {
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.status").value("COMPLETED"))
                 .andExpect(jsonPath("$.data.coreLine").value("핵심 한줄"))
-                .andExpect(jsonPath("$.data.keyIssues[0]").value("쟁점 1"));
+                .andExpect(jsonPath("$.data.keyIssues[0]").value("쟁점 1"))
+                .andExpect(jsonPath("$.data.customReports[0].requestLabel").value("custom 1"))
+                .andExpect(jsonPath("$.data.customReports[0].label").value("핵심 쟁점 상세"))
+                .andExpect(jsonPath("$.data.customReports[0].content").value("핵심 쟁점 상세 내용"));
 
         verify(aiReportService).generateReport(10L, new AiReportGenerateReq(List.of(
                 new AiReportGenerateReq.CustomPromptReq("custom 1", "핵심 쟁점을 더 자세히 정리해줘")

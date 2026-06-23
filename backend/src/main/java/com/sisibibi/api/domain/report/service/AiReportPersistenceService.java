@@ -2,6 +2,8 @@ package com.sisibibi.api.domain.report.service;
 
 import com.sisibibi.api.domain.report.client.dto.AiReportGenerateReq;
 import com.sisibibi.api.domain.report.client.dto.AiReportGenerateRes;
+import com.sisibibi.api.domain.report.client.dto.AiReportBaseReportPayload;
+import com.sisibibi.api.domain.report.client.dto.AiReportCustomReportPayload;
 import com.sisibibi.api.domain.report.client.dto.AiReportRoomPayload;
 import com.sisibibi.api.domain.report.client.dto.AiReportSpeechPayload;
 import com.sisibibi.api.domain.report.client.dto.AiReportTopicPayload;
@@ -50,8 +52,29 @@ public class AiReportPersistenceService {
         AiReport report = aiReportRepository.findByRoomIdForUpdate(roomId)
                 .orElse(null);
 
-        if (report != null && report.shouldSkipGeneration()) {
+        if (report != null && report.getStatus() == com.sisibibi.api.domain.report.entity.AiReportStatus.PENDING) {
             return AiReportGenerationContext.skipAi(AiReportRes.from(report));
+        }
+
+        if (report != null && report.getStatus() == com.sisibibi.api.domain.report.entity.AiReportStatus.COMPLETED) {
+            if (customPrompts == null || customPrompts.isEmpty()) {
+                return AiReportGenerationContext.skipAi(AiReportRes.from(report));
+            }
+
+            Topic topic = topicRepository.findById(room.getTopicId())
+                    .orElseThrow(() -> new CustomException(ErrorCode.TOPIC_NOT_FOUND));
+            AiReportGenerateReq request = buildRequest(
+                    room,
+                    topic,
+                    speechRepository.findAiReportSourceSpeeches(roomId),
+                    toBasePayload(report),
+                    customPrompts
+            );
+            return AiReportGenerationContext.callAi(
+                    report.getId(),
+                    request,
+                    AiReportGenerationType.CUSTOM_ONLY
+            );
         }
 
         if (report == null) {
@@ -66,10 +89,17 @@ public class AiReportPersistenceService {
                 room,
                 topic,
                 speechRepository.findAiReportSourceSpeeches(roomId),
+                null,
                 customPrompts
         );
 
-        return AiReportGenerationContext.callAi(report.getId(), request);
+        return AiReportGenerationContext.callAi(
+                report.getId(),
+                request,
+                customPrompts == null || customPrompts.isEmpty()
+                        ? AiReportGenerationType.BASE_ONLY
+                        : AiReportGenerationType.BASE_WITH_CUSTOM
+        );
     }
 
     @Transactional
@@ -78,6 +108,19 @@ public class AiReportPersistenceService {
                 .orElseThrow(() -> new CustomException(ErrorCode.AI_REPORT_NOT_FOUND));
 
         report.complete(response);
+        return AiReportRes.from(report);
+    }
+
+    @Transactional
+    public AiReportRes appendCustomReports(
+            Long reportId,
+            List<CustomPromptCommand> customPrompts,
+            List<AiReportCustomReportPayload> customReports
+    ) {
+        AiReport report = aiReportRepository.findById(reportId)
+                .orElseThrow(() -> new CustomException(ErrorCode.AI_REPORT_NOT_FOUND));
+
+        report.appendCustomReports(toSnapshots(customPrompts), customReports);
         return AiReportRes.from(report);
     }
 
@@ -100,6 +143,7 @@ public class AiReportPersistenceService {
             Room room,
             Topic topic,
             List<Speech> speeches,
+            AiReportBaseReportPayload baseReport,
             List<CustomPromptCommand> customPrompts
     ) {
         return new AiReportGenerateReq(
@@ -108,7 +152,18 @@ public class AiReportPersistenceService {
                 speeches.stream()
                         .map(this::toPayload)
                         .toList(),
+                baseReport,
                 customPrompts
+        );
+    }
+
+    private AiReportBaseReportPayload toBasePayload(AiReport report) {
+        return new AiReportBaseReportPayload(
+                report.getCoreLine(),
+                report.getKeyIssues(),
+                report.getAiSummary(),
+                report.getCommonGround(),
+                report.getAiOpinion()
         );
     }
 

@@ -51,17 +51,37 @@ public class AiReportService {
         try {
             AiReportGenerateRes response = aiReportClient.generate(context.request());
 
-            if (!response.hasRequiredFields()) {
+            if (!isValidResponse(context, response)) {
+                if (context.generationType() == AiReportGenerationType.CUSTOM_ONLY) {
+                    throw new CustomException(ErrorCode.AI_REPORT_INVALID_RESPONSE);
+                }
+
                 return aiReportPersistenceService.fail(
                         context.reportId(),
                         ErrorCode.AI_REPORT_INVALID_RESPONSE.getMessage()
                 );
             }
 
+            if (context.generationType() == AiReportGenerationType.CUSTOM_ONLY) {
+                return aiReportPersistenceService.appendCustomReports(
+                        context.reportId(),
+                        context.request().customPrompts(),
+                        response.customReports()
+                );
+            }
+
             return aiReportPersistenceService.complete(context.reportId(), response);
         } catch (CustomException e) {
+            if (context.generationType() == AiReportGenerationType.CUSTOM_ONLY) {
+                throw e;
+            }
+
             return aiReportPersistenceService.fail(context.reportId(), e.getErrorCode().getMessage());
         } catch (RuntimeException e) {
+            if (context.generationType() == AiReportGenerationType.CUSTOM_ONLY) {
+                throw new CustomException(ErrorCode.AI_REPORT_GENERATE_FAILED);
+            }
+
             return aiReportPersistenceService.fail(
                     context.reportId(),
                     ErrorCode.AI_REPORT_GENERATE_FAILED.getMessage()
@@ -71,6 +91,18 @@ public class AiReportService {
 
     public AiReportRes getReport(Long roomId) {
         return aiReportPersistenceService.getReport(roomId);
+    }
+
+    private boolean isValidResponse(AiReportGenerationContext context, AiReportGenerateRes response) {
+        int customPromptCount = context.request().customPrompts().size();
+
+        return switch (context.generationType()) {
+            case BASE_ONLY -> response.hasBaseRequiredFields();
+            case BASE_WITH_CUSTOM -> response.hasBaseRequiredFields()
+                    && response.hasCustomReports(customPromptCount);
+            case CUSTOM_ONLY -> response.hasCustomReports(customPromptCount);
+            case SKIP -> true;
+        };
     }
 
     private List<CustomPromptCommand> normalizeAndScanCustomPrompts(AiReportGenerateReq request) {

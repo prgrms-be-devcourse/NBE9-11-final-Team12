@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.report.entity;
 
 import com.sisibibi.api.domain.report.client.dto.AiReportGenerateRes;
+import com.sisibibi.api.domain.report.client.dto.AiReportCustomReportPayload;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
@@ -53,6 +54,10 @@ public class AiReport {
     @Convert(converter = CustomPromptsConverter.class)
     @Column(name = "custom_prompts", columnDefinition = "TEXT")
     private List<AiReportCustomPrompt> customPrompts = List.of();
+
+    @Convert(converter = CustomReportsConverter.class)
+    @Column(name = "custom_reports", columnDefinition = "TEXT")
+    private List<AiReportCustomReport> customReports = List.of();
 
     @Column(name = "ai_summary", columnDefinition = "TEXT")
     private String aiSummary;
@@ -110,8 +115,18 @@ public class AiReport {
         this.aiSummary = response.aiSummary();
         this.commonGround = response.commonGround();
         this.aiOpinion = response.aiOpinion();
+        this.customReports = toCustomReports(this.customPrompts, response.customReports());
         this.errorMessage = null;
         this.completedAt = LocalDateTime.now();
+    }
+
+    public void appendCustomReports(
+            List<AiReportCustomPrompt> customPrompts,
+            List<AiReportCustomReportPayload> customReportPayloads
+    ) {
+        this.customPrompts = mergePrompts(this.customPrompts, customPrompts);
+        this.customReports = mergeReports(this.customReports, toCustomReports(customPrompts, customReportPayloads));
+        this.errorMessage = null;
     }
 
     public void fail(String errorMessage) {
@@ -125,6 +140,7 @@ public class AiReport {
         this.coreLine = null;
         this.keyIssues = List.of();
         this.customPrompts = customPrompts == null ? List.of() : List.copyOf(customPrompts);
+        this.customReports = List.of();
         this.aiSummary = null;
         this.commonGround = null;
         this.aiOpinion = null;
@@ -139,5 +155,59 @@ public class AiReport {
         }
 
         return message.length() > 1000 ? message.substring(0, 1000) : message;
+    }
+
+    private List<AiReportCustomReport> toCustomReports(
+            List<AiReportCustomPrompt> prompts,
+            List<AiReportCustomReportPayload> reports
+    ) {
+        if (reports == null || reports.isEmpty()) {
+            return List.of();
+        }
+
+        return java.util.stream.IntStream.range(0, reports.size())
+                .mapToObj(index -> {
+                    AiReportCustomPrompt prompt = prompts != null && prompts.size() > index
+                            ? prompts.get(index)
+                            : new AiReportCustomPrompt("custom " + (index + 1), "");
+                    AiReportCustomReportPayload report = reports.get(index);
+                    return new AiReportCustomReport(
+                            prompt.label(),
+                            prompt.prompt(),
+                            report.label(),
+                            report.content()
+                    );
+                })
+                .toList();
+    }
+
+    private List<AiReportCustomPrompt> mergePrompts(
+            List<AiReportCustomPrompt> existingPrompts,
+            List<AiReportCustomPrompt> newPrompts
+    ) {
+        if (newPrompts == null || newPrompts.isEmpty()) {
+            return existingPrompts == null ? List.of() : List.copyOf(existingPrompts);
+        }
+
+        java.util.ArrayList<AiReportCustomPrompt> merged = new java.util.ArrayList<>(
+                existingPrompts == null ? List.of() : existingPrompts
+        );
+        merged.addAll(newPrompts);
+        return List.copyOf(merged);
+    }
+
+    private List<AiReportCustomReport> mergeReports(
+            List<AiReportCustomReport> existingReports,
+            List<AiReportCustomReport> newReports
+    ) {
+        if (newReports == null || newReports.isEmpty()) {
+            return existingReports == null ? List.of() : List.copyOf(existingReports);
+        }
+
+        java.util.ArrayList<AiReportCustomReport> merged = new java.util.ArrayList<>(
+                existingReports == null ? List.of() : existingReports
+        );
+        merged.addAll(newReports);
+        return List.copyOf(merged);
     }
 }
