@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react"
 import { ApiError } from "@/lib/api/client"
 import { chatApi } from "@/lib/api/services"
-import { subscribeRoomChat } from "@/lib/api/stomp"
-import type { ChatMessageEventPayload, ChatMessage as ApiChatMessage } from "@/lib/api/types"
+import type { RoomStompConnection } from "@/lib/api/stomp"
+import type { ChatEvent, ChatMessageEventPayload, ChatMessage as ApiChatMessage } from "@/lib/api/types"
 import { useAuth } from "@/components/auth-provider"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -63,16 +63,22 @@ function eventToViewMessage(event: ChatMessageEventPayload): ChatViewMessage | n
   })
 }
 
-export function ChatPanel({ roomId }: { roomId: number }) {
+export function ChatPanel({
+  roomId,
+  stompConnection,
+  stompConnected,
+}: {
+  roomId: number
+  stompConnection: RoomStompConnection | null
+  stompConnected: boolean
+}) {
   const { user } = useAuth()
   const [messages, setMessages] = useState<ChatViewMessage[]>([])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(true)
-  const [connected, setConnected] = useState(false)
   const [error, setError] = useState("")
   const [deletingId, setDeletingId] = useState("")
   const bottomRef = useRef<HTMLDivElement>(null)
-  const chatRef = useRef<ReturnType<typeof subscribeRoomChat> | null>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -96,15 +102,17 @@ export function ChatPanel({ roomId }: { roomId: number }) {
         if (mounted) setLoading(false)
       })
 
-    const subscription = subscribeRoomChat(roomId, {
-      onStatus: (nextConnected) => {
-        if (mounted) setConnected(nextConnected)
-      },
-      onError: (message) => {
-        if (mounted) setError(message)
-      },
-      onEvent: (event) => {
-        if (!mounted) return
+    return () => {
+      mounted = false
+    }
+  }, [roomId])
+
+  useEffect(() => {
+    if (!stompConnection || !stompConnected) return
+
+    const unsubscribe = stompConnection.subscribe<ChatEvent>(
+      `/topic/rooms/${roomId}/chat/events`,
+      (event) => {
         if (event.eventType === "MESSAGE_DELETED") {
           setMessages((prev) => prev.filter((message) => message.id !== String(event.data.messageId)))
           return
@@ -117,20 +125,15 @@ export function ChatPanel({ roomId }: { roomId: number }) {
           return [...prev, nextMessage]
         })
       },
-    })
+      setError,
+    )
 
-    chatRef.current = subscription
-
-    return () => {
-      mounted = false
-      subscription.disconnect()
-      if (chatRef.current === subscription) chatRef.current = null
-    }
-  }, [roomId])
+    return unsubscribe
+  }, [roomId, stompConnected, stompConnection])
 
   const handleSend = () => {
     if (!input.trim()) return
-    const sent = chatRef.current?.send(input.trim())
+    const sent = stompConnection?.sendChat(input.trim())
     if (!sent) {
       setError("채팅 연결이 완료된 뒤 다시 전송해주세요.")
       return
@@ -159,8 +162,8 @@ export function ChatPanel({ roomId }: { roomId: number }) {
           <MessageSquare className="size-4 text-primary" />
           <span className="text-sm font-semibold text-foreground">실시간 채팅</span>
         </div>
-        <Badge variant="outline" className={cn("text-[10px]", connected ? "border-primary/30 text-primary" : "border-border text-muted-foreground")}>
-          {connected ? `${messages.length}개` : "연결 중"}
+        <Badge variant="outline" className={cn("text-[10px]", stompConnected ? "border-primary/30 text-primary" : "border-border text-muted-foreground")}>
+          {stompConnected ? `${messages.length}개` : "연결 중"}
         </Badge>
       </div>
 
@@ -229,7 +232,7 @@ export function ChatPanel({ roomId }: { roomId: number }) {
             size="icon"
             className="size-9 shrink-0"
             onClick={handleSend}
-            disabled={!input.trim() || !connected}
+            disabled={!input.trim() || !stompConnected}
           >
             <Send className="size-4" />
             <span className="sr-only">전송</span>

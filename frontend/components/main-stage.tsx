@@ -4,10 +4,11 @@ import { FormEvent, useCallback, useEffect, useState } from "react"
 import { Flag, History, Loader2, MessageSquarePlus, Mic, MicOff, Users } from "lucide-react"
 import { ApiError } from "@/lib/api/client"
 import { speechApi, stageApi } from "@/lib/api/services"
-import { subscribeRoomEvents } from "@/lib/api/stomp"
+import type { RoomStompConnection } from "@/lib/api/stomp"
 import { useAuth } from "@/components/auth-provider"
 import type {
   SpeechReportReason,
+  SpeechReactionEvent,
   SpeechStance,
   SpeechSummary,
   StageCurrentSpeaker,
@@ -36,7 +37,17 @@ function messageOf(error: unknown) {
   return error instanceof ApiError ? error.message : "요청 처리 중 오류가 발생했습니다."
 }
 
-export function MainStage({ roomId, liveEnabled = true }: { roomId: number; liveEnabled?: boolean }) {
+export function MainStage({
+  roomId,
+  liveEnabled = true,
+  stompConnection,
+  stompConnected,
+}: {
+  roomId: number
+  liveEnabled?: boolean
+  stompConnection: RoomStompConnection | null
+  stompConnected: boolean
+}) {
   const { user } = useAuth()
   const [speeches, setSpeeches] = useState<SpeechSummary[]>([])
   const [loading, setLoading] = useState(true)
@@ -106,18 +117,32 @@ export function MainStage({ roomId, liveEnabled = true }: { roomId: number; live
   }, [loadStage])
 
   useEffect(() => {
-    if (!liveEnabled) return
+    if (!liveEnabled || !stompConnection || !stompConnected) return
 
-    const subscription = subscribeRoomEvents<StageEvent>(roomId, {
-      destinations: [`/topic/rooms/${roomId}/stage/events`],
-      onEvent: () => {
+    const unsubscribe = stompConnection.subscribe<StageEvent>(
+      `/topic/rooms/${roomId}/stage/events`,
+      () => {
         void loadStage()
       },
-      onError: (message) => setStageError(message),
-    })
+      setStageError,
+    )
 
-    return () => subscription.disconnect()
-  }, [liveEnabled, loadStage, roomId])
+    return unsubscribe
+  }, [liveEnabled, loadStage, roomId, stompConnected, stompConnection])
+
+  useEffect(() => {
+    if (!liveEnabled || !stompConnection || !stompConnected) return
+
+    const unsubscribe = stompConnection.subscribe<SpeechReactionEvent>(
+      `/topic/rooms/${roomId}/speech-reactions/events`,
+      () => {
+        void loadSpeeches()
+      },
+      setError,
+    )
+
+    return unsubscribe
+  }, [liveEnabled, loadSpeeches, roomId, stompConnected, stompConnection])
 
   const createSpeech = async (event: FormEvent) => {
     event.preventDefault()
