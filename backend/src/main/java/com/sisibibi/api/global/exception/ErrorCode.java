@@ -105,6 +105,12 @@ public enum ErrorCode {
     AI_REPORT_CONFIG_MISSING(HttpStatus.INTERNAL_SERVER_ERROR, "AI 리포트 서버 설정이 누락되었습니다."),
     AI_REPORT_GENERATE_FAILED(HttpStatus.BAD_GATEWAY, "AI 리포트 생성에 실패했습니다."),
     AI_REPORT_INVALID_RESPONSE(HttpStatus.BAD_GATEWAY, "AI 리포트 서버 응답 형식이 올바르지 않습니다."),
+    AI_REPORT_CUSTOM_PROMPT_TOO_MANY(HttpStatus.BAD_REQUEST, "customPrompts는 최대 5개까지 입력할 수 있습니다."),
+    AI_REPORT_CUSTOM_PROMPT_REQUIRED(HttpStatus.BAD_REQUEST, "개인화 요청 prompt는 비어 있을 수 없습니다."),
+    AI_REPORT_CUSTOM_PROMPT_TOO_LONG(HttpStatus.BAD_REQUEST, "개인화 요청 prompt는 정책 길이를 초과할 수 없습니다."),
+    AI_REPORT_CUSTOM_PROMPT_INVALID(HttpStatus.BAD_REQUEST, "개인화 요청에 허용되지 않는 문자가 포함되어 있습니다."),
+    PROMPT_GUARD_BLOCKED(HttpStatus.BAD_REQUEST, "개인화 요청에 안전하지 않은 지시가 포함되어 있습니다."),
+    PROMPT_GUARD_UNAVAILABLE(HttpStatus.BAD_REQUEST, "개인화 요청 안전성 검사를 완료할 수 없습니다."),
 
     // Payment
     PAYMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 결제 내역입니다."),

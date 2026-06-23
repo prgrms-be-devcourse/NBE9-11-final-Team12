@@ -7,6 +7,8 @@ import com.sisibibi.api.domain.report.client.dto.AiReportSpeechPayload;
 import com.sisibibi.api.domain.report.client.dto.AiReportTopicPayload;
 import com.sisibibi.api.domain.report.dto.response.AiReportRes;
 import com.sisibibi.api.domain.report.entity.AiReport;
+import com.sisibibi.api.domain.report.entity.AiReportCustomPrompt;
+import com.sisibibi.api.domain.report.prompt.CustomPromptCommand;
 import com.sisibibi.api.domain.report.repository.AiReportRepository;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
@@ -37,7 +39,7 @@ public class AiReportPersistenceService {
     private final AiReportRepository aiReportRepository;
 
     @Transactional
-    public AiReportGenerationContext prepareGeneration(Long roomId) {
+    public AiReportGenerationContext prepareGeneration(Long roomId, List<CustomPromptCommand> customPrompts) {
         Room room = roomRepository.findByIdForUpdate(roomId)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
 
@@ -53,14 +55,19 @@ public class AiReportPersistenceService {
         }
 
         if (report == null) {
-            report = aiReportRepository.save(AiReport.pending(roomId));
+            report = aiReportRepository.save(AiReport.pending(roomId, toSnapshots(customPrompts)));
         } else {
-            report.retry();
+            report.retry(toSnapshots(customPrompts));
         }
 
         Topic topic = topicRepository.findById(room.getTopicId())
                 .orElseThrow(() -> new CustomException(ErrorCode.TOPIC_NOT_FOUND));
-        AiReportGenerateReq request = buildRequest(room, topic, speechRepository.findAiReportSourceSpeeches(roomId));
+        AiReportGenerateReq request = buildRequest(
+                room,
+                topic,
+                speechRepository.findAiReportSourceSpeeches(roomId),
+                customPrompts
+        );
 
         return AiReportGenerationContext.callAi(report.getId(), request);
     }
@@ -89,13 +96,19 @@ public class AiReportPersistenceService {
                 .orElseThrow(() -> new CustomException(ErrorCode.AI_REPORT_NOT_FOUND));
     }
 
-    private AiReportGenerateReq buildRequest(Room room, Topic topic, List<Speech> speeches) {
+    private AiReportGenerateReq buildRequest(
+            Room room,
+            Topic topic,
+            List<Speech> speeches,
+            List<CustomPromptCommand> customPrompts
+    ) {
         return new AiReportGenerateReq(
                 new AiReportRoomPayload(room.getTitle(), room.getStartedAt(), room.getEndedAt()),
                 new AiReportTopicPayload(topic.getTitle(), topic.getDescription()),
                 speeches.stream()
                         .map(this::toPayload)
-                        .toList()
+                        .toList(),
+                customPrompts
         );
     }
 
@@ -117,5 +130,15 @@ public class AiReportPersistenceService {
         }
 
         return WHITESPACE_PATTERN.matcher(content.trim()).replaceAll(" ");
+    }
+
+    private List<AiReportCustomPrompt> toSnapshots(List<CustomPromptCommand> customPrompts) {
+        if (customPrompts == null || customPrompts.isEmpty()) {
+            return List.of();
+        }
+
+        return customPrompts.stream()
+                .map(prompt -> new AiReportCustomPrompt(prompt.label(), prompt.prompt()))
+                .toList();
     }
 }

@@ -3,8 +3,10 @@ package com.sisibibi.api.domain.report.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sisibibi.api.domain.report.client.dto.AiReportGenerateReq;
 import com.sisibibi.api.domain.report.client.dto.AiReportGenerateRes;
+import com.sisibibi.api.domain.report.entity.AiReportCustomPrompt;
 import com.sisibibi.api.domain.report.entity.AiReport;
 import com.sisibibi.api.domain.report.entity.AiReportStatus;
+import com.sisibibi.api.domain.report.prompt.CustomPromptCommand;
 import com.sisibibi.api.domain.report.repository.AiReportRepository;
 import com.sisibibi.api.domain.report.dto.response.AiReportRes;
 import com.sisibibi.api.domain.room.entity.Room;
@@ -79,7 +81,11 @@ class AiReportPersistenceServiceTest {
             return report;
         });
 
-        AiReportGenerationContext context = aiReportPersistenceService.prepareGeneration(10L);
+        List<CustomPromptCommand> customPrompts = List.of(
+                new CustomPromptCommand("custom 1", "핵심 쟁점을 더 자세히 정리해줘")
+        );
+
+        AiReportGenerationContext context = aiReportPersistenceService.prepareGeneration(10L, customPrompts);
 
         ArgumentCaptor<AiReport> reportCaptor = ArgumentCaptor.forClass(AiReport.class);
         verify(aiReportRepository).save(reportCaptor.capture());
@@ -91,12 +97,15 @@ class AiReportPersistenceServiceTest {
         assertThat(context.shouldCallAi()).isTrue();
         assertThat(context.reportId()).isEqualTo(55L);
         assertThat(reportCaptor.getValue().getRoomId()).isEqualTo(10L);
+        assertThat(reportCaptor.getValue().getCustomPrompts())
+                .containsExactly(new AiReportCustomPrompt("custom 1", "핵심 쟁점을 더 자세히 정리해줘"));
         assertThat(requestJson).contains("\"title\":\"토론방 제목\"");
         assertThat(requestJson).contains("\"title\":\"토픽 제목\"");
         assertThat(requestJson).contains("\"speechId\":100");
         assertThat(requestJson).contains("\"userId\":7");
         assertThat(requestJson).contains("\"stance\":\"PRO\"");
         assertThat(requestJson).contains("\"content\":\"발언 내용 정리\"");
+        assertThat(requestJson).contains("\"customPrompts\":[{\"label\":\"custom 1\",\"prompt\":\"핵심 쟁점을 더 자세히 정리해줘\"}]");
         assertThat(requestJson).doesNotContain("nickname");
         assertThat(requestJson).doesNotContain("email");
         assertThat(requestJson).doesNotContain("password");
@@ -114,7 +123,7 @@ class AiReportPersistenceServiceTest {
         given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
         given(aiReportRepository.findByRoomIdForUpdate(10L)).willReturn(Optional.of(existing));
 
-        AiReportGenerationContext context = aiReportPersistenceService.prepareGeneration(10L);
+        AiReportGenerationContext context = aiReportPersistenceService.prepareGeneration(10L, List.of());
 
         assertThat(context.shouldCallAi()).isFalse();
         assertThat(context.response().status()).isEqualTo("PENDING");
@@ -135,7 +144,7 @@ class AiReportPersistenceServiceTest {
 
         given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
 
-        assertThatThrownBy(() -> aiReportPersistenceService.prepareGeneration(10L))
+        assertThatThrownBy(() -> aiReportPersistenceService.prepareGeneration(10L, List.of()))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.AI_REPORT_ROOM_NOT_CLOSED);

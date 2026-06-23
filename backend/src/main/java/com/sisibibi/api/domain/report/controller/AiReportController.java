@@ -1,5 +1,6 @@
 package com.sisibibi.api.domain.report.controller;
 
+import com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq;
 import com.sisibibi.api.domain.report.dto.response.AiReportRes;
 import com.sisibibi.api.domain.report.service.AiReportService;
 import com.sisibibi.api.global.response.ApiResponse;
@@ -10,6 +11,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -33,11 +35,12 @@ public class AiReportController {
 
     @PostMapping
     public ResponseEntity<ApiResponse<AiReportRes>> generateAiReport(
-            @PathVariable @Positive Long roomId
+            @PathVariable @Positive Long roomId,
+            @RequestBody(required = false) AiReportGenerateReq request
     ) {
         return ResponseEntity.ok(ApiResponse.ok(
                 "AI 리포트 생성 요청이 완료되었습니다.",
-                aiReportService.generateReport(roomId)
+                aiReportService.generateReport(roomId, request == null ? AiReportGenerateReq.empty() : request)
         ));
     }
 }

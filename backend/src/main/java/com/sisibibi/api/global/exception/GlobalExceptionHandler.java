@@ -1,5 +1,6 @@
 package com.sisibibi.api.global.exception;
 
+import com.sisibibi.api.domain.report.prompt.PromptGuardBlockedException;
 import com.sisibibi.api.global.response.ApiResponse;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +35,28 @@ public class GlobalExceptionHandler {
     private static final String SPEECH_REACTIONS_SPEECH_USER_UNIQUE_CONSTRAINT =
             "uk_speech_reactions_speech_user";
     private static final String PAYMENTS_ORDER_ID_UNIQUE_CONSTRAINT = "uk_payments_order_id";
+
+    @ExceptionHandler(PromptGuardBlockedException.class)
+    protected ResponseEntity<ApiResponse<Map<String, String>>> handlePromptGuardBlockedException(
+            PromptGuardBlockedException e
+    ) {
+        ErrorCode errorCode = e.getErrorCode();
+        Map<String, String> data = Map.of("severity", e.getSeverity().name());
+
+        log.warn("Prompt guard blocked request. code={}, severity={}",
+                errorCode.name(),
+                e.getSeverity()
+        );
+
+        return ResponseEntity
+                .status(errorCode.getStatus())
+                .body(ApiResponse.error(
+                        errorCode.getStatus(),
+                        errorCode.name(),
+                        errorCode.getMessage(),
+                        data
+                ));
+    }
 
     @ExceptionHandler(CustomException.class)
     protected ResponseEntity<ApiResponse<Void>> handleCustomException(CustomException e) {

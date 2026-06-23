@@ -50,6 +50,10 @@ public class AiReport {
     @Column(name = "key_issues", columnDefinition = "TEXT")
     private List<String> keyIssues = List.of();
 
+    @Convert(converter = CustomPromptsConverter.class)
+    @Column(name = "custom_prompts", columnDefinition = "TEXT")
+    private List<AiReportCustomPrompt> customPrompts = List.of();
+
     @Column(name = "ai_summary", columnDefinition = "TEXT")
     private String aiSummary;
 
@@ -77,9 +81,13 @@ public class AiReport {
     private LocalDateTime updatedAt;
 
     public static AiReport pending(Long roomId) {
+        return pending(roomId, List.of());
+    }
+
+    public static AiReport pending(Long roomId, List<AiReportCustomPrompt> customPrompts) {
         AiReport report = new AiReport();
         report.roomId = roomId;
-        report.markPending();
+        report.markPending(customPrompts);
         return report;
     }
 
@@ -88,7 +96,11 @@ public class AiReport {
     }
 
     public void retry() {
-        markPending();
+        retry(List.of());
+    }
+
+    public void retry(List<AiReportCustomPrompt> customPrompts) {
+        markPending(customPrompts);
     }
 
     public void complete(AiReportGenerateRes response) {
@@ -108,10 +120,11 @@ public class AiReport {
         this.completedAt = null;
     }
 
-    private void markPending() {
+    private void markPending(List<AiReportCustomPrompt> customPrompts) {
         this.status = AiReportStatus.PENDING;
         this.coreLine = null;
         this.keyIssues = List.of();
+        this.customPrompts = customPrompts == null ? List.of() : List.copyOf(customPrompts);
         this.aiSummary = null;
         this.commonGround = null;
         this.aiOpinion = null;
