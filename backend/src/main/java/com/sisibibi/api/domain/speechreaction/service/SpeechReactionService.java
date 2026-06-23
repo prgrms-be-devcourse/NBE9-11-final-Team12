@@ -1,5 +1,7 @@
 package com.sisibibi.api.domain.speechreaction.service;
 
+import com.sisibibi.api.domain.room.entity.Room;
+import com.sisibibi.api.domain.room.entity.RoomStatus;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
@@ -36,6 +38,7 @@ public class SpeechReactionService {
     @Transactional
     public SpeechReactionCreateRes createReaction(Long speechId, Long userId) {
         Speech speech = getActiveSpeech(speechId);
+        validateRoomOpen(speech.getRoomId());
         validateJoinedParticipant(speech.getRoomId(), userId);
 
         if (speech.getUserId().equals(userId)) {
@@ -55,6 +58,8 @@ public class SpeechReactionService {
     @Transactional
     public void deleteReaction(Long speechId, Long userId) {
         Speech speech = getActiveSpeech(speechId);
+        validateRoomOpen(speech.getRoomId());
+        validateJoinedParticipant(speech.getRoomId(), userId);
 
         SpeechReaction reaction = speechReactionRepository
                 .findBySpeechIdAndUserId(speechId, userId)
@@ -91,6 +96,15 @@ public class SpeechReactionService {
     private Speech getActiveSpeech(Long speechId) {
         return speechRepository.findByIdAndDeletedFalse(speechId)
                 .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_NOT_FOUND));
+    }
+
+    private void validateRoomOpen(Long roomId) {
+        Room room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+        if (room.getStatus() != RoomStatus.OPEN) {
+            throw new CustomException(ErrorCode.ROOM_CLOSED);
+        }
     }
 
     private void validateJoinedParticipant(Long roomId, Long userId) {

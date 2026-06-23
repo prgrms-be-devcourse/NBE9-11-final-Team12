@@ -23,4 +23,6 @@ public interface RoomParticipantRepository extends JpaRepository<RoomParticipant
     );
 
     int countByRoomIdAndStatus(Long roomId, RoomParticipantStatus status);
+
+    long countByUserId(Long userId);
 }

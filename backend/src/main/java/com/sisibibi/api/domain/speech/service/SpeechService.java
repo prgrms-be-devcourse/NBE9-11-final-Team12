@@ -173,7 +173,17 @@ public class SpeechService {
             throw new CustomException(ErrorCode.SPEECH_NOT_EDITABLE);
         }
 
+        validateRoomOpen(speech.getRoomId());
         return speech;
+    }
+
+    private void validateRoomOpen(Long roomId) {
+        Room room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+        if (room.getStatus() != RoomStatus.OPEN) {
+            throw new CustomException(ErrorCode.ROOM_CLOSED);
+        }
     }
 
     private void validateContent(

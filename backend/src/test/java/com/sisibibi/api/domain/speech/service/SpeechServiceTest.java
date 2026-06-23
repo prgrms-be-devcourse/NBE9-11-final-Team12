@@ -272,6 +272,7 @@ class SpeechServiceTest {
     void updateSpeech_updatesOwnEditableSpeech() {
         Speech speech = Speech.createMainOpinion(1L, 2L, "기존 의견", SpeechStance.CON);
         given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
+        givenOpenRoom(1L);
 
         SpeechDetailRes response = speechService.updateSpeech(
                 3L,
@@ -335,6 +336,7 @@ class SpeechServiceTest {
     void updateSpeech_throwsProfanityDetected_whenContentContainsProfanity() {
         Speech speech = Speech.createMainOpinion(1L, 2L, "기존 의견", SpeechStance.CON);
         given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
+        givenOpenRoom(1L);
         given(profanityDetector.containsProfanity("욕설이 포함된 수정 의견"))
                 .willReturn(true);
 
@@ -352,9 +354,28 @@ class SpeechServiceTest {
     }
 
     @Test
+    void updateSpeech_throwsRoomClosed_whenRoomIsClosed() {
+        Speech speech = Speech.createMainOpinion(1L, 2L, "기존 의견", SpeechStance.CON);
+        Room room = org.mockito.Mockito.mock(Room.class);
+        given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
+        given(roomRepository.findById(1L)).willReturn(Optional.of(room));
+        given(room.getStatus()).willReturn(RoomStatus.CLOSED);
+
+        assertThatThrownBy(() -> speechService.updateSpeech(
+                3L,
+                2L,
+                new SpeechUpdateCommand("수정", SpeechStance.PRO)
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ROOM_CLOSED);
+    }
+
+    @Test
     void deleteSpeech_softDeletesOwnEditableSpeech() {
         Speech speech = Speech.createMainOpinion(1L, 2L, "삭제할 의견", SpeechStance.PRO);
         given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
+        givenOpenRoom(1L);
 
         speechService.deleteSpeech(3L, 2L);
 
@@ -398,9 +419,26 @@ class SpeechServiceTest {
     }
 
     @Test
+    void deleteSpeech_throwsRoomClosed_whenRoomIsClosed() {
+        Speech speech = Speech.createMainOpinion(1L, 2L, "삭제할 의견", SpeechStance.PRO);
+        Room room = org.mockito.Mockito.mock(Room.class);
+        given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
+        given(roomRepository.findById(1L)).willReturn(Optional.of(room));
+        given(room.getStatus()).willReturn(RoomStatus.CLOSED);
+
+        assertThatThrownBy(() -> speechService.deleteSpeech(3L, 2L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ROOM_CLOSED);
+
+        assertThat(speech.isDeleted()).isFalse();
+    }
+
+    @Test
     void updateSpeechLink_updatesOwnEditableSpeech() {
         Speech speech = Speech.createMainOpinion(1L, 2L, "의견", SpeechStance.PRO);
         given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
+        givenOpenRoom(1L);
 
         SpeechDetailRes response = speechService.updateSpeechLink(
                 3L,
@@ -459,6 +497,24 @@ class SpeechServiceTest {
                 .isEqualTo(ErrorCode.SPEECH_NOT_EDITABLE);
     }
 
+    @Test
+    void updateSpeechLink_throwsRoomClosed_whenRoomIsClosed() {
+        Speech speech = Speech.createMainOpinion(1L, 2L, "의견", SpeechStance.PRO);
+        Room room = org.mockito.Mockito.mock(Room.class);
+        given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
+        given(roomRepository.findById(1L)).willReturn(Optional.of(room));
+        given(room.getStatus()).willReturn(RoomStatus.CLOSED);
+
+        assertThatThrownBy(() -> speechService.updateSpeechLink(
+                3L,
+                2L,
+                "https://example.com/evidence"
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ROOM_CLOSED);
+    }
+
     private Speech mockSpeech(
             Long speechId,
             Long roomId,
@@ -477,6 +533,12 @@ class SpeechServiceTest {
         given(speech.getStatus()).willReturn(status);
         given(speech.getCreatedAt()).willReturn(createdAt);
         return speech;
+    }
+
+    private void givenOpenRoom(Long roomId) {
+        Room room = org.mockito.Mockito.mock(Room.class);
+        given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
+        given(room.getStatus()).willReturn(RoomStatus.OPEN);
     }
 
     private SpeechReactionSummaryProjection reactionSummary(
