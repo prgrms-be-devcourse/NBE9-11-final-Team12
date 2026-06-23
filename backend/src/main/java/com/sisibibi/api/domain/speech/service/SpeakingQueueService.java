@@ -249,12 +249,14 @@ public class SpeakingQueueService {
                 completed.getUserId(),
                 completed.getQueueOrder()
         );
-        synchronizeParticipantLeftTurnCompletionAfterCommit(completed);
+
         publishStageChanged(
                 StageEventType.SPEAKER_COMPLETED,
                 completed,
                 StageTurnEndReason.LEFT_ROOM
         );
+
+        synchronizeParticipantLeftTurnCompletionAfterCommit(completed);
     }
 
     private void synchronizeParticipantLeftTurnCompletionAfterCommit(SpeakingQueue completed) {
