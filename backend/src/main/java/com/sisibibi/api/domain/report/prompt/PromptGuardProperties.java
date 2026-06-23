@@ -15,7 +15,8 @@ public class PromptGuardProperties {
 
     private String baseUrl;
     private String scanPath = "/scan";
-    private Duration timeout = Duration.ofSeconds(2);
+    private Duration connectTimeout = Duration.ofMillis(500);
+    private Duration readTimeout = Duration.ofMillis(1000);
     private boolean failOpen = false;
     private int customPromptMaxCount = 5;
     private int customPromptMaxLength = 1000;

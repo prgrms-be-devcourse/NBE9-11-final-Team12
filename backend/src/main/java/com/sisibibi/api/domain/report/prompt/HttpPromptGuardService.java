@@ -61,11 +61,11 @@ public class HttpPromptGuardService implements PromptGuardService {
 
     private JdkClientHttpRequestFactory createRequestFactory(PromptGuardProperties properties) {
         HttpClient httpClient = HttpClient.newBuilder()
-                .connectTimeout(properties.getTimeout())
+                .connectTimeout(properties.getConnectTimeout())
                 .build();
 
         JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
-        requestFactory.setReadTimeout(properties.getTimeout());
+        requestFactory.setReadTimeout(properties.getReadTimeout());
         return requestFactory;
     }
 
