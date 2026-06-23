@@ -147,7 +147,7 @@ public class SpeakingQueueService {
     public void completeCurrentSpeakerWhenParticipantLeft(Long roomId, Long userId) {
         Optional<SpeakingQueue> completed =
                 speakingQueuePersistenceService.completeCurrentSpeakerIfMatches(roomId, userId);
-        completed.ifPresent(this::handleParticipantLeftTurnCompletionAfterCommit);
+        completed.ifPresent(this::handleParticipantLeftTurnCompletion);
     }
 
     public StageCurrentSpeakerRes getCurrentSpeaker(Long roomId) {
@@ -241,24 +241,7 @@ public class SpeakingQueueService {
         ));
     }
 
-    private void handleParticipantLeftTurnCompletionAfterCommit(SpeakingQueue completed) {
-        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            handleParticipantLeftTurnCompletion(completed);
-            return;
-        }
-
-        TransactionSynchronizationManager.registerSynchronization(
-                new TransactionSynchronization() {
-                    @Override
-                    public void afterCommit() {
-                        handleParticipantLeftTurnCompletion(completed);
-                    }
-                }
-        );
-    }
-
     private void handleParticipantLeftTurnCompletion(SpeakingQueue completed) {
-        synchronizeCompletedRedisProjection(completed);
         log.info(
                 "Speaking request completed because participant left room. "
                         + "roomId={}, userId={}, queueOrder={}",
@@ -266,11 +249,32 @@ public class SpeakingQueueService {
                 completed.getUserId(),
                 completed.getQueueOrder()
         );
+        synchronizeParticipantLeftTurnCompletionAfterCommit(completed);
         publishStageChanged(
                 StageEventType.SPEAKER_COMPLETED,
                 completed,
                 StageTurnEndReason.LEFT_ROOM
         );
+    }
+
+    private void synchronizeParticipantLeftTurnCompletionAfterCommit(SpeakingQueue completed) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            synchronizeParticipantLeftTurnCompletion(completed);
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        synchronizeParticipantLeftTurnCompletion(completed);
+                    }
+                }
+        );
+    }
+
+    private void synchronizeParticipantLeftTurnCompletion(SpeakingQueue completed) {
+        synchronizeCompletedRedisProjection(completed);
         tryAssignNextSpeaker(completed.getRoomId());
     }
 
