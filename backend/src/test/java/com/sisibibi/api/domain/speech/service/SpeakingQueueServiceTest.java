@@ -69,7 +69,7 @@ class SpeakingQueueServiceTest {
                 eq(1L),
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
-        )).willReturn(Optional.of(assigned));
+        )).willReturn(assignmentResult(assigned));
 
         StageRequestRes response =
                 speakingQueueService.requestSpeakingTurn(1L, 7L, SpeechStance.PRO);
@@ -130,7 +130,7 @@ class SpeakingQueueServiceTest {
                 eq(1L),
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
-        )).willReturn(Optional.empty());
+        )).willReturn(SpeakingQueueAssignmentResult.empty());
         doThrow(new IllegalStateException("redis unavailable"))
                 .when(redisSpeakingQueueRepository)
                 .upsert(1L, 7L, 15);
@@ -181,7 +181,7 @@ class SpeakingQueueServiceTest {
                 eq(1L),
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
-        )).willReturn(Optional.empty());
+        )).willReturn(SpeakingQueueAssignmentResult.empty());
         doThrow(new IllegalStateException("redis unavailable"))
                 .when(redisSpeakingQueueRepository)
                 .upsert(1L, 7L, 15);
@@ -227,7 +227,7 @@ class SpeakingQueueServiceTest {
                 eq(1L),
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
-        )).willReturn(Optional.empty());
+        )).willReturn(SpeakingQueueAssignmentResult.empty());
         doThrow(new IllegalStateException("redis unavailable"))
                 .when(redisSpeakingQueueRepository)
                 .upsert(1L, 7L, 15);
@@ -272,7 +272,7 @@ class SpeakingQueueServiceTest {
                 eq(1L),
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
-        )).willReturn(Optional.empty());
+        )).willReturn(SpeakingQueueAssignmentResult.empty());
         doThrow(new IllegalStateException("redis unavailable"))
                 .when(redisSpeakingQueueRepository)
                 .upsert(1L, 7L, 15);
@@ -330,7 +330,7 @@ class SpeakingQueueServiceTest {
                 eq(1L),
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
-        )).willReturn(Optional.empty());
+        )).willReturn(SpeakingQueueAssignmentResult.empty());
         doThrow(new IllegalStateException("redis unavailable"))
                 .when(redisSpeakingQueueRepository)
                 .upsert(1L, 7L, 15);
@@ -384,7 +384,7 @@ class SpeakingQueueServiceTest {
                 eq(1L),
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
-        )).willReturn(Optional.of(assigned));
+        )).willReturn(assignmentResult(assigned));
         doThrow(new IllegalStateException("redis unavailable"))
                 .when(redisSpeakingQueueRepository)
                 .assign(1L, 7L);
@@ -418,6 +418,38 @@ class SpeakingQueueServiceTest {
     }
 
     @Test
+    void assignNextSpeaker_removesCanceledRequestsWhenWaitingParticipantLeftRoom() {
+        SpeakingQueue canceled = persistedWaitingRequest(1L, 7L, 15);
+        canceled.cancel(LocalDateTime.of(2026, 6, 12, 11, 31));
+        SpeakingQueue assigned = assignedRequest(1L, 8L, 16);
+        given(speakingQueueProperties.getTurnDuration())
+                .willReturn(Duration.ofMinutes(2));
+        given(speakingQueuePersistenceService.assignNextSpeaker(
+                eq(1L),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        )).willReturn(SpeakingQueueAssignmentResult.of(
+                Optional.of(assigned),
+                List.of(canceled)
+        ));
+
+        Optional<SpeakingQueue> response = speakingQueueService.assignNextSpeaker(1L);
+
+        assertThat(response).contains(assigned);
+        verify(redisSpeakingQueueRepository).remove(1L, 7L);
+        verify(redisSpeakingQueueRepository).assign(1L, 8L);
+        ArgumentCaptor<StageChangedEvent> eventCaptor =
+                ArgumentCaptor.forClass(StageChangedEvent.class);
+        verify(eventPublisher, times(2)).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getAllValues())
+                .extracting(StageChangedEvent::type)
+                .containsExactly(
+                        StageEventType.SPEAKING_CANCELED,
+                        StageEventType.SPEAKER_ASSIGNED
+                );
+    }
+
+    @Test
     void assignNextSpeaker_appliesConfiguredTurnDuration() {
         given(speakingQueueProperties.getTurnDuration())
                 .willReturn(Duration.ofSeconds(90));
@@ -425,7 +457,7 @@ class SpeakingQueueServiceTest {
                 eq(1L),
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
-        )).willReturn(Optional.empty());
+        )).willReturn(SpeakingQueueAssignmentResult.empty());
 
         speakingQueueService.assignNextSpeaker(1L);
 
@@ -457,7 +489,7 @@ class SpeakingQueueServiceTest {
                 eq(1L),
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
-        )).willReturn(Optional.empty());
+        )).willReturn(SpeakingQueueAssignmentResult.empty());
 
         speakingQueueService.cancelSpeakingRequest(1L, 7L);
 
@@ -487,7 +519,7 @@ class SpeakingQueueServiceTest {
                 eq(1L),
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
-        )).willReturn(Optional.empty());
+        )).willReturn(SpeakingQueueAssignmentResult.empty());
         doThrow(new IllegalStateException("redis unavailable"))
                 .when(redisSpeakingQueueRepository)
                 .remove(1L, 7L);
@@ -611,7 +643,7 @@ class SpeakingQueueServiceTest {
                 eq(1L),
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
-        )).willReturn(Optional.empty());
+        )).willReturn(SpeakingQueueAssignmentResult.empty());
 
         speakingQueueService.completeSpeakingTurn(1L, 7L);
 
@@ -642,7 +674,7 @@ class SpeakingQueueServiceTest {
                 eq(1L),
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
-        )).willReturn(Optional.empty());
+        )).willReturn(SpeakingQueueAssignmentResult.empty());
         doThrow(new IllegalStateException("redis unavailable"))
                 .when(redisSpeakingQueueRepository)
                 .removeCurrentSpeaker(1L, 7L);
@@ -694,7 +726,7 @@ class SpeakingQueueServiceTest {
                 eq(1L),
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
-        )).willReturn(Optional.empty());
+        )).willReturn(SpeakingQueueAssignmentResult.empty());
 
         Optional<SpeakingQueue> expired =
                 speakingQueueService.expireCurrentSpeaker(1L, now);
@@ -937,6 +969,13 @@ class SpeakingQueueServiceTest {
         SpeakingQueue speakingQueue = assignedRequest(roomId, userId, queueOrder);
         speakingQueue.complete();
         return speakingQueue;
+    }
+
+    private SpeakingQueueAssignmentResult assignmentResult(SpeakingQueue assignedRequest) {
+        return SpeakingQueueAssignmentResult.of(
+                Optional.of(assignedRequest),
+                List.of()
+        );
     }
 
     private SpeakingQueue assignedRequest(Long roomId, Long userId, int queueOrder) {

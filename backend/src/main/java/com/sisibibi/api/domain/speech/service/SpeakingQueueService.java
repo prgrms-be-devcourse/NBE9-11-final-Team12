@@ -67,12 +67,24 @@ public class SpeakingQueueService {
 
     public Optional<SpeakingQueue> assignNextSpeaker(Long roomId) {
         LocalDateTime assignedAt = LocalDateTime.now();
-        Optional<SpeakingQueue> assigned =
+        SpeakingQueueAssignmentResult assignmentResult =
                 speakingQueuePersistenceService.assignNextSpeaker(
                         roomId,
                         assignedAt,
                         assignedAt.plus(speakingQueueProperties.getTurnDuration())
-        );
+                );
+        assignmentResult.canceledRequests().forEach(this::synchronizeCanceledRedisProjection);
+        assignmentResult.canceledRequests().forEach(speakingQueue -> log.info(
+                "Speaking request canceled because participant left room. "
+                        + "roomId={}, userId={}, queueOrder={}",
+                speakingQueue.getRoomId(),
+                speakingQueue.getUserId(),
+                speakingQueue.getQueueOrder()
+        ));
+        assignmentResult.canceledRequests().forEach(speakingQueue ->
+                publishStageChanged(StageEventType.SPEAKING_CANCELED, speakingQueue));
+
+        Optional<SpeakingQueue> assigned = assignmentResult.assignedRequest();
         assigned.ifPresent(this::synchronizeAssignedRedisProjection);
         assigned.ifPresent(speakingQueue -> log.info(
                 "Speaking request assigned. roomId={}, userId={}, queueOrder={}, expiresAt={}",
