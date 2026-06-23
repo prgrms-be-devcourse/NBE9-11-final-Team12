@@ -3,15 +3,6 @@ import json
 from pydantic import BaseModel, ConfigDict, Field
 
 
-REQUIRED_REPORT_FIELDS = (
-    "핵심 한줄",
-    "핵심 쟁점",
-    "AI 종합 정리",
-    "공통 의견",
-    "AI의 개인적 소견",
-)
-
-
 class AiReportModel(BaseModel):
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
@@ -40,11 +31,7 @@ def validate_report_file(path):
 
 def _validate_report_with_pydantic(report):
     try:
-        if hasattr(AiReportModel, "model_validate"):
-            validated = AiReportModel.model_validate(report)
-            return validated.model_dump(by_alias=True)
-
-        validated = AiReportModel.parse_obj(report)
-        return validated.dict(by_alias=True)
+        validated = AiReportModel.model_validate(report)
+        return validated.model_dump(by_alias=True)
     except Exception as exc:
         raise ValueError(f"Report schema validation failed: {exc}") from exc

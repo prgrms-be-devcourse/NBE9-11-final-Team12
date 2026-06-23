@@ -2,13 +2,13 @@ import logging
 import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from aireport.config import AiReportConfig
 from aireport.llama_cpp_client import LlamaCppClient
+from aireport.prompt_security import PromptSecurityError
 from aireport.report_generator import ReportGenerationError, ReportGenerator
 
 
@@ -75,10 +75,16 @@ class SpeechPayload(BaseModel):
     createdAt: str | None = None
 
 
+class CustomPromptPayload(BaseModel):
+    label: str | None = None
+    prompt: str
+
+
 class AiReportGenerateRequest(BaseModel):
     room: RoomPayload | None = None
     topic: TopicPayload | None = None
     speeches: list[SpeechPayload] = Field(default_factory=list)
+    customPrompts: list[CustomPromptPayload] = Field(default_factory=list)
 
 
 class AiReportGenerateResponse(BaseModel):
@@ -121,6 +127,9 @@ def generate_report(request: AiReportGenerateRequest):
 
     try:
         report = api_state.generate(request.model_dump())
+    except PromptSecurityError as exc:
+        logger.warning("AI 리포트 Prompt Guard 검사가 요청을 차단했습니다: %s", exc)
+        raise HTTPException(status_code=400, detail="Prompt Guard blocked unsafe AI report content.") from exc
     except ReportGenerationError as exc:
         logger.warning("AI 리포트 모델 응답 파싱에 실패했습니다: %s", exc)
         raise HTTPException(status_code=502, detail=f"AI 리포트 응답 형식이 올바르지 않습니다: {exc}") from exc

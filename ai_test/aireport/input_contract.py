@@ -1,5 +1,6 @@
-BACKEND_STANCE_VALUES = ("PRO", "CON")
 SUPPORTED_STANCE_VALUES = ("PRO", "CON", "NEUTRAL")
+MAX_CUSTOM_PROMPTS = 5
+MAX_CUSTOM_PROMPT_LENGTH = 1000
 
 
 def normalize_report_request(payload):
@@ -10,7 +11,7 @@ def normalize_report_request(payload):
     speeches = payload.get("speeches") or payload.get("opinions") or []
     normalized_speeches = _normalize_speeches(speeches)
 
-    return {
+    normalized = {
         "room": _drop_empty_values({
             "topic": _first_text(topic.get("title"), room.get("topic"), room.get("title"), payload.get("topic")),
             "description": _first_text(topic.get("description"), room.get("description"), payload.get("description")),
@@ -20,6 +21,39 @@ def normalize_report_request(payload):
         }),
         "speeches": normalized_speeches,
     }
+    custom_prompts = _normalize_custom_prompts(payload.get("customPrompts") or [])
+    if custom_prompts:
+        normalized["customPrompts"] = custom_prompts
+    return normalized
+
+
+def _normalize_custom_prompts(custom_prompts):
+    if len(custom_prompts) > MAX_CUSTOM_PROMPTS:
+        raise ValueError("customPrompts accepts at most 5 prompts")
+
+    normalized = []
+    for index, item in enumerate(custom_prompts, start=1):
+        if isinstance(item, str):
+            label = f"custom {index}"
+            prompt = item
+        else:
+            label = _first_text(item.get("label"), f"custom {index}")
+            prompt = item.get("prompt", "")
+
+        compact_prompt = _compact_content(prompt)
+        if not compact_prompt:
+            raise ValueError(f"customPrompts[{index - 1}].prompt must not be blank")
+        if len(compact_prompt) > MAX_CUSTOM_PROMPT_LENGTH:
+            raise ValueError(
+                f"customPrompts[{index - 1}].prompt must be {MAX_CUSTOM_PROMPT_LENGTH} characters or fewer"
+            )
+
+        normalized.append({
+            "label": label,
+            "prompt": compact_prompt,
+        })
+
+    return normalized
 
 
 def _normalize_speeches(speeches):
