@@ -7,15 +7,15 @@ import org.springframework.stereotype.Component;
 @Component
 public class UserTrustPolicy {
 
-    public static final String POLICY_VERSION = "v2";
+    public static final String POLICY_VERSION = "v3";
 
     private static final int BASE_SCORE = 50;
-    private static final int MAX_REACTION_SCORE = 30;
+    private static final int MAX_REACTION_SCORE = 50;
     private static final int MIN_SCORE = 0;
-    private static final int MAX_SCORE = 80;
+    private static final int MAX_SCORE = 100;
     private static final int NORMAL_TRUST_SCORE = 30;
-    private static final int RELIABLE_TRUST_SCORE = 55;
-    private static final int TRUSTED_TRUST_SCORE = 70;
+    private static final int RELIABLE_TRUST_SCORE = 60;
+    private static final int TRUSTED_TRUST_SCORE = 80;
     private static final int ACTIVE_ACTIVITY_SCORE = 3;
     private static final int CONTRIBUTOR_ACTIVITY_SCORE = 10;
     private static final int LEADER_ACTIVITY_SCORE = 30;

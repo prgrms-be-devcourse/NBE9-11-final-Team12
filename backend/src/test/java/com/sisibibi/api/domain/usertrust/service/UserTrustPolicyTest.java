@@ -39,8 +39,8 @@ class UserTrustPolicyTest {
                 10
         );
 
-        assertThat(result.score()).isEqualTo(80);
-        assertThat(result.positiveScore()).isEqualTo(30);
+        assertThat(result.score()).isEqualTo(100);
+        assertThat(result.positiveScore()).isEqualTo(50);
         assertThat(result.trustLevel()).isEqualTo(UserTrustLevel.TRUSTED);
         assertThat(result.activityLevel()).isEqualTo(UserActivityLevel.LEADER);
     }
@@ -82,11 +82,11 @@ class UserTrustPolicyTest {
     void calculate_assignsTrustLevelsAtAdjustedBoundaries() {
         assertThat(calculateTrustLevel(29)).isEqualTo(UserTrustLevel.CAUTION);
         assertThat(calculateTrustLevel(30)).isEqualTo(UserTrustLevel.NORMAL);
-        assertThat(calculateTrustLevel(54)).isEqualTo(UserTrustLevel.NORMAL);
-        assertThat(calculateTrustLevel(55)).isEqualTo(UserTrustLevel.RELIABLE);
-        assertThat(calculateTrustLevel(69)).isEqualTo(UserTrustLevel.RELIABLE);
-        assertThat(calculateTrustLevel(70)).isEqualTo(UserTrustLevel.TRUSTED);
+        assertThat(calculateTrustLevel(59)).isEqualTo(UserTrustLevel.NORMAL);
+        assertThat(calculateTrustLevel(60)).isEqualTo(UserTrustLevel.RELIABLE);
+        assertThat(calculateTrustLevel(79)).isEqualTo(UserTrustLevel.RELIABLE);
         assertThat(calculateTrustLevel(80)).isEqualTo(UserTrustLevel.TRUSTED);
+        assertThat(calculateTrustLevel(100)).isEqualTo(UserTrustLevel.TRUSTED);
     }
 
     @Test

@@ -65,7 +65,7 @@ class UserTrustServiceTest {
         assertThat(response.score()).isEqualTo(52);
         assertThat(response.receivedReactionCount()).isEqualTo(12);
         assertThat(response.resolvedViolationCount()).isEqualTo(3);
-        assertThat(response.policyVersion()).isEqualTo("v2");
+        assertThat(response.policyVersion()).isEqualTo("v3");
         assertThat(response.calculatedAt())
                 .isEqualTo(java.time.LocalDateTime.of(2026, 6, 23, 9, 0));
     }
