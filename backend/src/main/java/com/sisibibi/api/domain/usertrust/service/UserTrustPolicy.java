@@ -7,12 +7,18 @@ import org.springframework.stereotype.Component;
 @Component
 public class UserTrustPolicy {
 
-    public static final String POLICY_VERSION = "v1";
+    public static final String POLICY_VERSION = "v2";
 
     private static final int BASE_SCORE = 50;
     private static final int MAX_REACTION_SCORE = 30;
     private static final int MIN_SCORE = 0;
-    private static final int MAX_SCORE = 100;
+    private static final int MAX_SCORE = 80;
+    private static final int NORMAL_TRUST_SCORE = 30;
+    private static final int RELIABLE_TRUST_SCORE = 55;
+    private static final int TRUSTED_TRUST_SCORE = 70;
+    private static final int ACTIVE_ACTIVITY_SCORE = 3;
+    private static final int CONTRIBUTOR_ACTIVITY_SCORE = 10;
+    private static final int LEADER_ACTIVITY_SCORE = 30;
 
     public UserTrustCalculation calculate(
             long receivedReactionCount,
@@ -45,28 +51,28 @@ public class UserTrustPolicy {
     }
 
     private UserTrustLevel trustLevel(int score) {
-        if (score < 30) {
+        if (score < NORMAL_TRUST_SCORE) {
             return UserTrustLevel.CAUTION;
         }
-        if (score < 60) {
+        if (score < RELIABLE_TRUST_SCORE) {
             return UserTrustLevel.NORMAL;
         }
-        if (score < 80) {
+        if (score < TRUSTED_TRUST_SCORE) {
             return UserTrustLevel.RELIABLE;
         }
         return UserTrustLevel.TRUSTED;
     }
 
     private UserActivityLevel activityLevel(long activityScore) {
-        if (activityScore < 3) {
+        if (activityScore < ACTIVE_ACTIVITY_SCORE) {
             return UserActivityLevel.NEW;
         }
-        if (activityScore < 10) {
+        if (activityScore < CONTRIBUTOR_ACTIVITY_SCORE) {
             return UserActivityLevel.ACTIVE;
         }
-        if (activityScore < 30) {
+        if (activityScore < LEADER_ACTIVITY_SCORE) {
             return UserActivityLevel.CONTRIBUTOR;
         }
-        return UserActivityLevel.TRUSTED;
+        return UserActivityLevel.LEADER;
     }
 }

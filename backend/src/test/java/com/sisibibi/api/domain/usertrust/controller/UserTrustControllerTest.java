@@ -43,23 +43,23 @@ class UserTrustControllerTest {
     @Test
     void getMyTrust_returnsDetailedTrust() throws Exception {
         given(userTrustService.getMyTrust(1L)).willReturn(new UserTrustDetailRes(
-                1L, "tester", 72, UserTrustLevel.RELIABLE, UserActivityLevel.CONTRIBUTOR,
-                22, 4, 3, 1, 15, 8, "v1",
+                1L, "tester", 72, UserTrustLevel.TRUSTED, UserActivityLevel.CONTRIBUTOR,
+                22, 4, 3, 1, 15, 8, "v2",
                 LocalDateTime.of(2026, 6, 23, 9, 0)
         ));
 
         mockMvc.perform(get("/api/v1/users/me/trust").with(authPrincipal()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.score").value(72))
-                .andExpect(jsonPath("$.data.trustLevel").value("RELIABLE"))
+                .andExpect(jsonPath("$.data.trustLevel").value("TRUSTED"))
                 .andExpect(jsonPath("$.data.resolvedViolationCount").value(1));
     }
 
     @Test
     void getUserTrust_returnsPublicSummary() throws Exception {
         given(userTrustService.getUserTrust(2L)).willReturn(new UserTrustSummaryRes(
-                2L, "other", 65, UserTrustLevel.NORMAL, UserActivityLevel.ACTIVE,
-                "v1", LocalDateTime.of(2026, 6, 23, 9, 0)
+                2L, "other", 65, UserTrustLevel.RELIABLE, UserActivityLevel.ACTIVE,
+                "v2", LocalDateTime.of(2026, 6, 23, 9, 0)
         ));
 
         mockMvc.perform(get("/api/v1/users/2/trust").with(authPrincipal()))

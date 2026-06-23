@@ -4,5 +4,5 @@ public enum UserActivityLevel {
     NEW,
     ACTIVE,
     CONTRIBUTOR,
-    TRUSTED
+    LEADER
 }
