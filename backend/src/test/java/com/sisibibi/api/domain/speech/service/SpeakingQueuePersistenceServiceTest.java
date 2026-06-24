@@ -72,6 +72,8 @@ class SpeakingQueuePersistenceServiceTest {
 
     @Test
     void createWaitingRequest_throwsStageRestricted_whenUserHasActiveSanction() {
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(openRoom(1L, "토론방")));
         doThrow(new CustomException(ErrorCode.USER_STAGE_RESTRICTED))
                 .when(userSanctionPolicyService)
                 .validateStageAllowed(7L);
@@ -85,6 +87,9 @@ class SpeakingQueuePersistenceServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.USER_STAGE_RESTRICTED);
 
+        InOrder order = inOrder(roomRepository, userSanctionPolicyService);
+        order.verify(roomRepository).findByIdForUpdate(1L);
+        order.verify(userSanctionPolicyService).validateStageAllowed(7L);
         verify(speakingQueueRepository, never()).save(any(SpeakingQueue.class));
     }
 

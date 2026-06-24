@@ -46,10 +46,9 @@ public class SpeakingQueuePersistenceService {
             Long userId,
             SpeechStance stance
     ) {
-        userSanctionPolicyService.validateStageAllowed(userId);
-
         LocalDateTime requestedAt = LocalDateTime.now();
         Room room = findRoomForUpdate(roomId);
+        userSanctionPolicyService.validateStageAllowed(userId);
         validateRoomActive(room, requestedAt);
         validateJoinedParticipant(roomId, userId);
 
