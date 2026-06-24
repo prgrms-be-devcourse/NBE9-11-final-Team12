@@ -71,11 +71,35 @@ public class AiReport {
     @Column(name = "error_message", length = 1000)
     private String errorMessage;
 
+    @Column(name = "publish_retry_count", nullable = false)
+    private int publishRetryCount;
+
+    @Column(name = "generation_retry_count", nullable = false)
+    private int generationRetryCount;
+
+    @Column(name = "last_error_code", length = 100)
+    private String lastErrorCode;
+
+    @Column(name = "last_error_message", length = 1000)
+    private String lastErrorMessage;
+
+    @Column(name = "processing_started_at")
+    private LocalDateTime processingStartedAt;
+
+    @Column(name = "processing_locked_until")
+    private LocalDateTime processingLockedUntil;
+
     @Column(name = "requested_at", nullable = false)
     private LocalDateTime requestedAt;
 
+    @Column(name = "queued_at")
+    private LocalDateTime queuedAt;
+
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
+
+    @Column(name = "failed_at")
+    private LocalDateTime failedAt;
 
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -86,18 +110,33 @@ public class AiReport {
     private LocalDateTime updatedAt;
 
     public static AiReport pending(Long roomId) {
-        return pending(roomId, List.of());
+        return requested(roomId);
     }
 
     public static AiReport pending(Long roomId, List<AiReportCustomPrompt> customPrompts) {
+        return requested(roomId, customPrompts);
+    }
+
+    public static AiReport requested(Long roomId) {
+        return requested(roomId, List.of());
+    }
+
+    public static AiReport requested(Long roomId, List<AiReportCustomPrompt> customPrompts) {
         AiReport report = new AiReport();
         report.roomId = roomId;
-        report.markPending(customPrompts);
+        report.markRequested(customPrompts);
         return report;
     }
 
     public boolean shouldSkipGeneration() {
-        return status == AiReportStatus.PENDING || status == AiReportStatus.COMPLETED;
+        return isGenerationInProgress() || status == AiReportStatus.COMPLETED;
+    }
+
+    public boolean isGenerationInProgress() {
+        return status == AiReportStatus.REQUESTED
+                || status == AiReportStatus.QUEUED
+                || status == AiReportStatus.PROCESSING
+                || status == AiReportStatus.PENDING;
     }
 
     public void retry() {
@@ -105,7 +144,7 @@ public class AiReport {
     }
 
     public void retry(List<AiReportCustomPrompt> customPrompts) {
-        markPending(customPrompts);
+        markRequested(customPrompts);
     }
 
     public void complete(AiReportGenerateRes response) {
@@ -117,6 +156,9 @@ public class AiReport {
         this.aiOpinion = response.aiOpinion();
         this.customReports = toCustomReports(this.customPrompts, response.customReports());
         this.errorMessage = null;
+        this.lastErrorCode = null;
+        this.lastErrorMessage = null;
+        this.failedAt = null;
         this.completedAt = LocalDateTime.now();
     }
 
@@ -128,6 +170,8 @@ public class AiReport {
         this.customPrompts = mergePrompts(this.customPrompts, customPrompts);
         this.customReports = mergeReports(this.customReports, toCustomReports(userId, customPrompts, customReportPayloads));
         this.errorMessage = null;
+        this.lastErrorCode = null;
+        this.lastErrorMessage = null;
     }
 
     public void appendCustomReports(
@@ -138,13 +182,16 @@ public class AiReport {
     }
 
     public void fail(String errorMessage) {
-        this.status = AiReportStatus.FAILED;
+        this.status = AiReportStatus.GENERATION_FAILED;
         this.errorMessage = truncate(errorMessage);
+        this.lastErrorCode = null;
+        this.lastErrorMessage = truncate(errorMessage);
         this.completedAt = null;
+        this.failedAt = LocalDateTime.now();
     }
 
-    private void markPending(List<AiReportCustomPrompt> customPrompts) {
-        this.status = AiReportStatus.PENDING;
+    private void markRequested(List<AiReportCustomPrompt> customPrompts) {
+        this.status = AiReportStatus.REQUESTED;
         this.coreLine = null;
         this.keyIssues = List.of();
         this.customPrompts = customPrompts == null ? List.of() : List.copyOf(customPrompts);
@@ -153,8 +200,14 @@ public class AiReport {
         this.commonGround = null;
         this.aiOpinion = null;
         this.errorMessage = null;
+        this.lastErrorCode = null;
+        this.lastErrorMessage = null;
+        this.processingStartedAt = null;
+        this.processingLockedUntil = null;
         this.requestedAt = LocalDateTime.now();
+        this.queuedAt = null;
         this.completedAt = null;
+        this.failedAt = null;
     }
 
     private String truncate(String message) {

@@ -57,7 +57,7 @@ public class AiReportPersistenceService {
         AiReport report = aiReportRepository.findByRoomIdForUpdate(roomId)
                 .orElse(null);
 
-        if (report != null && report.getStatus() == com.sisibibi.api.domain.report.entity.AiReportStatus.PENDING) {
+        if (report != null && report.isGenerationInProgress()) {
             return AiReportGenerationContext.skipAi(AiReportRes.from(report, userId));
         }
 
@@ -83,7 +83,7 @@ public class AiReportPersistenceService {
         }
 
         if (report == null) {
-            report = aiReportRepository.save(AiReport.pending(roomId, toSnapshots(userId, customPrompts)));
+            report = aiReportRepository.save(AiReport.requested(roomId, toSnapshots(userId, customPrompts)));
         } else {
             report.retry(toSnapshots(userId, customPrompts));
         }
