@@ -20,6 +20,7 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -148,7 +149,7 @@ public class AiReport {
 
     public void requestCustomReports(List<AiReportCustomPrompt> customPrompts) {
         this.status = AiReportStatus.REQUESTED;
-        this.customPrompts = mergePrompts(this.customPrompts, customPrompts);
+        this.customPrompts = customPrompts == null ? List.of() : List.copyOf(customPrompts);
         this.publishRetryCount = 0;
         this.lastErrorCode = null;
         this.lastErrorMessage = null;
@@ -156,6 +157,16 @@ public class AiReport {
         this.processingLockedUntil = null;
         this.requestedAt = LocalDateTime.now();
         this.queuedAt = null;
+        this.failedAt = null;
+    }
+
+    public void markProcessing(LocalDateTime startedAt, Duration lockDuration) {
+        LocalDateTime actualStartedAt = startedAt == null ? LocalDateTime.now() : startedAt;
+        this.status = AiReportStatus.PROCESSING;
+        this.processingStartedAt = actualStartedAt;
+        this.processingLockedUntil = actualStartedAt.plus(lockDuration == null ? Duration.ofMinutes(5) : lockDuration);
+        this.lastErrorCode = null;
+        this.lastErrorMessage = null;
         this.failedAt = null;
     }
 
@@ -193,6 +204,20 @@ public class AiReport {
         this.completedAt = LocalDateTime.now();
     }
 
+    public void completeCustomReports(AiReportGenerateRes response) {
+        this.status = AiReportStatus.COMPLETED;
+        this.customReports = mergeReports(this.customReports, toCustomReports(this.customPrompts, response.customReports()));
+        this.errorMessage = null;
+        this.publishRetryCount = 0;
+        this.generationRetryCount = 0;
+        this.lastErrorCode = null;
+        this.lastErrorMessage = null;
+        this.processingStartedAt = null;
+        this.processingLockedUntil = null;
+        this.failedAt = null;
+        this.completedAt = LocalDateTime.now();
+    }
+
     public void appendCustomReports(
             Long userId,
             List<AiReportCustomPrompt> customPrompts,
@@ -213,9 +238,14 @@ public class AiReport {
     }
 
     public void fail(String errorMessage) {
+        fail(null, errorMessage);
+    }
+
+    public void fail(String errorCode, String errorMessage) {
         this.status = AiReportStatus.GENERATION_FAILED;
         this.errorMessage = truncate(errorMessage);
-        this.lastErrorCode = null;
+        this.generationRetryCount++;
+        this.lastErrorCode = truncate(errorCode, 100);
         this.lastErrorMessage = truncate(errorMessage);
         this.processingStartedAt = null;
         this.processingLockedUntil = null;

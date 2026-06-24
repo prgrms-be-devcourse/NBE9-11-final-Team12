@@ -21,6 +21,10 @@ public interface AiReportRepository extends JpaRepository<AiReport, Long> {
     @Query("select report from AiReport report where report.roomId = :roomId")
     Optional<AiReport> findByRoomIdForUpdate(@Param("roomId") Long roomId);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select report from AiReport report where report.id = :reportId")
+    Optional<AiReport> findByIdForUpdate(@Param("reportId") Long reportId);
+
     @Query("""
             select report
             from AiReport report

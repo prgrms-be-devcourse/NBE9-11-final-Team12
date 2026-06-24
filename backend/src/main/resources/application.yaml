@@ -110,6 +110,7 @@ app:
     base-url: ${AI_REPORT_BASE_URL:http://localhost:8000}
     generate-path: ${AI_REPORT_GENERATE_PATH:/report}
     timeout: ${AI_REPORT_TIMEOUT:5m}
+    worker-token: ${AI_REPORT_WORKER_TOKEN:}
     queue:
       queue-url: ${AI_REPORT_QUEUE_URL:}
       region: ${AI_REPORT_QUEUE_REGION:ap-northeast-2}
