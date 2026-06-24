@@ -25,7 +25,7 @@ public class SpeakingQueueExpirationScheduler {
 
     @Scheduled(
             fixedDelayString =
-                    "${app.speaking.expiration.fixed-delay-ms:100000}"
+                    "${app.speaking.expiration.fixed-delay-ms:10000}"
     )
     public void expireSpeakers() {
         expireSpeakersAt(LocalDateTime.now());

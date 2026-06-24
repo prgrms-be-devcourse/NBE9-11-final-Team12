@@ -105,7 +105,7 @@ app:
       fixed-delay-ms: ${SPEAKING_ASSIGNMENT_FIXED_DELAY_MS:10000}
     expiration:
       enabled: ${SPEAKING_EXPIRATION_ENABLED:true}
-      fixed-delay-ms: ${SPEAKING_EXPIRATION_FIXED_DELAY_MS:61000}
+      fixed-delay-ms: ${SPEAKING_EXPIRATION_FIXED_DELAY_MS:1000}
   ai-report:
     base-url: ${AI_REPORT_BASE_URL:http://localhost:8000}
     generate-path: ${AI_REPORT_GENERATE_PATH:/report}

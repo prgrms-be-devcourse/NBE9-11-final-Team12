@@ -24,7 +24,7 @@ public class SpeakingQueueAssignmentScheduler {
 
     @Scheduled(
             fixedDelayString =
-                    "${app.speaking.assignment.fixed-delay-ms:100000}"
+                    "${app.speaking.assignment.fixed-delay-ms:10000}"
     )
     public void assignWaitingSpeakers() {
         for (Long roomId :
