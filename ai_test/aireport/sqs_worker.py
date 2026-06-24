@@ -9,6 +9,8 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
+MAX_GENERATION_ATTEMPTS = 2
+
 BASE_REPORT_ALIASES = {
     "핵심 주제": "coreLine",
     "핵심 쟁점": "keyIssues",
@@ -65,6 +67,7 @@ class AiReportSqsWorker:
             "QueueUrl": self.queue_url,
             "MaxNumberOfMessages": self.max_number_of_messages,
             "WaitTimeSeconds": self.wait_time_seconds,
+            "AttributeNames": ["ApproximateReceiveCount"],
         }
         if self.visibility_timeout_seconds is not None:
             receive_args["VisibilityTimeout"] = self.visibility_timeout_seconds
@@ -90,6 +93,7 @@ class AiReportSqsWorker:
         try:
             # 1단계: SQS 메시지 파싱
             message = AiReportWorkerMessage.from_json(raw_message.get("Body", ""))
+            receive_count = _receive_count(raw_message)
         except (json.JSONDecodeError, TypeError, ValueError):
             logger.exception("Invalid AI report SQS message. Deleting message to avoid poison retry.")
             self._delete_message(receipt_handle)
@@ -119,8 +123,16 @@ class AiReportSqsWorker:
                 message.report_id,
                 message.room_id,
             )
+            if receive_count < MAX_GENERATION_ATTEMPTS:
+                logger.warning(
+                    "Keeping AI report message for retry. reportId=%s roomId=%s receiveCount=%s maxAttempts=%s",
+                    message.report_id,
+                    message.room_id,
+                    receive_count,
+                    MAX_GENERATION_ATTEMPTS,
+                )
+                return False
             try:
-
                 self.backend_client.fail(
                     message.report_id,
                     {
@@ -243,3 +255,11 @@ def _required_env(name):
     if not value:
         raise RuntimeError(f"{name} is required.")
     return value
+
+
+def _receive_count(raw_message):
+    raw_receive_count = raw_message.get("Attributes", {}).get("ApproximateReceiveCount", "1")
+    try:
+        return int(raw_receive_count)
+    except (TypeError, ValueError):
+        return 1

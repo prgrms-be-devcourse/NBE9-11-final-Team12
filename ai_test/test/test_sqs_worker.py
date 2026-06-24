@@ -57,10 +57,41 @@ class AiReportSqsWorkerTest(unittest.TestCase):
         self.assertEqual(backend.completed[0][0], 55)
         self.assertEqual(backend.completed[0][1]["coreLine"], "core")
         self.assertEqual(sqs.deleted_receipts, ["receipt-1"])
+        self.assertEqual(sqs.receive_args["AttributeNames"], ["ApproximateReceiveCount"])
 
-    def test_poll_once_marks_failed_and_deletes_message_when_generation_fails_and_callback_succeeds(self):
+    def test_poll_once_keeps_message_when_generation_fails_first_time(self):
         sqs = _FakeSqsClient([
-            _sqs_message({"reportId": 55, "roomId": 10, "generationType": "BASE_ONLY"})
+            _sqs_message(
+                {"reportId": 55, "roomId": 10, "generationType": "BASE_ONLY"},
+                receive_count=1,
+            )
+        ])
+        backend = _FakeBackendClient(processing_response={
+            "request": {"speeches": [{"content": "hello"}]},
+        })
+
+        def fail_generation(_payload):
+            raise RuntimeError("local LLM timed out")
+
+        worker = AiReportSqsWorker(
+            sqs_client=sqs,
+            queue_url="queue-url",
+            backend_client=backend,
+            generate_report=fail_generation,
+        )
+
+        processed_count = worker.poll_once()
+
+        self.assertEqual(processed_count, 0)
+        self.assertEqual(backend.failed, [])
+        self.assertEqual(sqs.deleted_receipts, [])
+
+    def test_poll_once_marks_failed_and_deletes_message_when_generation_fails_second_time(self):
+        sqs = _FakeSqsClient([
+            _sqs_message(
+                {"reportId": 55, "roomId": 10, "generationType": "BASE_ONLY"},
+                receive_count=2,
+            )
         ])
         backend = _FakeBackendClient(processing_response={
             "request": {"speeches": [{"content": "hello"}]},
@@ -114,7 +145,10 @@ class AiReportSqsWorkerTest(unittest.TestCase):
 
     def test_poll_once_keeps_message_when_failure_callback_fails(self):
         sqs = _FakeSqsClient([
-            _sqs_message({"reportId": 55, "roomId": 10, "generationType": "BASE_ONLY"})
+            _sqs_message(
+                {"reportId": 55, "roomId": 10, "generationType": "BASE_ONLY"},
+                receive_count=2,
+            )
         ])
         backend = _FakeBackendClient(
             processing_response={"request": {"speeches": [{"content": "hello"}]}},
@@ -180,7 +214,8 @@ class _FakeSqsClient:
         self.messages = messages
         self.deleted_receipts = []
 
-    def receive_message(self, **_kwargs):
+    def receive_message(self, **kwargs):
+        self.receive_args = kwargs
         return {"Messages": list(self.messages)}
 
     def delete_message(self, QueueUrl, ReceiptHandle):
@@ -220,10 +255,13 @@ class _FakeBackendClient:
             raise self.fail_error
 
 
-def _sqs_message(body):
+def _sqs_message(body, receive_count=1):
     return {
         "Body": json.dumps(body),
         "ReceiptHandle": "receipt-1",
+        "Attributes": {
+            "ApproximateReceiveCount": str(receive_count),
+        },
     }
 
 
