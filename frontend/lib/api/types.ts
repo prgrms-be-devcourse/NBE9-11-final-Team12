@@ -249,6 +249,16 @@ export type SpeechReactionEvent = WebSocketEventEnvelope<
   "SPEECH_REACTION_CHANGED"
 >
 
+export type SpeechEvent = WebSocketEventEnvelope<
+  {
+    roomId: number
+    speechId: number
+    userId: number
+    occurredAt: string
+  },
+  "SPEECH_CREATED" | "SPEECH_UPDATED" | "SPEECH_DELETED" | "SPEECH_LINK_UPDATED"
+>
+
 export type UserSanctionType =
   | "WARNING"
   | "CHAT_RESTRICTION"
