@@ -19,6 +19,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 
 class UserSanctionChangedWebSocketEventListenerTest {
@@ -56,6 +57,51 @@ class UserSanctionChangedWebSocketEventListenerTest {
                 );
 
         assertThatCode(() -> listener.handle(event)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void handle_doesNotPublish_whenAccountSuspensionIsRevoked() {
+        LocalDateTime startsAt = LocalDateTime.of(2026, 6, 22, 12, 0);
+        UserSanctionChangedEvent event = new UserSanctionChangedEvent(
+                UserSanctionEventType.SANCTION_REVOKED,
+                10L,
+                new UserSanctionEventPayload(
+                        201L,
+                        UserSanctionType.ACCOUNT_SUSPENSION,
+                        "반복적인 운영 정책 위반",
+                        UserSanctionState.REVOKED,
+                        startsAt,
+                        null
+                )
+        );
+
+        listener.handle(event);
+
+        verifyNoInteractions(realtimeEventPublisher);
+    }
+
+    @Test
+    void handle_publishesAccountSuspensionCreated_whenUserMayStillBeConnected() {
+        LocalDateTime startsAt = LocalDateTime.of(2026, 6, 22, 12, 0);
+        UserSanctionChangedEvent event = new UserSanctionChangedEvent(
+                UserSanctionEventType.SANCTION_CREATED,
+                10L,
+                new UserSanctionEventPayload(
+                        201L,
+                        UserSanctionType.ACCOUNT_SUSPENSION,
+                        "반복적인 운영 정책 위반",
+                        UserSanctionState.ACTIVE,
+                        startsAt,
+                        null
+                )
+        );
+
+        listener.handle(event);
+
+        verify(realtimeEventPublisher).publish(
+                eq(UserWebSocketDestinations.sanctionEvents(10L)),
+                any()
+        );
     }
 
     private UserSanctionChangedEvent event() {

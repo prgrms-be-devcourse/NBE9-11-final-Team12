@@ -93,6 +93,25 @@ class AdminUserSanctionControllerTest {
     }
 
     @Test
+    void createSanction_returnsCreated_whenAccountIsSuspended() throws Exception {
+        given(userSanctionService.createSanction(eq(10L), eq(99L), any()))
+                .willReturn(accountSuspensionResponse(UserSanctionState.ACTIVE));
+
+        mockMvc.perform(post("/api/v1/admin/users/{userId}/sanctions", 10L)
+                        .with(authPrincipal(99L))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "type": "ACCOUNT_SUSPENSION",
+                                  "reason": "반복적인 운영 정책 위반"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.type").value("ACCOUNT_SUSPENSION"))
+                .andExpect(jsonPath("$.data.endsAt").doesNotExist());
+    }
+
+    @Test
     void revokeSanction_returnsOk() throws Exception {
         given(userSanctionService.revokeSanction(10L, 200L, 99L, "오인 제재 확인"))
                 .willReturn(response(UserSanctionState.REVOKED));
@@ -155,6 +174,28 @@ class AdminUserSanctionControllerTest {
                 state == UserSanctionState.REVOKED ? now.plusHours(1) : null,
                 state == UserSanctionState.REVOKED ? 99L : null,
                 state == UserSanctionState.REVOKED ? "오인 제재 확인" : null,
+                null,
+                null,
+                null,
+                now
+        );
+    }
+
+    private UserSanctionRes accountSuspensionResponse(UserSanctionState state) {
+        LocalDateTime now = LocalDateTime.of(2026, 6, 22, 12, 0);
+        return new UserSanctionRes(
+                201L,
+                10L,
+                99L,
+                null,
+                UserSanctionType.ACCOUNT_SUSPENSION,
+                "반복적인 운영 정책 위반",
+                state,
+                now,
+                null,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,

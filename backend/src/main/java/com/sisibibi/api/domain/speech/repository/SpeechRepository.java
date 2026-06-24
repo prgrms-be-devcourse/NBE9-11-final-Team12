@@ -15,6 +15,8 @@ public interface SpeechRepository extends JpaRepository<Speech, Long> {
 
     boolean existsByRoomIdAndUserIdAndDeletedFalse(Long roomId, Long userId);
 
+    long countByUserIdAndDeletedFalse(Long userId);
+
     @Query("""
             select speech
             from Speech speech

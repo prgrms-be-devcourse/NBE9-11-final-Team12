@@ -142,6 +142,23 @@ class AuthControllerTest {
     }
 
     @Test
+    void logout_returnsOkAndExpiresAuthCookies_whenRefreshTokenIsMissing() throws Exception {
+        given(authCookieProvider.expireAccessTokenCookie())
+                .willReturn(ResponseCookie.from("accessToken", "").path("/api").maxAge(0).build());
+        given(authCookieProvider.expireRefreshTokenCookie())
+                .willReturn(ResponseCookie.from("refreshToken", "").path("/api/v1/auth").maxAge(0).build());
+
+        mockMvc.perform(post("/api/v1/auth/logout"))
+                .andExpect(status().isOk())
+                .andExpect(header().stringValues("Set-Cookie", hasItems(
+                        containsString("accessToken="),
+                        containsString("refreshToken="))))
+                .andExpect(jsonPath("$.code").value("SUCCESS"));
+
+        verify(authService).logout(null);
+    }
+
+    @Test
     void signup_returnsBadRequest_whenEmailIsInvalid() throws Exception {
         mockMvc.perform(post("/api/v1/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)

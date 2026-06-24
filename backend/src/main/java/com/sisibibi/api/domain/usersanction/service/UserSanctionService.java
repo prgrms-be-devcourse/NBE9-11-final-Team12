@@ -73,6 +73,9 @@ public class UserSanctionService {
                 endsAt
         );
         UserSanction savedSanction = userSanctionRepository.save(sanction);
+        if (request.type() == UserSanctionType.ACCOUNT_SUSPENSION) {
+            targetUser.ban();
+        }
         publishSanctionChangedEvent(
                 UserSanctionEventType.SANCTION_CREATED,
                 savedSanction,
@@ -118,12 +121,17 @@ public class UserSanctionService {
             Long adminUserId,
             String reason
     ) {
+        User targetUser = userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
         UserSanction sanction = userSanctionRepository
                 .findByIdAndUserIdForUpdate(sanctionId, userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_SANCTION_NOT_FOUND));
 
         LocalDateTime now = LocalDateTime.now();
         sanction.revoke(adminUserId, reason, now);
+        if (sanction.getType() == UserSanctionType.ACCOUNT_SUSPENSION) {
+            targetUser.activate();
+        }
         publishSanctionChangedEvent(
                 UserSanctionEventType.SANCTION_REVOKED,
                 sanction,
@@ -205,6 +213,12 @@ public class UserSanctionService {
             LocalDateTime startsAt
     ) {
         if (type == UserSanctionType.WARNING) {
+            if (durationHours != null) {
+                throw new CustomException(ErrorCode.USER_SANCTION_INVALID_PERIOD);
+            }
+            return null;
+        }
+        if (type == UserSanctionType.ACCOUNT_SUSPENSION) {
             if (durationHours != null) {
                 throw new CustomException(ErrorCode.USER_SANCTION_INVALID_PERIOD);
             }

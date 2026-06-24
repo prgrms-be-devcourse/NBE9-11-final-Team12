@@ -20,6 +20,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -67,12 +69,24 @@ public class SpeakingQueueService {
 
     public Optional<SpeakingQueue> assignNextSpeaker(Long roomId) {
         LocalDateTime assignedAt = LocalDateTime.now();
-        Optional<SpeakingQueue> assigned =
+        SpeakingQueueAssignmentResult assignmentResult =
                 speakingQueuePersistenceService.assignNextSpeaker(
                         roomId,
                         assignedAt,
                         assignedAt.plus(speakingQueueProperties.getTurnDuration())
-        );
+                );
+        assignmentResult.canceledRequests().forEach(this::synchronizeCanceledRedisProjection);
+        assignmentResult.canceledRequests().forEach(speakingQueue -> log.info(
+                "Speaking request canceled because participant left room. "
+                        + "roomId={}, userId={}, queueOrder={}",
+                speakingQueue.getRoomId(),
+                speakingQueue.getUserId(),
+                speakingQueue.getQueueOrder()
+        ));
+        assignmentResult.canceledRequests().forEach(speakingQueue ->
+                publishStageChanged(StageEventType.SPEAKING_CANCELED, speakingQueue));
+
+        Optional<SpeakingQueue> assigned = assignmentResult.assignedRequest();
         assigned.ifPresent(this::synchronizeAssignedRedisProjection);
         assigned.ifPresent(speakingQueue -> log.info(
                 "Speaking request assigned. roomId={}, userId={}, queueOrder={}, expiresAt={}",
@@ -128,6 +142,31 @@ public class SpeakingQueueService {
                 StageTurnEndReason.COMPLETED
         );
         tryAssignNextSpeaker(roomId);
+    }
+
+    public void completeCurrentSpeakerWhenParticipantLeft(Long roomId, Long userId) {
+        Optional<SpeakingQueue> completed =
+                speakingQueuePersistenceService.completeCurrentSpeakerIfMatches(roomId, userId);
+        completed.ifPresent(this::handleParticipantLeftTurnCompletion);
+    }
+
+    public void closeSpeakingQueuesWhenRoomClosed(Long roomId, LocalDateTime closedAt) {
+        SpeakingQueueRoomCloseResult closeResult =
+                speakingQueuePersistenceService.closeActiveRequestsByRoomId(roomId, closedAt);
+
+        closeResult.canceledRequests().forEach(this::synchronizeCanceledRedisProjection);
+        closeResult.completedRequests().forEach(this::synchronizeCompletedRedisProjection);
+
+        if (!closeResult.canceledRequests().isEmpty()
+                || !closeResult.completedRequests().isEmpty()) {
+            log.info(
+                    "Speaking requests closed because room was closed. "
+                            + "roomId={}, canceledCount={}, completedCount={}",
+                    roomId,
+                    closeResult.canceledRequests().size(),
+                    closeResult.completedRequests().size()
+            );
+        }
     }
 
     public StageCurrentSpeakerRes getCurrentSpeaker(Long roomId) {
@@ -219,6 +258,45 @@ public class SpeakingQueueService {
                 speakingQueue.getRoomId(),
                 StageEventPayload.from(speakingQueue, endReason)
         ));
+    }
+
+    private void handleParticipantLeftTurnCompletion(SpeakingQueue completed) {
+        log.info(
+                "Speaking request completed because participant left room. "
+                        + "roomId={}, userId={}, queueOrder={}",
+                completed.getRoomId(),
+                completed.getUserId(),
+                completed.getQueueOrder()
+        );
+
+        publishStageChanged(
+                StageEventType.SPEAKER_COMPLETED,
+                completed,
+                StageTurnEndReason.LEFT_ROOM
+        );
+
+        synchronizeParticipantLeftTurnCompletionAfterCommit(completed);
+    }
+
+    private void synchronizeParticipantLeftTurnCompletionAfterCommit(SpeakingQueue completed) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            synchronizeParticipantLeftTurnCompletion(completed);
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        synchronizeParticipantLeftTurnCompletion(completed);
+                    }
+                }
+        );
+    }
+
+    private void synchronizeParticipantLeftTurnCompletion(SpeakingQueue completed) {
+        synchronizeCompletedRedisProjection(completed);
+        tryAssignNextSpeaker(completed.getRoomId());
     }
 
     private Optional<SpeakingQueue> tryAssignNextSpeaker(Long roomId) {

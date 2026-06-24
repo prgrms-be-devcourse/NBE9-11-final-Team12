@@ -99,4 +99,18 @@ class SpeechRepositoryTest {
         assertThat(speeches).extracting(Speech::getContent)
                 .containsExactly("보이는 의견");
     }
+
+    @Test
+    void countByUserIdAndDeletedFalse_countsVisibleAuthoredSpeeches() {
+        Speech first = Speech.createMainOpinion(1L, 10L, "첫 의견", SpeechStance.PRO);
+        Speech second = Speech.createMainOpinion(2L, 10L, "두 번째 의견", SpeechStance.CON);
+        Speech deleted = Speech.createMainOpinion(1L, 10L, "삭제 의견", SpeechStance.PRO);
+        Speech otherUser = Speech.createMainOpinion(1L, 20L, "다른 사용자 의견", SpeechStance.CON);
+        deleted.softDelete(LocalDateTime.of(2026, 6, 23, 12, 0));
+        speechRepository.saveAllAndFlush(List.of(first, second, deleted, otherUser));
+
+        long count = speechRepository.countByUserIdAndDeletedFalse(10L);
+
+        assertThat(count).isEqualTo(2L);
+    }
 }

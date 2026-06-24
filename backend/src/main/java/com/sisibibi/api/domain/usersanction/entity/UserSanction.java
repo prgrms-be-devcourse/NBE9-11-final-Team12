@@ -134,7 +134,7 @@ public class UserSanction {
         return revokedAt == null
                 && type != UserSanctionType.WARNING
                 && !startsAt.isAfter(now)
-                && endsAt.isAfter(now);
+                && (endsAt == null || endsAt.isAfter(now));
     }
 
     public UserSanctionState stateAt(LocalDateTime now) {
@@ -144,7 +144,7 @@ public class UserSanction {
         if (type == UserSanctionType.WARNING) {
             return UserSanctionState.RECORDED;
         }
-        if (!endsAt.isAfter(now)) {
+        if (endsAt != null && !endsAt.isAfter(now)) {
             return UserSanctionState.EXPIRED;
         }
         return UserSanctionState.ACTIVE;
@@ -167,6 +167,7 @@ public class UserSanction {
             LocalDateTime now
     ) {
         if (!isActiveAt(now)
+                || type == UserSanctionType.ACCOUNT_SUSPENSION
                 || requestedEndsAt == null
                 || !requestedEndsAt.isAfter(endsAt)
                 || Duration.between(now, requestedEndsAt).toHours() > MAX_RESTRICTION_HOURS) {
@@ -184,7 +185,8 @@ public class UserSanction {
             LocalDateTime startsAt,
             LocalDateTime endsAt
     ) {
-        if (type == UserSanctionType.WARNING) {
+        if (type == UserSanctionType.WARNING
+                || type == UserSanctionType.ACCOUNT_SUSPENSION) {
             if (endsAt != null) {
                 throw new CustomException(ErrorCode.USER_SANCTION_INVALID_PERIOD);
             }

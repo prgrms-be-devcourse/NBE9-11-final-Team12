@@ -23,7 +23,7 @@ public interface UserSanctionRepository extends JpaRepository<UserSanction, Long
               and sanction.type = :type
               and sanction.revokedAt is null
               and sanction.startsAt <= :now
-              and sanction.endsAt > :now
+              and (sanction.endsAt is null or sanction.endsAt > :now)
             """)
     boolean existsActive(
             @Param("userId") Long userId,
@@ -38,8 +38,8 @@ public interface UserSanctionRepository extends JpaRepository<UserSanction, Long
               and sanction.type = :type
               and sanction.revokedAt is null
               and sanction.startsAt <= :now
-              and sanction.endsAt > :now
-            order by sanction.endsAt desc, sanction.id desc
+              and (sanction.endsAt is null or sanction.endsAt > :now)
+            order by sanction.id desc
             """)
     Optional<UserSanction> findFirstActive(
             @Param("userId") Long userId,
@@ -54,8 +54,11 @@ public interface UserSanctionRepository extends JpaRepository<UserSanction, Long
               and sanction.type <> com.sisibibi.api.domain.usersanction.entity.UserSanctionType.WARNING
               and sanction.revokedAt is null
               and sanction.startsAt <= :now
-              and sanction.endsAt > :now
-            order by sanction.endsAt asc, sanction.id asc
+              and (sanction.endsAt is null or sanction.endsAt > :now)
+            order by
+              case when sanction.endsAt is null then 1 else 0 end,
+              sanction.endsAt asc,
+              sanction.id asc
             """)
     List<UserSanction> findActiveRestrictions(
             @Param("userId") Long userId,
