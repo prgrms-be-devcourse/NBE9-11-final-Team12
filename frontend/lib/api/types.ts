@@ -200,7 +200,7 @@ export type StageRequestStatus = {
 export type WebSocketEventEnvelope<TData, TEventType extends string = string> = {
   eventId: string
   eventType: TEventType
-  roomId: number
+  roomId: number | null
   data: TData
   occurredAt: string
 }
@@ -237,4 +237,35 @@ export type RoomEvent = WebSocketEventEnvelope<
     closedAt: string
   },
   "ROOM_CLOSED"
+>
+
+export type SpeechReactionEvent = WebSocketEventEnvelope<
+  {
+    roomId: number
+    speechId: number
+    reactionCount: number
+    occurredAt: string
+  },
+  "SPEECH_REACTION_CHANGED"
+>
+
+export type UserSanctionType =
+  | "WARNING"
+  | "CHAT_RESTRICTION"
+  | "SPEECH_RESTRICTION"
+  | "STAGE_RESTRICTION"
+  | "ACCOUNT_SUSPENSION"
+
+export type UserSanctionState = "SCHEDULED" | "ACTIVE" | "EXPIRED" | "REVOKED"
+
+export type UserSanctionEvent = WebSocketEventEnvelope<
+  {
+    sanctionId: number
+    type: UserSanctionType
+    reason: string
+    state: UserSanctionState
+    startsAt: string
+    endsAt: string | null
+  },
+  "SANCTION_CREATED" | "SANCTION_EXTENDED" | "SANCTION_REVOKED"
 >

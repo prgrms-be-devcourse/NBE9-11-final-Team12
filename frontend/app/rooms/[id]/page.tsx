@@ -14,8 +14,8 @@ import { ChatPanel } from "@/components/chat-panel"
 import { useAuth } from "@/components/auth-provider"
 import { roomApi, topicApi } from "@/lib/api/services"
 import { ApiError } from "@/lib/api/client"
-import { subscribeRoomEvents } from "@/lib/api/stomp"
-import type { RoomEvent, RoomParticipant, RoomParticipantEvent } from "@/lib/api/types"
+import { createRoomStompConnection, type RoomStompConnection } from "@/lib/api/stomp"
+import type { RoomEvent, RoomParticipant, RoomParticipantEvent, UserSanctionEvent } from "@/lib/api/types"
 import {
   ArrowLeft,
   Users,
@@ -55,6 +55,8 @@ export default function RoomDetailPage() {
   const [participantCount, setParticipantCount] = useState(0)
   const [participants, setParticipants] = useState<RoomParticipant[]>([])
   const [leaving, setLeaving] = useState(false)
+  const [stompConnection, setStompConnection] = useState<RoomStompConnection | null>(null)
+  const [stompConnected, setStompConnected] = useState(false)
 
   useEffect(() => {
     if (!Number.isSafeInteger(roomId) || roomId <= 0) {
@@ -120,30 +122,61 @@ export default function RoomDetailPage() {
   useEffect(() => {
     if (!joined) return
 
-    const subscription = subscribeRoomEvents<RoomParticipantEvent | RoomEvent>(roomId, {
-      destinations: [
-        `/topic/rooms/${roomId}/participants/events`,
-        `/topic/rooms/${roomId}/room/events`,
-      ],
-      onEvent: (event) => {
-        if (event.eventType === "PARTICIPANT_JOINED" || event.eventType === "PARTICIPANT_LEFT") {
-          setParticipantCount(event.data.participantCount)
-          return
-        }
-
-        if (event.eventType === "ROOM_CLOSED") {
-          setRoomView((prev) => prev && ({
-            ...prev,
-            status: "CLOSED",
-            isLive: false,
-          }))
-        }
-      },
+    const connection = createRoomStompConnection(roomId, {
+      onStatus: setStompConnected,
       onError: (message) => setJoinError(message),
     })
+    setStompConnection(connection)
+    connection.connect()
 
-    return () => subscription.disconnect()
+    return () => {
+      setStompConnection(null)
+      setStompConnected(false)
+      connection.disconnect()
+    }
   }, [joined, roomId])
+
+  useEffect(() => {
+    if (!stompConnection || !stompConnected) return
+
+    const unsubscribeParticipants = stompConnection.subscribe<RoomParticipantEvent | RoomEvent>(
+      `/topic/rooms/${roomId}/participants/events`,
+      (event) => {
+        if (event.eventType === "PARTICIPANT_JOINED" || event.eventType === "PARTICIPANT_LEFT") {
+          setParticipantCount(event.data.participantCount)
+        }
+      },
+      setJoinError,
+    )
+    const unsubscribeRoom = stompConnection.subscribe<RoomParticipantEvent | RoomEvent>(
+      `/topic/rooms/${roomId}/room/events`,
+      (event) => {
+        if (event.eventType !== "ROOM_CLOSED") return
+        setRoomView((prev) => prev && ({
+          ...prev,
+          status: "CLOSED",
+          isLive: false,
+        }))
+      },
+      setJoinError,
+    )
+    const unsubscribeSanctions = user
+      ? stompConnection.subscribe<UserSanctionEvent>(
+        `/topic/users/${user.userId}/sanctions/events`,
+        (event) => {
+          const action = event.eventType === "SANCTION_REVOKED" ? "해제" : "변경"
+          setJoinError(`사용자 제재 상태가 ${action}되었습니다. 필요한 경우 요청을 다시 시도해주세요.`)
+        },
+        setJoinError,
+      )
+      : () => {}
+
+    return () => {
+      unsubscribeParticipants()
+      unsubscribeRoom()
+      unsubscribeSanctions()
+    }
+  }, [roomId, stompConnected, stompConnection, user])
 
   const leaveRoom = async () => {
     setLeaving(true)
@@ -300,10 +333,21 @@ export default function RoomDetailPage() {
                       </TabsTrigger>
                     </TabsList>
                     <TabsContent value="stage" className="m-0 h-[70vh] min-h-[500px]">
-                      <MainStage roomId={roomId} liveEnabled={joined} />
+                      <MainStage
+                        roomId={roomId}
+                        liveEnabled={joined}
+                        stompConnection={stompConnection}
+                        stompConnected={stompConnected}
+                      />
                     </TabsContent>
                     <TabsContent value="chat" className="m-0 h-[70vh] min-h-[500px]">
-                      {joined ? <ChatPanel roomId={roomId} /> : <ChatUnavailable />}
+                      {joined ? (
+                        <ChatPanel
+                          roomId={roomId}
+                          stompConnection={stompConnection}
+                          stompConnected={stompConnected}
+                        />
+                      ) : <ChatUnavailable />}
                     </TabsContent>
                   </Tabs>
                 </div>
@@ -311,10 +355,21 @@ export default function RoomDetailPage() {
                 {/* Desktop: Side by side, fills remaining height */}
                 <div className="hidden min-h-0 lg:flex lg:flex-1">
                   <div className="min-h-0 flex-1 border-r border-border/50">
-                    <MainStage roomId={roomId} liveEnabled={joined} />
+                    <MainStage
+                      roomId={roomId}
+                      liveEnabled={joined}
+                      stompConnection={stompConnection}
+                      stompConnected={stompConnected}
+                    />
                   </div>
                   <div className="min-h-0 w-80 xl:w-96">
-                    {joined ? <ChatPanel roomId={roomId} /> : <ChatUnavailable />}
+                    {joined ? (
+                      <ChatPanel
+                        roomId={roomId}
+                        stompConnection={stompConnection}
+                        stompConnected={stompConnected}
+                      />
+                    ) : <ChatUnavailable />}
                   </div>
                 </div>
               </div>
