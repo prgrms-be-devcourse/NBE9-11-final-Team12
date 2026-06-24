@@ -1,0 +1,20 @@
+prompt_guard:
+  sensitivity: medium
+  owner_bypass_scanning: false
+  owner_ids: []
+  canary_tokens: []
+  actions:
+    LOW: log
+    MEDIUM: warn
+    HIGH: block
+    CRITICAL: block
+  logging:
+    enabled: false
+    include_message: false
+  api:
+    enabled: false
+    reporting: false
+  hivefence:
+    enabled: false
+    auto_report: false
+    auto_fetch: false
