@@ -10,6 +10,7 @@ import com.sisibibi.api.domain.room.dto.response.RoomSummaryRes;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
+import com.sisibibi.api.domain.speech.service.SpeakingQueueService;
 import com.sisibibi.api.domain.topic.entity.Topic;
 import com.sisibibi.api.domain.topic.entity.TopicStatus;
 import com.sisibibi.api.domain.topic.repository.TopicRepository;
@@ -40,6 +41,7 @@ public class RoomService {
   private final ApplicationEventPublisher eventPublisher;
   private final RoomCreateCommandService roomCreateCommandService;
   private final RoomTopicGenerator roomTopicGenerator;
+  private final SpeakingQueueService speakingQueueService;
 
 
 
@@ -159,6 +161,7 @@ public class RoomService {
     }
 
     room.close(LocalDateTime.now());
+    speakingQueueService.closeSpeakingQueuesWhenRoomClosed(room.getId(), room.getEndedAt());
     publishRoomClosedEvent(room);
   }
 

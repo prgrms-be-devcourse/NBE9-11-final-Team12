@@ -373,6 +373,41 @@ class SpeakingQueuePersistenceServiceTest {
     }
 
     @Test
+    void closeActiveRequestsByRoomId_cancelsWaitingAndCompletesAssignedRequests() {
+        LocalDateTime closedAt = LocalDateTime.of(2026, 6, 24, 12, 0);
+        SpeakingQueue waiting = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 24, 11, 50)
+        );
+        SpeakingQueue assigned = SpeakingQueue.waiting(
+                1L,
+                8L,
+                16,
+                SpeechStance.CON,
+                LocalDateTime.of(2026, 6, 24, 11, 51)
+        );
+        assign(assigned);
+        given(speakingQueueRepository.findByRoomIdAndStatusInOrderByQueueOrderAsc(
+                1L,
+                List.of(SpeakingQueueStatus.WAITING, SpeakingQueueStatus.ASSIGNED)
+        )).willReturn(List.of(waiting, assigned));
+
+        SpeakingQueueRoomCloseResult result =
+                speakingQueuePersistenceService.closeActiveRequestsByRoomId(1L, closedAt);
+
+        assertThat(result.canceledRequests()).containsExactly(waiting);
+        assertThat(result.completedRequests()).containsExactly(assigned);
+        assertThat(waiting.getStatus()).isEqualTo(SpeakingQueueStatus.CANCELED);
+        assertThat(waiting.getCanceledAt()).isEqualTo(closedAt);
+        assertThat(waiting.getActiveRequest()).isNull();
+        assertThat(assigned.getStatus()).isEqualTo(SpeakingQueueStatus.COMPLETED);
+        assertThat(assigned.getActiveRequest()).isNull();
+    }
+
+    @Test
     void findMyActiveRequest_rejectsMissingRoom() {
         given(roomRepository.existsById(1L)).willReturn(false);
 
