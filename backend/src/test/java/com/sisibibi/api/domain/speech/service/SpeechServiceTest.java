@@ -6,6 +6,8 @@ import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
 import com.sisibibi.api.domain.speech.dto.command.SpeechCreateCommand;
 import com.sisibibi.api.domain.speech.dto.command.SpeechUpdateCommand;
+import com.sisibibi.api.domain.speech.dto.event.SpeechChangedEvent;
+import com.sisibibi.api.domain.speech.dto.event.SpeechEventType;
 import com.sisibibi.api.domain.speech.dto.response.SpeechCreateRes;
 import com.sisibibi.api.domain.speech.dto.response.SpeechCursorPageRes;
 import com.sisibibi.api.domain.speech.dto.response.SpeechDetailRes;
@@ -26,7 +28,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -59,6 +63,9 @@ class SpeechServiceTest {
 
     @Mock
     private UserSanctionPolicyService userSanctionPolicyService;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private SpeechService speechService;
@@ -95,7 +102,11 @@ class SpeechServiceTest {
                 RoomParticipantStatus.JOINED
         )).willReturn(true);
         given(speechRepository.save(org.mockito.ArgumentMatchers.any(Speech.class)))
-                .willAnswer(invocation -> invocation.getArgument(0));
+                .willAnswer(invocation -> {
+                    Speech speech = invocation.getArgument(0);
+                    ReflectionTestUtils.setField(speech, "id", 3L);
+                    return speech;
+                });
 
         SpeechCreateRes response = speechService.createMainOpinion(
                 roomId,
@@ -113,6 +124,7 @@ class SpeechServiceTest {
         assertThat(savedSpeech.getStance()).isEqualTo(SpeechStance.PRO);
         assertThat(savedSpeech.getStatus()).isEqualTo(SpeechStatus.READY);
         assertThat(response.status()).isEqualTo(SpeechStatus.READY);
+        verifySpeechEventPublished(SpeechEventType.SPEECH_CREATED, roomId, userId);
     }
 
     @Test
@@ -294,7 +306,7 @@ class SpeechServiceTest {
 
     @Test
     void updateSpeech_updatesOwnEditableSpeech() {
-        Speech speech = Speech.createMainOpinion(1L, 2L, "기존 의견", SpeechStance.CON);
+        Speech speech = speechWithId(3L, 1L, 2L, "기존 의견", SpeechStance.CON);
         given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
         givenOpenRoom(1L);
 
@@ -307,6 +319,7 @@ class SpeechServiceTest {
         assertThat(response.content()).isEqualTo("수정된 의견");
         assertThat(response.stance()).isEqualTo(SpeechStance.PRO);
         assertThat(response.updatedAt()).isNull();
+        verifySpeechEventPublished(SpeechEventType.SPEECH_UPDATED, 1L, 2L);
     }
 
     @Test
@@ -398,7 +411,7 @@ class SpeechServiceTest {
 
     @Test
     void deleteSpeech_softDeletesOwnEditableSpeech() {
-        Speech speech = Speech.createMainOpinion(1L, 2L, "삭제할 의견", SpeechStance.PRO);
+        Speech speech = speechWithId(3L, 1L, 2L, "삭제할 의견", SpeechStance.PRO);
         given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
         givenOpenRoom(1L);
 
@@ -406,6 +419,7 @@ class SpeechServiceTest {
 
         assertThat(speech.isDeleted()).isTrue();
         assertThat(speech.getDeletedAt()).isNotNull();
+        verifySpeechEventPublished(SpeechEventType.SPEECH_DELETED, 1L, 2L);
     }
 
     @Test
@@ -462,7 +476,7 @@ class SpeechServiceTest {
 
     @Test
     void updateSpeechLink_updatesOwnEditableSpeech() {
-        Speech speech = Speech.createMainOpinion(1L, 2L, "의견", SpeechStance.PRO);
+        Speech speech = speechWithId(3L, 1L, 2L, "의견", SpeechStance.PRO);
         given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
         givenOpenRoom(1L);
 
@@ -474,6 +488,7 @@ class SpeechServiceTest {
 
         assertThat(response.linkUrl()).isEqualTo("https://example.com/evidence");
         assertThat(speech.getLinkUrl()).isEqualTo("https://example.com/evidence");
+        verifySpeechEventPublished(SpeechEventType.SPEECH_LINK_UPDATED, 1L, 2L);
     }
 
     @Test
@@ -560,6 +575,36 @@ class SpeechServiceTest {
         given(speech.getStatus()).willReturn(status);
         given(speech.getCreatedAt()).willReturn(createdAt);
         return speech;
+    }
+
+    private Speech speechWithId(
+            Long speechId,
+            Long roomId,
+            Long userId,
+            String content,
+            SpeechStance stance
+    ) {
+        Speech speech = Speech.createMainOpinion(roomId, userId, content, stance);
+        ReflectionTestUtils.setField(speech, "id", speechId);
+        return speech;
+    }
+
+    private void verifySpeechEventPublished(
+            SpeechEventType type,
+            Long roomId,
+            Long userId
+    ) {
+        ArgumentCaptor<SpeechChangedEvent> eventCaptor =
+                ArgumentCaptor.forClass(SpeechChangedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+
+        SpeechChangedEvent event = eventCaptor.getValue();
+        assertThat(event.type()).isEqualTo(type);
+        assertThat(event.roomId()).isEqualTo(roomId);
+        assertThat(event.payload().roomId()).isEqualTo(roomId);
+        assertThat(event.payload().speechId()).isEqualTo(3L);
+        assertThat(event.payload().userId()).isEqualTo(userId);
+        assertThat(event.payload().occurredAt()).isNotNull();
     }
 
     private void givenOpenRoom(Long roomId) {

@@ -8,6 +8,7 @@ import type { RoomStompConnection } from "@/lib/api/stomp"
 import { useAuth } from "@/components/auth-provider"
 import type {
   SpeechReportReason,
+  SpeechEvent,
   SpeechReactionEvent,
   SpeechStance,
   SpeechSummary,
@@ -129,6 +130,20 @@ export function MainStage({
 
     return unsubscribe
   }, [liveEnabled, loadStage, roomId, stompConnected, stompConnection])
+
+  useEffect(() => {
+    if (!liveEnabled || !stompConnection || !stompConnected) return
+
+    const unsubscribe = stompConnection.subscribe<SpeechEvent>(
+      `/topic/rooms/${roomId}/speeches/events`,
+      () => {
+        void loadSpeeches()
+      },
+      setError,
+    )
+
+    return unsubscribe
+  }, [liveEnabled, loadSpeeches, roomId, stompConnected, stompConnection])
 
   useEffect(() => {
     if (!liveEnabled || !stompConnection || !stompConnected) return
