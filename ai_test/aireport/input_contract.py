@@ -1,5 +1,13 @@
-BACKEND_STANCE_VALUES = ("PRO", "CON")
 SUPPORTED_STANCE_VALUES = ("PRO", "CON", "NEUTRAL")
+MAX_CUSTOM_PROMPTS = 5
+MAX_CUSTOM_PROMPT_LENGTH = 1000
+BASE_REPORT_FIELD_MAP = {
+    "coreLine": ("coreLine", "core_line", "핵심 한줄"),
+    "keyIssues": ("keyIssues", "key_issues", "핵심 쟁점"),
+    "aiSummary": ("aiSummary", "ai_summary", "AI 종합 정리"),
+    "commonGround": ("commonGround", "common_ground", "공통 의견"),
+    "aiOpinion": ("aiOpinion", "ai_opinion", "AI의 개인적 소견"),
+}
 
 
 def normalize_report_request(payload):
@@ -10,7 +18,7 @@ def normalize_report_request(payload):
     speeches = payload.get("speeches") or payload.get("opinions") or []
     normalized_speeches = _normalize_speeches(speeches)
 
-    return {
+    normalized = {
         "room": _drop_empty_values({
             "topic": _first_text(topic.get("title"), room.get("topic"), room.get("title"), payload.get("topic")),
             "description": _first_text(topic.get("description"), room.get("description"), payload.get("description")),
@@ -20,6 +28,63 @@ def normalize_report_request(payload):
         }),
         "speeches": normalized_speeches,
     }
+    custom_prompts = _normalize_custom_prompts(payload.get("customPrompts") or [])
+    if custom_prompts:
+        normalized["customPrompts"] = custom_prompts
+    base_report = _normalize_base_report(payload.get("baseReport") or {})
+    if base_report:
+        normalized["baseReport"] = base_report
+    return normalized
+
+
+def _normalize_base_report(base_report):
+    normalized = {}
+    for output_key, input_keys in BASE_REPORT_FIELD_MAP.items():
+        value = _first_present(base_report, input_keys)
+        if output_key == "keyIssues":
+            issues = [
+                _compact_content(item)
+                for item in (value or [])
+                if _compact_content(item)
+            ]
+            if issues:
+                normalized[output_key] = issues
+            continue
+
+        text = _compact_content(value)
+        if text:
+            normalized[output_key] = text
+
+    return normalized
+
+
+def _normalize_custom_prompts(custom_prompts):
+    if len(custom_prompts) > MAX_CUSTOM_PROMPTS:
+        raise ValueError("customPrompts accepts at most 5 prompts")
+
+    normalized = []
+    for index, item in enumerate(custom_prompts, start=1):
+        if isinstance(item, str):
+            label = f"custom {index}"
+            prompt = item
+        else:
+            label = _first_text(item.get("label"), f"custom {index}")
+            prompt = item.get("prompt", "")
+
+        compact_prompt = _compact_content(prompt)
+        if not compact_prompt:
+            raise ValueError(f"customPrompts[{index - 1}].prompt must not be blank")
+        if len(compact_prompt) > MAX_CUSTOM_PROMPT_LENGTH:
+            raise ValueError(
+                f"customPrompts[{index - 1}].prompt must be {MAX_CUSTOM_PROMPT_LENGTH} characters or fewer"
+            )
+
+        normalized.append({
+            "label": label,
+            "prompt": compact_prompt,
+        })
+
+    return normalized
 
 
 def _normalize_speeches(speeches):
@@ -124,6 +189,13 @@ def _first_text(*values):
         if isinstance(value, str) and value.strip():
             return value.strip()
     return ""
+
+
+def _first_present(data, keys):
+    for key in keys:
+        if key in data:
+            return data.get(key)
+    return None
 
 
 def _drop_empty_values(data):

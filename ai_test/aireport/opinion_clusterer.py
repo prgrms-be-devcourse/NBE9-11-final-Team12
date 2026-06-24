@@ -221,8 +221,10 @@ def _embed_contents(speeches):
     except ValueError:
         # 대표 발언 선정에는 Sentence-BERT/TF-IDF 임베딩 벡터를 계속 쓰고,
         # 라벨용 키워드만 비워서 클러스터링 전체가 실패하지 않게 합니다.
+        from scipy.sparse import csr_matrix
+
         label_vectorizer = _EmptyLabelVectorizer()
-        label_vectors = _EmptyLabelVectors(len(contents))
+        label_vectors = csr_matrix((len(contents), 0))
     return {
         "backend": backend,
         "model_name": model_name,
@@ -632,21 +634,4 @@ def _format_representative_opinion(speech):
 
 class _EmptyLabelVectorizer:
     def get_feature_names_out(self):
-        return []
-
-
-class _EmptyLabelVectors:
-    def __init__(self, row_count):
-        self.row_count = row_count
-
-    def __getitem__(self, item):
-        return self
-
-    def sum(self, axis=0):
-        return _EmptyLabelVector()
-
-
-class _EmptyLabelVector:
-    @property
-    def A1(self):
         return []

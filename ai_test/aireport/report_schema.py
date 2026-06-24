@@ -1,15 +1,6 @@
 import json
 
-from pydantic import BaseModel, ConfigDict, Field
-
-
-REQUIRED_REPORT_FIELDS = (
-    "핵심 한줄",
-    "핵심 쟁점",
-    "AI 종합 정리",
-    "공통 의견",
-    "AI의 개인적 소견",
-)
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class AiReportModel(BaseModel):
@@ -22,14 +13,31 @@ class AiReportModel(BaseModel):
     ai_opinion: str = Field(alias="AI의 개인적 소견")
 
 
-def validate_report(report):
-    # 리포트 UI와 저장 구조가 기대하는 최소 필드를 먼저 확인합니다.
-    # 모델이 필드를 빠뜨리면 품질 문제가 아니라 실행 실패로 명확히 드러나게 합니다.
-    return _validate_report_with_pydantic(report)
+class CustomReportModel(BaseModel):
+    label: str
+    content: str
+
+    @field_validator("label", "content")
+    @classmethod
+    def non_blank_text(cls, value):
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("customReports label and content must be non-blank strings")
+        return value.strip()
+
+
+def validate_report(report, require_base_report=True, expected_custom_report_count=None):
+    validated = {}
+    if require_base_report:
+        validated.update(_validate_base_report(report))
+    if expected_custom_report_count is not None:
+        validated["customReports"] = _validate_custom_reports(
+            report.get("customReports"),
+            expected_custom_report_count,
+        )
+    return validated
 
 
 def validate_report_file(path):
-    # 실제 서비스에서도 저장 직후 파일/응답 JSON을 다시 읽어 스키마가 깨지지 않았는지 확인합니다.
     try:
         report = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
@@ -38,13 +46,31 @@ def validate_report_file(path):
     return validate_report(report)
 
 
-def _validate_report_with_pydantic(report):
+def _validate_base_report(report):
     try:
-        if hasattr(AiReportModel, "model_validate"):
-            validated = AiReportModel.model_validate(report)
-            return validated.model_dump(by_alias=True)
-
-        validated = AiReportModel.parse_obj(report)
-        return validated.dict(by_alias=True)
+        validated = AiReportModel.model_validate(report)
+        return validated.model_dump(by_alias=True)
     except Exception as exc:
-        raise ValueError(f"Report schema validation failed: {exc}") from exc
+        raise ValueError(f"Report schema validation failed: base report fields are required: {exc}") from exc
+
+
+def _validate_custom_reports(custom_reports, expected_count):
+    if not isinstance(custom_reports, list):
+        raise ValueError(
+            "Report schema validation failed: customPrompts were provided, "
+            "so model response must include customReports as a list"
+        )
+    if len(custom_reports) != expected_count:
+        raise ValueError(
+            f"Report schema validation failed: customReports length must be {expected_count}, got {len(custom_reports)}"
+        )
+
+    try:
+        return [
+            CustomReportModel.model_validate(item).model_dump()
+            for item in custom_reports
+        ]
+    except Exception as exc:
+        raise ValueError(
+            f"Report schema validation failed: customReports label and content must be non-blank strings: {exc}"
+        ) from exc
