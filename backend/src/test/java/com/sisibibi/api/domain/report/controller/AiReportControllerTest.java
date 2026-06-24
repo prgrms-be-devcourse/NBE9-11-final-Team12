@@ -57,7 +57,7 @@ class AiReportControllerTest {
         given(aiReportService.getReport(10L)).willReturn(new AiReportRes(
                 55L,
                 10L,
-                "PENDING",
+                "REQUESTED",
                 null,
                 List.of(),
                 null,
@@ -74,7 +74,7 @@ class AiReportControllerTest {
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.reportId").value(55))
                 .andExpect(jsonPath("$.data.roomId").value(10))
-                .andExpect(jsonPath("$.data.status").value("PENDING"));
+                .andExpect(jsonPath("$.data.status").value("REQUESTED"));
 
         verify(aiReportService).getReport(10L);
     }
@@ -90,25 +90,20 @@ class AiReportControllerTest {
     }
 
     @Test
-    void generateAiReport_returnsCompletedReport() throws Exception {
+    void generateAiReport_returnsRequestedReport() throws Exception {
         given(aiReportService.generateReport(any(Long.class), any(AiReportGenerateReq.class))).willReturn(new AiReportRes(
                 55L,
                 10L,
-                "COMPLETED",
-                "핵심 한줄",
-                List.of("쟁점 1"),
-                "종합 정리",
-                "공통 의견",
-                "개인적 소견",
-                List.of(new AiReportRes.CustomReportRes(
-                        "custom 1",
-                        "핵심 쟁점을 더 자세히 정리해줘",
-                        "핵심 쟁점 상세",
-                        "핵심 쟁점 상세 내용"
-                )),
+                "REQUESTED",
+                null,
+                List.of(),
+                null,
+                null,
+                null,
+                List.of(),
                 null,
                 LocalDateTime.of(2026, 6, 22, 13, 0),
-                LocalDateTime.of(2026, 6, 22, 13, 1)
+                null
         ));
 
         String requestBody = objectMapper.writeValueAsString(new AiReportGenerateReq(List.of(
@@ -121,12 +116,8 @@ class AiReportControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value(200))
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
-                .andExpect(jsonPath("$.data.status").value("COMPLETED"))
-                .andExpect(jsonPath("$.data.coreLine").value("핵심 한줄"))
-                .andExpect(jsonPath("$.data.keyIssues[0]").value("쟁점 1"))
-                .andExpect(jsonPath("$.data.customReports[0].requestLabel").value("custom 1"))
-                .andExpect(jsonPath("$.data.customReports[0].label").value("핵심 쟁점 상세"))
-                .andExpect(jsonPath("$.data.customReports[0].content").value("핵심 쟁점 상세 내용"));
+                .andExpect(jsonPath("$.data.reportId").value(55))
+                .andExpect(jsonPath("$.data.status").value("REQUESTED"));
 
         verify(aiReportService).generateReport(10L, new AiReportGenerateReq(List.of(
                 new AiReportGenerateReq.CustomPromptReq("custom 1", "핵심 쟁점을 더 자세히 정리해줘")
@@ -141,28 +132,23 @@ class AiReportControllerTest {
         given(aiReportService.generateReport(10L, 7L, request)).willReturn(new AiReportRes(
                 55L,
                 10L,
-                "COMPLETED",
-                "core",
-                List.of("issue"),
-                "summary",
-                "common",
-                "opinion",
-                List.of(new AiReportRes.CustomReportRes(
-                        "custom 1",
-                        "minority view",
-                        "minority",
-                        "minority content"
-                )),
+                "REQUESTED",
+                null,
+                List.of(),
+                null,
+                null,
+                null,
+                List.of(),
                 null,
                 LocalDateTime.of(2026, 6, 22, 13, 0),
-                LocalDateTime.of(2026, 6, 22, 13, 1)
+                null
         ));
 
         ResponseEntity<com.sisibibi.api.global.response.ApiResponse<AiReportRes>> response =
                 new AiReportController(aiReportService)
                         .generateAiReport(10L, new AuthPrincipal(7L, "user7@example.com", "USER"), request);
 
-        assertThat(response.getBody().getData().customReports().getFirst().content()).isEqualTo("minority content");
+        assertThat(response.getBody().getData().status()).isEqualTo("REQUESTED");
         verify(aiReportService).generateReport(10L, 7L, request);
     }
 

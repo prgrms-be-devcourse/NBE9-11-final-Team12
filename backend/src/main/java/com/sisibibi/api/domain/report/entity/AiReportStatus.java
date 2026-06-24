@@ -7,11 +7,5 @@ public enum AiReportStatus {
     COMPLETED,
     PUBLISH_FAILED,
     GENERATION_FAILED,
-    BLOCKED,
-
-    // Legacy alias kept temporarily until tests and API clients move to the async status model.
-    PENDING,
-
-    // Legacy alias kept temporarily until tests and API clients move to the async status model.
-    FAILED
+    BLOCKED
 }

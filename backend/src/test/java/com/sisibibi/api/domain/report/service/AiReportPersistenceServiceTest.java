@@ -243,7 +243,7 @@ class AiReportPersistenceServiceTest {
         AiReportGenerationContext context = aiReportPersistenceService.prepareGeneration(10L, List.of());
 
         assertThat(context.shouldCallAi()).isFalse();
-        assertThat(context.response().status()).isEqualTo("PENDING");
+        assertThat(context.response().status()).isEqualTo("REQUESTED");
         verify(topicRepository, never()).findById(any());
         verify(speechRepository, never()).findAiReportSourceSpeeches(any());
     }
@@ -389,10 +389,10 @@ class AiReportPersistenceServiceTest {
 
         AiReportRes result = aiReportPersistenceService.fail(55L, "AI 리포트 생성에 실패했습니다.");
 
-        assertThat(report.getStatus()).isEqualTo(AiReportStatus.FAILED);
+        assertThat(report.getStatus()).isEqualTo(AiReportStatus.GENERATION_FAILED);
         assertThat(report.getErrorMessage()).isEqualTo("AI 리포트 생성에 실패했습니다.");
         assertThat(report.getCompletedAt()).isNull();
-        assertThat(result.status()).isEqualTo("FAILED");
+        assertThat(result.status()).isEqualTo("GENERATION_FAILED");
     }
 
     private Room closedRoom(Long roomId, Long topicId, String title) {

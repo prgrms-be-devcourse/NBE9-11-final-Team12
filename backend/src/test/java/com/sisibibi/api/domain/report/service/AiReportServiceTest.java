@@ -1,20 +1,20 @@
 package com.sisibibi.api.domain.report.service;
 
-import com.sisibibi.api.domain.report.client.AiReportClient;
-import com.sisibibi.api.domain.report.client.dto.AiReportGenerateReq;
-import com.sisibibi.api.domain.report.client.dto.AiReportGenerateRes;
-import com.sisibibi.api.domain.report.client.dto.AiReportCustomReportPayload;
+import com.sisibibi.api.domain.report.dto.event.AiReportGenerationRequestedEvent;
+import com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq;
+import com.sisibibi.api.domain.report.dto.response.AiReportRes;
 import com.sisibibi.api.domain.report.prompt.CustomPromptCommand;
 import com.sisibibi.api.domain.report.prompt.CustomPromptValidator;
-import org.junit.jupiter.api.BeforeEach;
-import com.sisibibi.api.domain.report.dto.response.AiReportRes;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.List;
 
@@ -33,153 +33,71 @@ class AiReportServiceTest {
     private AiReportPersistenceService aiReportPersistenceService;
 
     @Mock
-    private AiReportClient aiReportClient;
+    private CustomPromptValidator customPromptValidator;
 
     @Mock
-    private CustomPromptValidator customPromptValidator;
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private AiReportService aiReportService;
 
     @BeforeEach
     void setUp() {
-        lenient().when(customPromptValidator.normalizeAndScan(any(com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq.class)))
+        lenient().when(customPromptValidator.normalizeAndScan(any(AiReportGenerateReq.class)))
                 .thenReturn(List.of());
     }
 
     @Test
-    void generateReport_callsAiServerAndCompletesReport_whenPreparationRequiresAiCall() {
-        AiReportGenerateReq request = new AiReportGenerateReq(null, null, List.of());
-        AiReportGenerateRes aiResponse = new AiReportGenerateRes(
-                "핵심 한줄",
-                List.of("쟁점 1", "쟁점 2"),
-                "종합 정리",
-                "공통 의견",
-                "개인적 소견"
-        );
-        AiReportRes completed = new AiReportRes(
-                55L,
-                10L,
-                "COMPLETED",
-                "핵심 한줄",
-                List.of("쟁점 1", "쟁점 2"),
-                "종합 정리",
-                "공통 의견",
-                "개인적 소견",
-                null,
-                null,
-                null
-        );
+    void generateReport_savesRequestedReportAndPublishesEvent_withoutCallingAiServer() {
+        AiReportRes requested = requestedResponse();
 
-        given(aiReportPersistenceService.prepareGeneration(10L, List.of()))
-                .willReturn(AiReportGenerationContext.callAi(55L, request));
-        given(aiReportClient.generate(request)).willReturn(aiResponse);
-        given(aiReportPersistenceService.complete(55L, aiResponse)).willReturn(completed);
+        given(aiReportPersistenceService.requestGeneration(10L, List.of()))
+                .willReturn(AiReportRequestResult.publish(requested, AiReportGenerationType.BASE_ONLY));
 
-        AiReportRes result = aiReportService.generateReport(10L, com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq.empty());
+        AiReportRes result = aiReportService.generateReport(10L, AiReportGenerateReq.empty());
 
-        assertThat(result.status()).isEqualTo("COMPLETED");
-        assertThat(result.coreLine()).isEqualTo("핵심 한줄");
-        verify(aiReportClient).generate(request);
-        verify(aiReportPersistenceService).complete(55L, aiResponse);
+        ArgumentCaptor<AiReportGenerationRequestedEvent> eventCaptor =
+                ArgumentCaptor.forClass(AiReportGenerationRequestedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(result.status()).isEqualTo("REQUESTED");
+        assertThat(eventCaptor.getValue().reportId()).isEqualTo(55L);
+        assertThat(eventCaptor.getValue().roomId()).isEqualTo(10L);
+        assertThat(eventCaptor.getValue().generationType()).isEqualTo(AiReportGenerationType.BASE_ONLY);
     }
 
     @Test
-    void generateReport_returnsExistingReportWithoutCallingAiServer_whenReportAlreadyExists() {
-        AiReportRes pending = new AiReportRes(
-                55L,
-                10L,
-                "PENDING",
-                null,
-                List.of(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        );
+    void generateReport_returnsExistingReportWithoutPublishingEvent_whenGenerationIsAlreadyInProgress() {
+        AiReportRes requested = requestedResponse();
 
-        given(aiReportPersistenceService.prepareGeneration(10L, List.of()))
-                .willReturn(AiReportGenerationContext.skipAi(pending));
+        given(aiReportPersistenceService.requestGeneration(10L, List.of()))
+                .willReturn(AiReportRequestResult.skip(requested));
 
-        AiReportRes result = aiReportService.generateReport(10L, com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq.empty());
+        AiReportRes result = aiReportService.generateReport(10L, AiReportGenerateReq.empty());
 
-        assertThat(result.status()).isEqualTo("PENDING");
-        verify(aiReportClient, never()).generate(org.mockito.ArgumentMatchers.any());
+        assertThat(result.status()).isEqualTo("REQUESTED");
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test
-    void generateReport_marksFailed_whenAiServerCallFails() {
-        AiReportGenerateReq request = new AiReportGenerateReq(null, null, List.of());
-        AiReportRes failed = new AiReportRes(
-                55L,
-                10L,
-                "FAILED",
-                null,
-                List.of(),
-                null,
-                null,
-                null,
-                "AI 리포트 생성에 실패했습니다.",
-                null,
-                null
-        );
+    void generateReport_passesAuthenticatedUserIdForUserScopedCustomReports() {
+        AiReportGenerateReq request = customPromptRequest("minority view");
+        List<CustomPromptCommand> normalizedPrompts = List.of(new CustomPromptCommand("custom 1", "minority view"));
+        AiReportRes requested = requestedResponse();
 
-        given(aiReportPersistenceService.prepareGeneration(10L, List.of()))
-                .willReturn(AiReportGenerationContext.callAi(55L, request));
-        given(aiReportClient.generate(request))
-                .willThrow(new CustomException(ErrorCode.AI_REPORT_GENERATE_FAILED));
-        given(aiReportPersistenceService.fail(55L, ErrorCode.AI_REPORT_GENERATE_FAILED.getMessage()))
-                .willReturn(failed);
+        given(customPromptValidator.normalizeAndScan(request)).willReturn(normalizedPrompts);
+        given(aiReportPersistenceService.requestGeneration(10L, 7L, normalizedPrompts))
+                .willReturn(AiReportRequestResult.publish(requested, AiReportGenerationType.BASE_WITH_CUSTOM));
 
-        AiReportRes result = aiReportService.generateReport(10L, com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq.empty());
+        AiReportRes result = aiReportService.generateReport(10L, 7L, request);
 
-        assertThat(result.status()).isEqualTo("FAILED");
-        assertThat(result.errorMessage()).isEqualTo("AI 리포트 생성에 실패했습니다.");
-        verify(aiReportPersistenceService).fail(55L, ErrorCode.AI_REPORT_GENERATE_FAILED.getMessage());
+        assertThat(result.status()).isEqualTo("REQUESTED");
+        verify(aiReportPersistenceService).requestGeneration(10L, 7L, normalizedPrompts);
+        verify(eventPublisher).publishEvent(any(AiReportGenerationRequestedEvent.class));
     }
 
     @Test
-    void generateReport_marksFailed_whenAiServerResponseMissesRequiredField() {
-        AiReportGenerateReq request = new AiReportGenerateReq(null, null, List.of());
-        AiReportGenerateRes invalidResponse = new AiReportGenerateRes(
-                "",
-                List.of("쟁점"),
-                "종합 정리",
-                "공통 의견",
-                "개인적 소견"
-        );
-
-        given(aiReportPersistenceService.prepareGeneration(10L, List.of()))
-                .willReturn(AiReportGenerationContext.callAi(55L, request));
-        given(aiReportClient.generate(request)).willReturn(invalidResponse);
-
-        aiReportService.generateReport(10L, com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq.empty());
-
-        verify(aiReportPersistenceService).fail(55L, ErrorCode.AI_REPORT_INVALID_RESPONSE.getMessage());
-        verify(aiReportPersistenceService, never()).complete(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any());
-    }
-
-    @Test
-    void generateReport_rejectsCustomPromptsMoreThanFive() {
-        com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq request =
-                customPromptRequest("1", "2", "3", "4", "5", "6");
-        given(customPromptValidator.normalizeAndScan(request))
-                .willThrow(new CustomException(ErrorCode.AI_REPORT_CUSTOM_PROMPT_TOO_MANY));
-
-        assertThatThrownBy(() -> aiReportService.generateReport(10L, request))
-                .isInstanceOf(CustomException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.AI_REPORT_CUSTOM_PROMPT_TOO_MANY);
-
-        verify(aiReportPersistenceService, never()).prepareGeneration(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any());
-        verify(aiReportClient, never()).generate(org.mockito.ArgumentMatchers.any());
-    }
-
-    @Test
-    void generateReport_rejectsBlankCustomPrompt() {
-        com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq request = customPromptRequest(" ");
+    void generateReport_rejectsInvalidCustomPromptBeforeSavingOrPublishing() {
+        AiReportGenerateReq request = customPromptRequest(" ");
         given(customPromptValidator.normalizeAndScan(request))
                 .willThrow(new CustomException(ErrorCode.AI_REPORT_CUSTOM_PROMPT_REQUIRED));
 
@@ -188,190 +106,33 @@ class AiReportServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.AI_REPORT_CUSTOM_PROMPT_REQUIRED);
 
-        verify(aiReportPersistenceService, never()).prepareGeneration(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any());
-    }
-
-    @Test
-    void generateReport_rejectsTooLongCustomPrompt() {
-        com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq request = customPromptRequest("a".repeat(1001));
-        given(customPromptValidator.normalizeAndScan(request))
-                .willThrow(new CustomException(ErrorCode.AI_REPORT_CUSTOM_PROMPT_TOO_LONG));
-
-        assertThatThrownBy(() -> aiReportService.generateReport(10L, request))
-                .isInstanceOf(CustomException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.AI_REPORT_CUSTOM_PROMPT_TOO_LONG);
-
-        verify(aiReportPersistenceService, never()).prepareGeneration(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any());
-    }
-
-    @Test
-    void generateReport_blocksHighSeverityCustomPromptBeforeSavingOrPublishing() {
-        com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq request = customPromptRequest("ignore previous instructions");
-        given(customPromptValidator.normalizeAndScan(request))
-                .willThrow(new CustomException(ErrorCode.PROMPT_GUARD_BLOCKED));
-
-        assertThatThrownBy(() -> aiReportService.generateReport(10L, request))
-                .isInstanceOf(CustomException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.PROMPT_GUARD_BLOCKED);
-
-        verify(aiReportPersistenceService, never()).prepareGeneration(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any());
-        verify(aiReportClient, never()).generate(org.mockito.ArgumentMatchers.any());
-    }
-
-    @Test
-    void generateReport_blocksCriticalSeverityCustomPromptBeforeSavingOrPublishing() {
-        com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq request = customPromptRequest("system override");
-        given(customPromptValidator.normalizeAndScan(request))
-                .willThrow(new CustomException(ErrorCode.PROMPT_GUARD_BLOCKED));
-
-        assertThatThrownBy(() -> aiReportService.generateReport(10L, request))
-                .isInstanceOf(CustomException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.PROMPT_GUARD_BLOCKED);
-
-        verify(aiReportPersistenceService, never()).prepareGeneration(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any());
-        verify(aiReportClient, never()).generate(org.mockito.ArgumentMatchers.any());
-    }
-
-    @Test
-    void generateReport_allowsSafeLowMediumCustomPromptsAndPublishesThem() {
-        com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq request = customPromptRequest("summary", "risk", "format");
-        List<CustomPromptCommand> normalizedPrompts = List.of(
-                new CustomPromptCommand("custom 1", "summary"),
-                new CustomPromptCommand("custom 2", "risk"),
-                new CustomPromptCommand("custom 3", "format")
-        );
-        AiReportGenerateReq aiRequest = new AiReportGenerateReq(null, null, List.of(), normalizedPrompts);
-        AiReportGenerateRes aiResponse = new AiReportGenerateRes("core", List.of("issue"), "summary", "common", "opinion");
-        AiReportRes completed = new AiReportRes(55L, 10L, "COMPLETED", "core", List.of("issue"),
-                "summary", "common", "opinion", null, null, null);
-
-        given(customPromptValidator.normalizeAndScan(request)).willReturn(normalizedPrompts);
-        given(aiReportPersistenceService.prepareGeneration(10L, normalizedPrompts))
-                .willReturn(AiReportGenerationContext.callAi(55L, aiRequest));
-        given(aiReportClient.generate(aiRequest)).willReturn(aiResponse);
-        given(aiReportPersistenceService.complete(55L, aiResponse)).willReturn(completed);
-
-        AiReportRes result = aiReportService.generateReport(10L, request);
-
-        assertThat(result.status()).isEqualTo("COMPLETED");
-        verify(customPromptValidator).normalizeAndScan(request);
-        verify(aiReportPersistenceService).prepareGeneration(10L, normalizedPrompts);
-        verify(aiReportClient).generate(aiRequest);
-    }
-
-    @Test
-    void generateReport_appendsCustomReports_whenBaseReportAlreadyCompleted() {
-        com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq request = customPromptRequest("소수 의견도 정리해줘");
-        List<CustomPromptCommand> normalizedPrompts = List.of(
-                new CustomPromptCommand("custom 1", "소수 의견도 정리해줘")
-        );
-        AiReportGenerateReq aiRequest = new AiReportGenerateReq(null, null, List.of(), null, normalizedPrompts);
-        AiReportGenerateRes aiResponse = new AiReportGenerateRes(
-                null,
-                null,
-                null,
-                null,
-                null,
-                List.of(new AiReportCustomReportPayload("소수 의견", "소수 의견 내용"))
-        );
-        AiReportRes completed = new AiReportRes(55L, 10L, "COMPLETED", "core", List.of("issue"),
-                "summary", "common", "opinion", null, null, null);
-
-        given(customPromptValidator.normalizeAndScan(request)).willReturn(normalizedPrompts);
-        given(aiReportPersistenceService.prepareGeneration(10L, normalizedPrompts))
-                .willReturn(AiReportGenerationContext.callAi(
-                        55L,
-                        aiRequest,
-                        AiReportGenerationType.CUSTOM_ONLY
-                ));
-        given(aiReportClient.generate(aiRequest)).willReturn(aiResponse);
-        given(aiReportPersistenceService.appendCustomReports(55L, normalizedPrompts, aiResponse.customReports()))
-                .willReturn(completed);
-
-        AiReportRes result = aiReportService.generateReport(10L, request);
-
-        assertThat(result.status()).isEqualTo("COMPLETED");
-        verify(aiReportPersistenceService).appendCustomReports(55L, normalizedPrompts, aiResponse.customReports());
-        verify(aiReportPersistenceService, never()).complete(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any());
-        verify(aiReportPersistenceService, never()).fail(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyString());
-    }
-
-    @Test
-    void generateReport_doesNotMarkBaseReportFailed_whenCustomOnlyAiCallFails() {
-        com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq request = customPromptRequest("소수 의견도 정리해줘");
-        List<CustomPromptCommand> normalizedPrompts = List.of(
-                new CustomPromptCommand("custom 1", "소수 의견도 정리해줘")
-        );
-        AiReportGenerateReq aiRequest = new AiReportGenerateReq(null, null, List.of(), null, normalizedPrompts);
-
-        given(customPromptValidator.normalizeAndScan(request)).willReturn(normalizedPrompts);
-        given(aiReportPersistenceService.prepareGeneration(10L, normalizedPrompts))
-                .willReturn(AiReportGenerationContext.callAi(
-                        55L,
-                        aiRequest,
-                        AiReportGenerationType.CUSTOM_ONLY
-                ));
-        given(aiReportClient.generate(aiRequest))
-                .willThrow(new CustomException(ErrorCode.AI_REPORT_GENERATE_FAILED));
-
-        assertThatThrownBy(() -> aiReportService.generateReport(10L, request))
-                .isInstanceOf(CustomException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.AI_REPORT_GENERATE_FAILED);
-
-        verify(aiReportPersistenceService, never()).fail(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyString());
-        verify(aiReportPersistenceService, never()).complete(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any());
-        verify(aiReportPersistenceService, never()).appendCustomReports(
+        verify(aiReportPersistenceService, never()).requestGeneration(
                 org.mockito.ArgumentMatchers.anyLong(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any()
+                org.mockito.ArgumentMatchers.<List<CustomPromptCommand>>any()
+        );
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    private AiReportRes requestedResponse() {
+        return new AiReportRes(
+                55L,
+                10L,
+                "REQUESTED",
+                null,
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
         );
     }
 
-    @Test
-    void generateReport_blocksWhenPromptGuardFailsWithFailClosedPolicy() {
-        com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq request = customPromptRequest("summary");
-        given(customPromptValidator.normalizeAndScan(request))
-                .willThrow(new CustomException(ErrorCode.PROMPT_GUARD_UNAVAILABLE));
-
-        assertThatThrownBy(() -> aiReportService.generateReport(10L, request))
-                .isInstanceOf(CustomException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.PROMPT_GUARD_UNAVAILABLE);
-
-        verify(aiReportPersistenceService, never()).prepareGeneration(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any());
-        verify(aiReportClient, never()).generate(org.mockito.ArgumentMatchers.any());
-    }
-
-    @Test
-    void generateReport_allowsWhenPromptGuardFailsWithFailOpenPolicy() {
-        com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq request = customPromptRequest("summary");
-        List<CustomPromptCommand> normalizedPrompts = List.of(new CustomPromptCommand("custom 1", "summary"));
-        AiReportGenerateReq aiRequest = new AiReportGenerateReq(null, null, List.of(), normalizedPrompts);
-        AiReportGenerateRes aiResponse = new AiReportGenerateRes("core", List.of("issue"), "summary", "common", "opinion");
-        AiReportRes completed = new AiReportRes(55L, 10L, "COMPLETED", "core", List.of("issue"),
-                "summary", "common", "opinion", null, null, null);
-
-        given(customPromptValidator.normalizeAndScan(request)).willReturn(normalizedPrompts);
-        given(aiReportPersistenceService.prepareGeneration(10L, normalizedPrompts))
-                .willReturn(AiReportGenerationContext.callAi(55L, aiRequest));
-        given(aiReportClient.generate(aiRequest)).willReturn(aiResponse);
-        given(aiReportPersistenceService.complete(55L, aiResponse)).willReturn(completed);
-
-        AiReportRes result = aiReportService.generateReport(10L, request);
-
-        assertThat(result.status()).isEqualTo("COMPLETED");
-        verify(aiReportPersistenceService).prepareGeneration(10L, normalizedPrompts);
-        verify(aiReportClient).generate(aiRequest);
-    }
-
-    private com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq customPromptRequest(String... prompts) {
-        return new com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq(
+    private AiReportGenerateReq customPromptRequest(String... prompts) {
+        return new AiReportGenerateReq(
                 java.util.Arrays.stream(prompts)
-                        .map(prompt -> new com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq.CustomPromptReq(null, prompt))
+                        .map(prompt -> new AiReportGenerateReq.CustomPromptReq(null, prompt))
                         .toList()
         );
     }

@@ -135,8 +135,7 @@ public class AiReport {
     public boolean isGenerationInProgress() {
         return status == AiReportStatus.REQUESTED
                 || status == AiReportStatus.QUEUED
-                || status == AiReportStatus.PROCESSING
-                || status == AiReportStatus.PENDING;
+                || status == AiReportStatus.PROCESSING;
     }
 
     public void retry() {
@@ -145,6 +144,34 @@ public class AiReport {
 
     public void retry(List<AiReportCustomPrompt> customPrompts) {
         markRequested(customPrompts);
+    }
+
+    public void requestCustomReports(List<AiReportCustomPrompt> customPrompts) {
+        this.status = AiReportStatus.REQUESTED;
+        this.customPrompts = mergePrompts(this.customPrompts, customPrompts);
+        this.publishRetryCount = 0;
+        this.lastErrorCode = null;
+        this.lastErrorMessage = null;
+        this.processingStartedAt = null;
+        this.processingLockedUntil = null;
+        this.requestedAt = LocalDateTime.now();
+        this.queuedAt = null;
+        this.failedAt = null;
+    }
+
+    public void markQueued() {
+        this.status = AiReportStatus.QUEUED;
+        this.lastErrorCode = null;
+        this.lastErrorMessage = null;
+        this.queuedAt = LocalDateTime.now();
+    }
+
+    public void markPublishFailed(String errorCode, String errorMessage) {
+        this.status = AiReportStatus.PUBLISH_FAILED;
+        this.publishRetryCount++;
+        this.lastErrorCode = truncate(errorCode, 100);
+        this.lastErrorMessage = truncate(errorMessage);
+        this.failedAt = LocalDateTime.now();
     }
 
     public void complete(AiReportGenerateRes response) {
@@ -156,8 +183,12 @@ public class AiReport {
         this.aiOpinion = response.aiOpinion();
         this.customReports = toCustomReports(this.customPrompts, response.customReports());
         this.errorMessage = null;
+        this.publishRetryCount = 0;
+        this.generationRetryCount = 0;
         this.lastErrorCode = null;
         this.lastErrorMessage = null;
+        this.processingStartedAt = null;
+        this.processingLockedUntil = null;
         this.failedAt = null;
         this.completedAt = LocalDateTime.now();
     }
@@ -186,6 +217,8 @@ public class AiReport {
         this.errorMessage = truncate(errorMessage);
         this.lastErrorCode = null;
         this.lastErrorMessage = truncate(errorMessage);
+        this.processingStartedAt = null;
+        this.processingLockedUntil = null;
         this.completedAt = null;
         this.failedAt = LocalDateTime.now();
     }
@@ -211,11 +244,15 @@ public class AiReport {
     }
 
     private String truncate(String message) {
+        return truncate(message, 1000);
+    }
+
+    private String truncate(String message, int maxLength) {
         if (message == null) {
             return null;
         }
 
-        return message.length() > 1000 ? message.substring(0, 1000) : message;
+        return message.length() > maxLength ? message.substring(0, maxLength) : message;
     }
 
     private List<AiReportCustomReport> toCustomReports(

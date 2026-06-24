@@ -29,6 +29,8 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-websocket")
 	implementation(platform("org.springframework.ai:spring-ai-bom:1.0.9"))
 	implementation("org.springframework.ai:spring-ai-starter-model-openai")
+	implementation(platform("software.amazon.awssdk:bom:2.25.70"))
+	implementation("software.amazon.awssdk:sqs")
 	runtimeOnly("io.micrometer:micrometer-registry-prometheus")
 
 	// JWT 라이브러리
