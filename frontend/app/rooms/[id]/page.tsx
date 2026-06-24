@@ -63,6 +63,38 @@ export default function RoomDetailPage() {
       router.replace("/rooms")
       return
     }
+
+    async function loadPublicRoom() {
+      setJoinError("")
+      try {
+        const [room, countResponse] = await Promise.all([
+          roomApi.detail(roomId),
+          roomApi.participantCount(roomId),
+        ])
+        const topicDetail = await topicApi.detail(room.topicId)
+        setRoomView({
+          id: String(room.roomId),
+          title: room.title,
+          description: topicDetail.description ?? "승인된 토픽으로 개설된 실시간 토론방입니다.",
+          category: topicDetail.category,
+          status: room.status,
+          tags: [topicDetail.category],
+          isLive: room.status === "OPEN",
+        })
+        setParticipantCount(countResponse.participantCount)
+      } catch (error) {
+        setJoinError(error instanceof ApiError ? error.message : "토론방 정보를 불러오지 못했습니다.")
+      }
+    }
+
+    void loadPublicRoom()
+  }, [roomId, router])
+
+  useEffect(() => {
+    if (!Number.isSafeInteger(roomId) || roomId <= 0) {
+      router.replace("/rooms")
+      return
+    }
     if (authLoading) return
     if (!user) {
       setJoined(false)
@@ -234,7 +266,9 @@ export default function RoomDetailPage() {
       {/* Body — fills remaining space, scrollable on mobile, fixed on desktop */}
       <div className="min-h-0 flex-1 overflow-y-auto lg:overflow-hidden">
         <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col px-4 py-4 md:px-6 lg:py-4">
-          {joinError && <p className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{joinError}</p>}
+          {joinError && (user || !roomView) && (
+            <p className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{joinError}</p>
+          )}
 
           {/* 3-column layout on desktop */}
           <div className="flex min-h-0 flex-col gap-6 lg:flex-1 lg:flex-row">

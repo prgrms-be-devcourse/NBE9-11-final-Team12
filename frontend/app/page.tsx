@@ -43,21 +43,13 @@ function toTopicCard(room: RoomSummary, detail: TopicDetail | null, participantC
 }
 
 export default function HomePage() {
-  const { user, loading: authLoading } = useAuth()
+  const { user } = useAuth()
   const [topics, setTopics] = useState<Topic[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
   useEffect(() => {
     let mounted = true
-
-    if (authLoading) return
-    if (!user) {
-      setTopics([])
-      setError("")
-      setLoading(false)
-      return
-    }
 
     setLoading(true)
     setError("")
@@ -89,7 +81,7 @@ export default function HomePage() {
     return () => {
       mounted = false
     }
-  }, [authLoading, user])
+  }, [])
 
   const openTopics = useMemo(() => topics.filter((topic) => topic.status === "OPEN"), [topics])
   const featuredTopic = openTopics[0] ?? topics[0]
