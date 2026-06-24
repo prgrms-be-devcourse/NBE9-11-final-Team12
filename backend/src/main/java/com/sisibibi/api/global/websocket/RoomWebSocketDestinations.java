@@ -8,16 +8,16 @@ public final class RoomWebSocketDestinations {
 
     private static final Pattern ALLOWED_ROOM_TOPIC_PATTERN = Pattern.compile(
             "^/topic/rooms/(\\d+)/"
-                    + "(chat/messages|stage/events|participants/events|room/events|"
-                    + "speech-reactions/events)$"
+                    + "(chat/events|stage/events|participants/events|room/events|"
+                    + "speeches/events|speech-reactions/events)$"
     );
     private static final Pattern ROOM_TOPIC_PATTERN = Pattern.compile("^/topic/rooms/[^/]+/.*$");
 
     private RoomWebSocketDestinations() {
     }
 
-    public static String chatMessages(Long roomId) {
-        return "/topic/rooms/" + roomId + "/chat/messages";
+    public static String chatEvents(Long roomId) {
+        return "/topic/rooms/" + roomId + "/chat/events";
     }
 
     public static String stageEvents(Long roomId) {
@@ -34,6 +34,10 @@ public final class RoomWebSocketDestinations {
 
     public static String speechReactionEvents(Long roomId) {
         return "/topic/rooms/" + roomId + "/speech-reactions/events";
+    }
+
+    public static String speechEvents(Long roomId) {
+        return "/topic/rooms/" + roomId + "/speeches/events";
     }
 
     public static Optional<Long> findAllowedRoomTopicId(String destination) {

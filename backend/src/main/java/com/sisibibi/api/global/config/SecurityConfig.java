@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -60,15 +61,18 @@ public class SecurityConfig {
         .authorizeHttpRequests(auth -> auth
             .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
             .requestMatchers("/api/v1/topics/issues/**").permitAll()
+            .requestMatchers(HttpMethod.GET, "/api/v1/rooms").permitAll()
+            .requestMatchers(HttpMethod.GET, "/api/v1/rooms/open").permitAll()
+            .requestMatchers(HttpMethod.GET, "/api/v1/rooms/{roomId}").permitAll()
+            .requestMatchers(HttpMethod.GET, "/api/v1/rooms/{roomId}/participants/count")
+            .permitAll()
             .requestMatchers("/api/v1/csrf").permitAll()
             .requestMatchers(
                 "/actuator/health",
                 "/actuator/prometheus"
             ).permitAll()
             .requestMatchers(
-                "/api/v1/auth/signup",
-                "/api/v1/auth/login",
-                "/api/v1/auth/reissue"
+                "/api/v1/auth/**"
             ).permitAll()
             .anyRequest().authenticated()
         )

@@ -138,7 +138,7 @@ export type ChatMessageCursorPage = {
 
 export type ChatEventType = "MESSAGE_CREATED" | "MESSAGE_DELETED"
 
-export type ChatEvent = {
+export type ChatMessageEventPayload = {
   type: ChatEventType
   messageId: number
   roomId: number
@@ -148,6 +148,8 @@ export type ChatEvent = {
   createdAt: string
   deletedAt: string | null
 }
+
+export type ChatEvent = WebSocketEventEnvelope<ChatMessageEventPayload, ChatEventType>
 
 export type SpeakingQueueStatus = "WAITING" | "ASSIGNED" | "CANCELED" | "COMPLETED"
 
@@ -198,7 +200,7 @@ export type StageRequestStatus = {
 export type WebSocketEventEnvelope<TData, TEventType extends string = string> = {
   eventId: string
   eventType: TEventType
-  roomId: number
+  roomId: number | null
   data: TData
   occurredAt: string
 }
@@ -235,4 +237,45 @@ export type RoomEvent = WebSocketEventEnvelope<
     closedAt: string
   },
   "ROOM_CLOSED"
+>
+
+export type SpeechReactionEvent = WebSocketEventEnvelope<
+  {
+    roomId: number
+    speechId: number
+    reactionCount: number
+    occurredAt: string
+  },
+  "SPEECH_REACTION_CHANGED"
+>
+
+export type SpeechEvent = WebSocketEventEnvelope<
+  {
+    roomId: number
+    speechId: number
+    userId: number
+    occurredAt: string
+  },
+  "SPEECH_CREATED" | "SPEECH_UPDATED" | "SPEECH_DELETED" | "SPEECH_LINK_UPDATED"
+>
+
+export type UserSanctionType =
+  | "WARNING"
+  | "CHAT_RESTRICTION"
+  | "SPEECH_RESTRICTION"
+  | "STAGE_RESTRICTION"
+  | "ACCOUNT_SUSPENSION"
+
+export type UserSanctionState = "SCHEDULED" | "ACTIVE" | "EXPIRED" | "REVOKED"
+
+export type UserSanctionEvent = WebSocketEventEnvelope<
+  {
+    sanctionId: number
+    type: UserSanctionType
+    reason: string
+    state: UserSanctionState
+    startsAt: string
+    endsAt: string | null
+  },
+  "SANCTION_CREATED" | "SANCTION_EXTENDED" | "SANCTION_REVOKED"
 >

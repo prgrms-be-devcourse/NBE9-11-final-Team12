@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.chat.service;
 
-import com.sisibibi.api.domain.chat.dto.response.ChatEventRes;
+import com.sisibibi.api.domain.chat.dto.event.ChatMessageChangedEvent;
+import com.sisibibi.api.domain.chat.dto.event.ChatMessageEventPayload;
 import com.sisibibi.api.domain.chat.dto.response.ChatMessageCursorPageRes;
 import com.sisibibi.api.domain.chat.dto.response.ChatMessageRes;
 import com.sisibibi.api.domain.chat.entity.ChatMessage;
@@ -13,6 +14,7 @@ import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantReposit
 import com.sisibibi.api.domain.user.entity.User;
 import com.sisibibi.api.domain.user.entity.UserStatus;
 import com.sisibibi.api.domain.user.repository.UserRepository;
+import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.moderation.ProfanityDetector;
@@ -20,6 +22,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,12 +39,13 @@ public class ChatService {
     private final RoomRepository roomRepository;
     private final RoomParticipantRepository roomParticipantRepository;
     private final UserRepository userRepository;
+    private final UserSanctionPolicyService userSanctionPolicyService;
     private final ProfanityDetector profanityDetector;
     private final ChatRateLimiter chatRateLimiter;
-    private final AfterCommitChatMessagePublisher afterCommitChatMessagePublisher;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
-    public ChatEventRes createMessage(Long roomId, Long userId, String content) {
+    public void createMessage(Long roomId, Long userId, String content) {
         validateContent(content);
         chatRateLimiter.check(userId);
 
@@ -51,6 +55,7 @@ public class ChatService {
             log.warn("Chat message blocked for banned user. roomId={}, userId={}", roomId, userId);
             throw new CustomException(ErrorCode.USER_BANNED);
         }
+        userSanctionPolicyService.validateChatAllowed(userId);
 
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
@@ -58,19 +63,7 @@ public class ChatService {
             throw new CustomException(ErrorCode.ROOM_CLOSED);
         }
 
-        boolean participating = roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
-                roomId,
-                userId,
-                RoomParticipantStatus.JOINED
-        );
-        if (!participating) {
-            log.warn(
-                    "Chat message blocked because user is not participating. roomId={}, userId={}",
-                    roomId,
-                    userId
-            );
-            throw new CustomException(ErrorCode.ROOM_PARTICIPATION_REQUIRED);
-        }
+        validateParticipation(roomId, userId);
 
         if (profanityDetector.containsProfanity(content)) {
             log.warn("Chat message blocked by profanity detector. roomId={}, userId={}", roomId, userId);
@@ -83,9 +76,8 @@ public class ChatService {
                 user.getNickname(),
                 content
         ));
-        ChatEventRes event = ChatEventRes.created(saved);
-        afterCommitChatMessagePublisher.publishAfterCommit(event);
-        return event;
+        ChatMessageEventPayload event = ChatMessageEventPayload.created(saved);
+        publishChatMessageChangedEvent(event);
     }
 
     @Transactional(readOnly = true)
@@ -123,7 +115,15 @@ public class ChatService {
         }
 
         message.softDelete(userId, LocalDateTime.now());
-        afterCommitChatMessagePublisher.publishAfterCommit(ChatEventRes.deleted(message));
+        publishChatMessageChangedEvent(ChatMessageEventPayload.deleted(message));
+    }
+
+    private void publishChatMessageChangedEvent(ChatMessageEventPayload event) {
+        eventPublisher.publishEvent(new ChatMessageChangedEvent(
+                event.type(),
+                event.roomId(),
+                event
+        ));
     }
 
     private void validateContent(String content) {
@@ -143,6 +143,11 @@ public class ChatService {
                 RoomParticipantStatus.JOINED
         );
         if (!participating) {
+            log.warn(
+                    "Chat action blocked because user is not participating. roomId={}, userId={}",
+                    roomId,
+                    userId
+            );
             throw new CustomException(ErrorCode.ROOM_PARTICIPATION_REQUIRED);
         }
     }

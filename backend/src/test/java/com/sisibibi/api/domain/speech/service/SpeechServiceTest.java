@@ -1,12 +1,13 @@
 package com.sisibibi.api.domain.speech.service;
 
 import com.sisibibi.api.domain.room.entity.Room;
-import com.sisibibi.api.domain.room.entity.RoomStatus;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
 import com.sisibibi.api.domain.speech.dto.command.SpeechCreateCommand;
 import com.sisibibi.api.domain.speech.dto.command.SpeechUpdateCommand;
+import com.sisibibi.api.domain.speech.dto.event.SpeechChangedEvent;
+import com.sisibibi.api.domain.speech.dto.event.SpeechEventType;
 import com.sisibibi.api.domain.speech.dto.response.SpeechCreateRes;
 import com.sisibibi.api.domain.speech.dto.response.SpeechCursorPageRes;
 import com.sisibibi.api.domain.speech.dto.response.SpeechDetailRes;
@@ -17,6 +18,7 @@ import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speechreaction.repository.SpeechReactionRepository;
 import com.sisibibi.api.domain.speechreaction.repository.projection.SpeechReactionSummaryProjection;
+import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.moderation.ProfanityDetector;
@@ -26,7 +28,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -36,6 +40,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -56,15 +61,40 @@ class SpeechServiceTest {
     @Mock
     private ProfanityDetector profanityDetector;
 
+    @Mock
+    private UserSanctionPolicyService userSanctionPolicyService;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     @InjectMocks
     private SpeechService speechService;
+
+    @Test
+    void createMainOpinion_throwsSpeechRestricted_whenUserHasActiveSanction() {
+        doThrow(new CustomException(ErrorCode.USER_SPEECH_RESTRICTED))
+                .when(userSanctionPolicyService)
+                .validateSpeechAllowed(2L);
+
+        assertThatThrownBy(() -> speechService.createMainOpinion(
+                1L,
+                2L,
+                new SpeechCreateCommand("의견", SpeechStance.PRO)
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.USER_SPEECH_RESTRICTED);
+
+        verify(speechRepository, never()).save(org.mockito.ArgumentMatchers.any(Speech.class));
+    }
 
     @Test
     void createMainOpinion_savesReadySpeech_whenRoomIsOpenAndUserIsParticipating() {
         Long roomId = 1L;
         Long userId = 2L;
         Room room = org.mockito.Mockito.mock(Room.class);
-        given(room.getStatus()).willReturn(RoomStatus.OPEN);
+        given(room.isActiveAt(org.mockito.ArgumentMatchers.any(LocalDateTime.class)))
+                .willReturn(true);
         given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
         given(roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
                 roomId,
@@ -72,7 +102,11 @@ class SpeechServiceTest {
                 RoomParticipantStatus.JOINED
         )).willReturn(true);
         given(speechRepository.save(org.mockito.ArgumentMatchers.any(Speech.class)))
-                .willAnswer(invocation -> invocation.getArgument(0));
+                .willAnswer(invocation -> {
+                    Speech speech = invocation.getArgument(0);
+                    ReflectionTestUtils.setField(speech, "id", 3L);
+                    return speech;
+                });
 
         SpeechCreateRes response = speechService.createMainOpinion(
                 roomId,
@@ -90,6 +124,7 @@ class SpeechServiceTest {
         assertThat(savedSpeech.getStance()).isEqualTo(SpeechStance.PRO);
         assertThat(savedSpeech.getStatus()).isEqualTo(SpeechStatus.READY);
         assertThat(response.status()).isEqualTo(SpeechStatus.READY);
+        verifySpeechEventPublished(SpeechEventType.SPEECH_CREATED, roomId, userId);
     }
 
     @Test
@@ -109,7 +144,29 @@ class SpeechServiceTest {
     @Test
     void createMainOpinion_throwsRoomClosed_whenRoomIsClosed() {
         Room room = org.mockito.Mockito.mock(Room.class);
-        given(room.getStatus()).willReturn(RoomStatus.CLOSED);
+        given(room.isActiveAt(org.mockito.ArgumentMatchers.any(LocalDateTime.class)))
+                .willReturn(false);
+        given(roomRepository.findById(1L)).willReturn(Optional.of(room));
+
+        assertThatThrownBy(() -> speechService.createMainOpinion(
+                1L,
+                2L,
+                new SpeechCreateCommand("의견", SpeechStance.PRO)
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ROOM_CLOSED);
+    }
+
+    @Test
+    void createMainOpinion_throwsRoomClosed_whenRoomEndTimeHasPassed() {
+        Room room = Room.open(
+                1L,
+                "종료된 토론방",
+                LocalDateTime.of(2000, 1, 1, 10, 0),
+                LocalDateTime.of(2000, 1, 1, 12, 0),
+                100
+        );
         given(roomRepository.findById(1L)).willReturn(Optional.of(room));
 
         assertThatThrownBy(() -> speechService.createMainOpinion(
@@ -125,7 +182,8 @@ class SpeechServiceTest {
     @Test
     void createMainOpinion_throwsParticipationRequired_whenUserIsNotParticipating() {
         Room room = org.mockito.Mockito.mock(Room.class);
-        given(room.getStatus()).willReturn(RoomStatus.OPEN);
+        given(room.isActiveAt(org.mockito.ArgumentMatchers.any(LocalDateTime.class)))
+                .willReturn(true);
         given(roomRepository.findById(1L)).willReturn(Optional.of(room));
         given(roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
                 1L,
@@ -146,7 +204,8 @@ class SpeechServiceTest {
     @Test
     void createMainOpinion_throwsProfanityDetected_whenContentContainsProfanity() {
         Room room = org.mockito.Mockito.mock(Room.class);
-        given(room.getStatus()).willReturn(RoomStatus.OPEN);
+        given(room.isActiveAt(org.mockito.ArgumentMatchers.any(LocalDateTime.class)))
+                .willReturn(true);
         given(roomRepository.findById(1L)).willReturn(Optional.of(room));
         given(roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
                 1L,
@@ -247,8 +306,9 @@ class SpeechServiceTest {
 
     @Test
     void updateSpeech_updatesOwnEditableSpeech() {
-        Speech speech = Speech.createMainOpinion(1L, 2L, "기존 의견", SpeechStance.CON);
+        Speech speech = speechWithId(3L, 1L, 2L, "기존 의견", SpeechStance.CON);
         given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
+        givenOpenRoom(1L);
 
         SpeechDetailRes response = speechService.updateSpeech(
                 3L,
@@ -259,6 +319,7 @@ class SpeechServiceTest {
         assertThat(response.content()).isEqualTo("수정된 의견");
         assertThat(response.stance()).isEqualTo(SpeechStance.PRO);
         assertThat(response.updatedAt()).isNull();
+        verifySpeechEventPublished(SpeechEventType.SPEECH_UPDATED, 1L, 2L);
     }
 
     @Test
@@ -312,6 +373,7 @@ class SpeechServiceTest {
     void updateSpeech_throwsProfanityDetected_whenContentContainsProfanity() {
         Speech speech = Speech.createMainOpinion(1L, 2L, "기존 의견", SpeechStance.CON);
         given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
+        givenOpenRoom(1L);
         given(profanityDetector.containsProfanity("욕설이 포함된 수정 의견"))
                 .willReturn(true);
 
@@ -329,14 +391,35 @@ class SpeechServiceTest {
     }
 
     @Test
-    void deleteSpeech_softDeletesOwnEditableSpeech() {
-        Speech speech = Speech.createMainOpinion(1L, 2L, "삭제할 의견", SpeechStance.PRO);
+    void updateSpeech_throwsRoomClosed_whenRoomIsClosed() {
+        Speech speech = Speech.createMainOpinion(1L, 2L, "기존 의견", SpeechStance.CON);
+        Room room = org.mockito.Mockito.mock(Room.class);
         given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
+        given(roomRepository.findById(1L)).willReturn(Optional.of(room));
+        given(room.isActiveAt(org.mockito.ArgumentMatchers.any(LocalDateTime.class)))
+                .willReturn(false);
+
+        assertThatThrownBy(() -> speechService.updateSpeech(
+                3L,
+                2L,
+                new SpeechUpdateCommand("수정", SpeechStance.PRO)
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ROOM_CLOSED);
+    }
+
+    @Test
+    void deleteSpeech_softDeletesOwnEditableSpeech() {
+        Speech speech = speechWithId(3L, 1L, 2L, "삭제할 의견", SpeechStance.PRO);
+        given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
+        givenOpenRoom(1L);
 
         speechService.deleteSpeech(3L, 2L);
 
         assertThat(speech.isDeleted()).isTrue();
         assertThat(speech.getDeletedAt()).isNotNull();
+        verifySpeechEventPublished(SpeechEventType.SPEECH_DELETED, 1L, 2L);
     }
 
     @Test
@@ -375,9 +458,27 @@ class SpeechServiceTest {
     }
 
     @Test
-    void updateSpeechLink_updatesOwnEditableSpeech() {
-        Speech speech = Speech.createMainOpinion(1L, 2L, "의견", SpeechStance.PRO);
+    void deleteSpeech_throwsRoomClosed_whenRoomIsClosed() {
+        Speech speech = Speech.createMainOpinion(1L, 2L, "삭제할 의견", SpeechStance.PRO);
+        Room room = org.mockito.Mockito.mock(Room.class);
         given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
+        given(roomRepository.findById(1L)).willReturn(Optional.of(room));
+        given(room.isActiveAt(org.mockito.ArgumentMatchers.any(LocalDateTime.class)))
+                .willReturn(false);
+
+        assertThatThrownBy(() -> speechService.deleteSpeech(3L, 2L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ROOM_CLOSED);
+
+        assertThat(speech.isDeleted()).isFalse();
+    }
+
+    @Test
+    void updateSpeechLink_updatesOwnEditableSpeech() {
+        Speech speech = speechWithId(3L, 1L, 2L, "의견", SpeechStance.PRO);
+        given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
+        givenOpenRoom(1L);
 
         SpeechDetailRes response = speechService.updateSpeechLink(
                 3L,
@@ -387,6 +488,7 @@ class SpeechServiceTest {
 
         assertThat(response.linkUrl()).isEqualTo("https://example.com/evidence");
         assertThat(speech.getLinkUrl()).isEqualTo("https://example.com/evidence");
+        verifySpeechEventPublished(SpeechEventType.SPEECH_LINK_UPDATED, 1L, 2L);
     }
 
     @Test
@@ -436,6 +538,25 @@ class SpeechServiceTest {
                 .isEqualTo(ErrorCode.SPEECH_NOT_EDITABLE);
     }
 
+    @Test
+    void updateSpeechLink_throwsRoomClosed_whenRoomIsClosed() {
+        Speech speech = Speech.createMainOpinion(1L, 2L, "의견", SpeechStance.PRO);
+        Room room = org.mockito.Mockito.mock(Room.class);
+        given(speechRepository.findByIdAndDeletedFalse(3L)).willReturn(Optional.of(speech));
+        given(roomRepository.findById(1L)).willReturn(Optional.of(room));
+        given(room.isActiveAt(org.mockito.ArgumentMatchers.any(LocalDateTime.class)))
+                .willReturn(false);
+
+        assertThatThrownBy(() -> speechService.updateSpeechLink(
+                3L,
+                2L,
+                "https://example.com/evidence"
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ROOM_CLOSED);
+    }
+
     private Speech mockSpeech(
             Long speechId,
             Long roomId,
@@ -454,6 +575,43 @@ class SpeechServiceTest {
         given(speech.getStatus()).willReturn(status);
         given(speech.getCreatedAt()).willReturn(createdAt);
         return speech;
+    }
+
+    private Speech speechWithId(
+            Long speechId,
+            Long roomId,
+            Long userId,
+            String content,
+            SpeechStance stance
+    ) {
+        Speech speech = Speech.createMainOpinion(roomId, userId, content, stance);
+        ReflectionTestUtils.setField(speech, "id", speechId);
+        return speech;
+    }
+
+    private void verifySpeechEventPublished(
+            SpeechEventType type,
+            Long roomId,
+            Long userId
+    ) {
+        ArgumentCaptor<SpeechChangedEvent> eventCaptor =
+                ArgumentCaptor.forClass(SpeechChangedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+
+        SpeechChangedEvent event = eventCaptor.getValue();
+        assertThat(event.type()).isEqualTo(type);
+        assertThat(event.roomId()).isEqualTo(roomId);
+        assertThat(event.payload().roomId()).isEqualTo(roomId);
+        assertThat(event.payload().speechId()).isEqualTo(3L);
+        assertThat(event.payload().userId()).isEqualTo(userId);
+        assertThat(event.payload().occurredAt()).isNotNull();
+    }
+
+    private void givenOpenRoom(Long roomId) {
+        Room room = org.mockito.Mockito.mock(Room.class);
+        given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
+        given(room.isActiveAt(org.mockito.ArgumentMatchers.any(LocalDateTime.class)))
+                .willReturn(true);
     }
 
     private SpeechReactionSummaryProjection reactionSummary(

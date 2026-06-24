@@ -19,32 +19,32 @@ spring:
     # backend 디렉토리가 아닌 루트 디렉토리에서 .env 가져옴
     import: optional:file:../.env[.properties]
 
-#  # Database 설정 (MySQL)
-#  datasource:
-#    driver-class-name: com.mysql.cj.jdbc.Driver
-#    url: jdbc:mysql://localhost:23306/sisibibi?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
-#    username: root
-#    password: ${DB_PASSWORD:root}
-#
-#  # Redis 설정
-#  data:
-#    redis:
-#      host: localhost
-#      port: 26379
-#      timeout: 2000ms # Redis 응답 지연 시 서버 멈춤 방지 (2초)
-
+  # Database 설정 (MySQL)
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://${DB_HOST:mysql_1}:${DB_PORT:3306}/${DB_NAME:sisibibi}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
-    username: ${DB_USERNAME:sisibibi}
-    password: ${DB_PASSWORD}
+    url: jdbc:mysql://localhost:23306/sisibibi?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    username: root
+    password: ${DB_PASSWORD:root}
 
+  # Redis 설정
   data:
     redis:
-      host: ${REDIS_HOST:redis_1}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
-      timeout: 2000ms
+      host: localhost
+      port: 26379
+      timeout: 2000ms # Redis 응답 지연 시 서버 멈춤 방지 (2초)
+
+#  datasource:
+#    driver-class-name: com.mysql.cj.jdbc.Driver
+#    url: jdbc:mysql://${DB_HOST:mysql_1}:${DB_PORT:3306}/${DB_NAME:sisibibi}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+#    username: ${DB_USERNAME:sisibibi}
+#    password: ${DB_PASSWORD}
+#
+#  data:
+#    redis:
+#      host: ${REDIS_HOST:redis_1}
+#      port: ${REDIS_PORT:6379}
+#      password: ${REDIS_PASSWORD:}
+#      timeout: 2000ms
 
 #  datasource:
 #    driver-class-name: com.mysql.cj.jdbc.Driver
@@ -106,6 +106,18 @@ app:
     expiration:
       enabled: ${SPEAKING_EXPIRATION_ENABLED:true}
       fixed-delay-ms: ${SPEAKING_EXPIRATION_FIXED_DELAY_MS:1000}
+  ai-report:
+    base-url: ${AI_REPORT_BASE_URL:http://localhost:8000}
+    generate-path: ${AI_REPORT_GENERATE_PATH:/report}
+    timeout: ${AI_REPORT_TIMEOUT:5m}
+  prompt-guard:
+    base-url: ${PROMPT_GUARD_BASE_URL:}
+    scan-path: ${PROMPT_GUARD_SCAN_PATH:/scan}
+    connect-timeout: ${PROMPT_GUARD_CONNECT_TIMEOUT:500ms}
+    read-timeout: ${PROMPT_GUARD_READ_TIMEOUT:1000ms}
+    fail-open: ${PROMPT_GUARD_FAIL_OPEN:false}
+    custom-prompt-max-count: ${PROMPT_GUARD_CUSTOM_PROMPT_MAX_COUNT:5}
+    custom-prompt-max-length: ${PROMPT_GUARD_CUSTOM_PROMPT_MAX_LENGTH:1000}
   auth:
     jwt:
       secret: ${JWT_SECRET:local-development-jwt-secret-key-must-be-at-least-32-bytes}

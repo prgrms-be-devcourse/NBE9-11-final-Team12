@@ -3,9 +3,9 @@ package com.sisibibi.api.domain.speechreaction.event;
 import com.sisibibi.api.domain.speechreaction.dto.event.SpeechReactionChangedEvent;
 import com.sisibibi.api.domain.speechreaction.dto.event.SpeechReactionEventPayload;
 import com.sisibibi.api.domain.speechreaction.dto.event.SpeechReactionEventType;
+import com.sisibibi.api.global.realtime.RealtimeEventPublisher;
 import com.sisibibi.api.global.websocket.RoomWebSocketDestinations;
 import com.sisibibi.api.global.websocket.WebSocketEventEnvelope;
-import com.sisibibi.api.global.websocket.WebSocketEventPublisher;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -16,10 +16,10 @@ import static org.mockito.Mockito.verify;
 
 class SpeechReactionChangedWebSocketEventListenerTest {
 
-    private final WebSocketEventPublisher webSocketEventPublisher =
-            mock(WebSocketEventPublisher.class);
+    private final RealtimeEventPublisher realtimeEventPublisher =
+            mock(RealtimeEventPublisher.class);
     private final SpeechReactionChangedWebSocketEventListener listener =
-            new SpeechReactionChangedWebSocketEventListener(webSocketEventPublisher);
+            new SpeechReactionChangedWebSocketEventListener(realtimeEventPublisher);
 
     @Test
     void handle_publishesReactionEnvelopeToSpeechReactionEventTopic() {
@@ -39,7 +39,7 @@ class SpeechReactionChangedWebSocketEventListenerTest {
 
         listener.handle(event);
 
-        verify(webSocketEventPublisher).publish(
+        verify(realtimeEventPublisher).publish(
                 org.mockito.ArgumentMatchers.eq(
                         RoomWebSocketDestinations.speechReactionEvents(1L)
                 ),
@@ -67,7 +67,7 @@ class SpeechReactionChangedWebSocketEventListenerTest {
                 payload
         );
         org.mockito.BDDMockito.willThrow(new RuntimeException("broker down"))
-                .given(webSocketEventPublisher)
+                .given(realtimeEventPublisher)
                 .publish(
                         org.mockito.ArgumentMatchers.eq(
                                 RoomWebSocketDestinations.speechReactionEvents(1L)

@@ -1,15 +1,20 @@
 package com.sisibibi.api.domain.speech.service;
 
+import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
+import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
+import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.domain.user.repository.UserRepository;
+import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -31,7 +36,9 @@ public class SpeakingQueuePersistenceService {
 
     private final SpeakingQueueRepository speakingQueueRepository;
     private final RoomRepository roomRepository;
+    private final RoomParticipantRepository roomParticipantRepository;
     private final UserRepository userRepository;
+    private final UserSanctionPolicyService userSanctionPolicyService;
 
     @Transactional
     public SpeakingQueue createWaitingRequest(
@@ -39,8 +46,12 @@ public class SpeakingQueuePersistenceService {
             Long userId,
             SpeechStance stance
     ) {
-        roomRepository.findByIdForUpdate(roomId)
-                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+        userSanctionPolicyService.validateStageAllowed(userId);
+
+        LocalDateTime requestedAt = LocalDateTime.now();
+        Room room = findRoomForUpdate(roomId);
+        validateRoomActive(room, requestedAt);
+        validateJoinedParticipant(roomId, userId);
 
         if (speakingQueueRepository.existsByRoomIdAndUserIdAndStatusIn(
                 roomId,
@@ -57,7 +68,7 @@ public class SpeakingQueuePersistenceService {
                 userId,
                 nextQueueOrder,
                 stance,
-                LocalDateTime.now()
+                requestedAt
         );
         return speakingQueueRepository.save(speakingQueue);
     }
@@ -119,31 +130,110 @@ public class SpeakingQueuePersistenceService {
                 ));
     }
 
+    @Transactional(readOnly = true)
+    public List<SpeakingQueue> findWaitingRequestsForRedisProjection(Long roomId) {
+        return speakingQueueRepository.findByRoomIdAndStatusOrderByQueueOrderAsc(
+                roomId,
+                SpeakingQueueStatus.WAITING
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<SpeakingQueue> findCurrentSpeakerForRedisProjection(Long roomId) {
+        return speakingQueueRepository.findByRoomIdAndStatus(
+                roomId,
+                SpeakingQueueStatus.ASSIGNED
+        );
+    }
+
     @Transactional
-    public Optional<SpeakingQueue> assignNextSpeaker(
+    public SpeakingQueueRoomCloseResult closeActiveRequestsByRoomId(
+            Long roomId,
+            LocalDateTime closedAt
+    ) {
+        List<SpeakingQueue> activeRequests =
+                speakingQueueRepository.findByRoomIdAndStatusInOrderByQueueOrderAsc(
+                        roomId,
+                        ACTIVE_STATUSES
+                );
+        List<SpeakingQueue> canceledRequests = new ArrayList<>();
+        List<SpeakingQueue> completedRequests = new ArrayList<>();
+
+        for (SpeakingQueue speakingQueue : activeRequests) {
+            if (speakingQueue.getStatus() == SpeakingQueueStatus.WAITING) {
+                speakingQueue.cancel(closedAt);
+                canceledRequests.add(speakingQueue);
+                continue;
+            }
+
+            if (speakingQueue.getStatus() == SpeakingQueueStatus.ASSIGNED) {
+                speakingQueue.complete();
+                completedRequests.add(speakingQueue);
+            }
+        }
+
+        return SpeakingQueueRoomCloseResult.of(canceledRequests, completedRequests);
+    }
+
+    @Transactional
+    public SpeakingQueueAssignmentResult assignNextSpeaker(
             Long roomId,
             LocalDateTime assignedAt,
             LocalDateTime expiresAt
     ) {
-        roomRepository.findByIdForUpdate(roomId)
-                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+        Room room = findRoomForUpdate(roomId);
+        if (!room.isActiveAt(assignedAt)) {
+            return SpeakingQueueAssignmentResult.empty();
+        }
 
         if (speakingQueueRepository.existsByRoomIdAndStatus(
                 roomId,
                 SpeakingQueueStatus.ASSIGNED
         )) {
-            return Optional.empty();
+            return SpeakingQueueAssignmentResult.empty();
         }
 
+        List<SpeakingQueue> canceledRequests = new ArrayList<>();
         Optional<SpeakingQueue> waitingRequest = findNextWaitingRequest(roomId);
+        while (waitingRequest.isPresent()) {
+            SpeakingQueue nextSpeaker = waitingRequest.get();
+            if (!isJoinedParticipant(roomId, nextSpeaker.getUserId())) {
+                nextSpeaker.cancel(assignedAt);
+                canceledRequests.add(nextSpeaker);
+                waitingRequest = findNextWaitingRequest(roomId);
+                continue;
+            }
 
-        if (waitingRequest.isEmpty()) {
-            return Optional.empty();
+            nextSpeaker.assign(assignedAt, expiresAt);
+            return SpeakingQueueAssignmentResult.of(Optional.of(nextSpeaker), canceledRequests);
         }
 
-        SpeakingQueue nextSpeaker = waitingRequest.get();
-        nextSpeaker.assign(assignedAt, expiresAt);
-        return Optional.of(nextSpeaker);
+        return SpeakingQueueAssignmentResult.of(Optional.empty(), canceledRequests);
+    }
+
+    private void validateJoinedParticipant(Long roomId, Long userId) {
+        if (!isJoinedParticipant(roomId, userId)) {
+            throw new CustomException(ErrorCode.ROOM_PARTICIPATION_REQUIRED);
+        }
+    }
+
+    private Room findRoomForUpdate(Long roomId) {
+        return roomRepository.findByIdForUpdate(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+    }
+
+    private void validateRoomActive(Room room, LocalDateTime now) {
+        if (!room.isActiveAt(now)) {
+            throw new CustomException(ErrorCode.ROOM_CLOSED);
+        }
+    }
+
+    private boolean isJoinedParticipant(Long roomId, Long userId) {
+        return roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
+                roomId,
+                userId,
+                RoomParticipantStatus.JOINED
+        );
     }
 
     private Optional<SpeakingQueue> findNextWaitingRequest(Long roomId) {
@@ -209,6 +299,27 @@ public class SpeakingQueuePersistenceService {
 
         currentSpeaker.complete();
         return currentSpeaker;
+    }
+
+    @Transactional
+    public Optional<SpeakingQueue> completeCurrentSpeakerIfMatches(Long roomId, Long userId) {
+        roomRepository.findByIdForUpdate(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+        Optional<SpeakingQueue> currentSpeaker =
+                speakingQueueRepository.findByRoomIdAndStatus(
+                        roomId,
+                        SpeakingQueueStatus.ASSIGNED
+                );
+
+        if (currentSpeaker.isEmpty()
+                || !currentSpeaker.get().getUserId().equals(userId)) {
+            return Optional.empty();
+        }
+
+        SpeakingQueue assigned = currentSpeaker.get();
+        assigned.complete();
+        return Optional.of(assigned);
     }
 
     @Transactional(readOnly = true)

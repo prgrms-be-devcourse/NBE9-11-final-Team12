@@ -4,6 +4,7 @@ import com.sisibibi.api.global.security.AuthPrincipal;
 import com.sisibibi.api.global.security.config.AuthProperties;
 import com.sisibibi.api.global.security.cookie.AuthCookieProvider;
 import com.sisibibi.api.global.security.jwt.JwtTokenProvider;
+import com.sisibibi.api.global.security.session.TokenSessionValidator;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,16 +18,22 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 class WebSocketAuthHandshakeInterceptorTest {
 
     private JwtTokenProvider jwtTokenProvider;
+    private TokenSessionValidator tokenSessionValidator;
     private WebSocketAuthHandshakeInterceptor interceptor;
 
     @BeforeEach
     void setUp() {
         jwtTokenProvider = new JwtTokenProvider(authProperties());
-        interceptor = new WebSocketAuthHandshakeInterceptor(jwtTokenProvider);
+        tokenSessionValidator = mock(TokenSessionValidator.class);
+        interceptor = new WebSocketAuthHandshakeInterceptor(
+                jwtTokenProvider,
+                tokenSessionValidator
+        );
     }
 
     @Test
@@ -46,6 +53,12 @@ class WebSocketAuthHandshakeInterceptorTest {
 
         assertThat(result).isTrue();
         assertThat(attributes.get(WebSocketAuthAttributes.AUTH_PRINCIPAL)).isEqualTo(principal);
+        verify(tokenSessionValidator).validate(
+                org.mockito.ArgumentMatchers.argThat(
+                        claims -> claims.userId().equals(1L)
+                                && claims.tokenVersion().equals(0L)
+                )
+        );
     }
 
     @Test

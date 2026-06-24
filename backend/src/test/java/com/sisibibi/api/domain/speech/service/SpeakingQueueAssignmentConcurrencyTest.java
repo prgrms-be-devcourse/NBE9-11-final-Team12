@@ -4,10 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
+import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipant;
+import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
+import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
@@ -21,6 +24,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,17 +49,26 @@ class SpeakingQueueAssignmentConcurrencyTest {
     @Autowired
     private RoomRepository roomRepository;
 
+    @Autowired
+    private RoomParticipantRepository roomParticipantRepository;
+
+    @MockitoBean
+    private UserSanctionPolicyService userSanctionPolicyService;
+
     private Long roomId;
 
     @BeforeEach
     void setUpWaitingQueue() {
         speakingQueueRepository.deleteAll();
+        roomParticipantRepository.deleteAll();
         roomRepository.deleteAll();
         LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
         LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
         Room room = Room.open(1L, "토론방", firstStartedAt, firstEndedAt, 100);
         ReflectionTestUtils.setField(room, "createdAt", LocalDateTime.now());
         roomId = roomRepository.saveAndFlush(room).getId();
+        roomParticipantRepository.saveAndFlush(RoomParticipant.join(roomId, 10L));
+        roomParticipantRepository.saveAndFlush(RoomParticipant.join(roomId, 20L));
         speakingQueueRepository.saveAndFlush(
                 SpeakingQueue.waiting(
                         roomId,
@@ -82,18 +95,19 @@ class SpeakingQueueAssignmentConcurrencyTest {
         CountDownLatch start = new CountDownLatch(1);
 
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
-            Future<Optional<SpeakingQueue>> first =
+            Future<SpeakingQueueAssignmentResult> first =
                     executor.submit(() -> assignAfterSignal(start));
-            Future<Optional<SpeakingQueue>> second =
+            Future<SpeakingQueueAssignmentResult> second =
                     executor.submit(() -> assignAfterSignal(start));
 
             start.countDown();
 
-            Optional<SpeakingQueue> firstResult = first.get(5, TimeUnit.SECONDS);
-            Optional<SpeakingQueue> secondResult = second.get(5, TimeUnit.SECONDS);
+            SpeakingQueueAssignmentResult firstResult = first.get(5, TimeUnit.SECONDS);
+            SpeakingQueueAssignmentResult secondResult = second.get(5, TimeUnit.SECONDS);
 
             long assignedResultCount =
                     java.util.stream.Stream.of(firstResult, secondResult)
+                            .map(SpeakingQueueAssignmentResult::assignedRequest)
                             .filter(Optional::isPresent)
                             .count();
             long assignedRowCount = speakingQueueRepository.findAll().stream()
@@ -105,7 +119,7 @@ class SpeakingQueueAssignmentConcurrencyTest {
         }
     }
 
-    private Optional<SpeakingQueue> assignAfterSignal(CountDownLatch start)
+    private SpeakingQueueAssignmentResult assignAfterSignal(CountDownLatch start)
             throws InterruptedException {
         start.await();
         return speakingQueuePersistenceService.assignNextSpeaker(

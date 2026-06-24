@@ -32,6 +32,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
@@ -101,6 +102,10 @@ class AuthServiceTest {
         assertThat(result.accessToken()).isEqualTo("access-token");
         assertThat(result.refreshToken()).isEqualTo("refresh-token");
         verify(refreshTokenStore).save(eq(1L), anyString(), eq("refresh-token"));
+        ArgumentCaptor<com.sisibibi.api.global.security.AuthPrincipal> principalCaptor =
+                ArgumentCaptor.forClass(com.sisibibi.api.global.security.AuthPrincipal.class);
+        verify(jwtTokenProvider).createAccessToken(principalCaptor.capture());
+        assertThat(principalCaptor.getValue().tokenVersion()).isEqualTo(0L);
     }
 
     @Test
@@ -180,7 +185,7 @@ class AuthServiceTest {
         User user = User.signup("user@example.com", "encoded-password", "tester");
         ReflectionTestUtils.setField(user, "id", 1L);
         given(jwtTokenProvider.parseRefreshToken("old-refresh-token")).willReturn(claims);
-        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(userRepository.findByIdForUpdate(1L)).willReturn(Optional.of(user));
         given(jwtTokenProvider.createAccessToken(any())).willReturn("new-access-token");
         given(jwtTokenProvider.createRefreshToken(any(), anyString())).willReturn("new-refresh-token");
 
@@ -210,10 +215,57 @@ class AuthServiceTest {
     }
 
     @Test
+    void logout_succeeds_whenRefreshTokenIsMissing() {
+        authService.logout(null);
+
+        verifyNoInteractions(jwtTokenProvider, refreshTokenStore);
+    }
+
+    @Test
+    void logout_succeeds_whenRefreshTokenIsExpired() {
+        given(jwtTokenProvider.parseRefreshToken("expired-refresh-token"))
+                .willThrow(new CustomException(ErrorCode.EXPIRED_TOKEN));
+
+        authService.logout("expired-refresh-token");
+
+        verifyNoInteractions(refreshTokenStore);
+    }
+
+    @Test
+    void logout_succeeds_whenRefreshTokenIsInvalid() {
+        given(jwtTokenProvider.parseRefreshToken("invalid-refresh-token"))
+                .willThrow(new CustomException(ErrorCode.INVALID_TOKEN));
+
+        authService.logout("invalid-refresh-token");
+
+        verifyNoInteractions(refreshTokenStore);
+    }
+
+    @Test
+    void logout_propagatesRedisFailure() {
+        TokenClaims claims = new TokenClaims(
+                1L,
+                "user@example.com",
+                "USER",
+                "token-id",
+                TokenType.REFRESH,
+                Instant.parse("2030-06-12T00:00:00Z")
+        );
+        given(jwtTokenProvider.parseRefreshToken("refresh-token")).willReturn(claims);
+        org.mockito.BDDMockito.willThrow(new RuntimeException("Redis unavailable"))
+                .given(refreshTokenStore)
+                .delete(1L, "token-id");
+
+        assertThatThrownBy(() -> authService.logout("refresh-token"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("Redis unavailable");
+    }
+
+    @Test
     void reissue_throwsUserNotFound_whenTokenOwnerDoesNotExist() {
         TokenClaims claims = refreshClaims();
         given(jwtTokenProvider.parseRefreshToken("old-refresh-token")).willReturn(claims);
-        given(userRepository.findById(1L)).willReturn(Optional.empty());
+        given(userRepository.findByIdForUpdate(1L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.reissue("old-refresh-token"))
                 .isInstanceOf(CustomException.class)
@@ -235,12 +287,37 @@ class AuthServiceTest {
         ReflectionTestUtils.setField(user, "id", 1L);
         ReflectionTestUtils.setField(user, "status", UserStatus.BANNED);
         given(jwtTokenProvider.parseRefreshToken("old-refresh-token")).willReturn(claims);
-        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(userRepository.findByIdForUpdate(1L)).willReturn(Optional.of(user));
 
         assertThatThrownBy(() -> authService.reissue("old-refresh-token"))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.USER_BANNED);
+
+        verify(refreshTokenStore, never()).save(any(), anyString(), anyString());
+    }
+
+    @Test
+    void reissue_throwsInvalidToken_whenTokenVersionIsOld() {
+        TokenClaims claims = new TokenClaims(
+                1L,
+                "user@example.com",
+                "USER",
+                "old-token-id",
+                TokenType.REFRESH,
+                0L,
+                Instant.parse("2030-06-12T00:00:00Z")
+        );
+        User user = User.signup("user@example.com", "encoded-password", "tester");
+        ReflectionTestUtils.setField(user, "id", 1L);
+        user.invalidateTokens();
+        given(jwtTokenProvider.parseRefreshToken("old-refresh-token")).willReturn(claims);
+        given(userRepository.findByIdForUpdate(1L)).willReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> authService.reissue("old-refresh-token"))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_TOKEN);
 
         verify(refreshTokenStore, never()).save(any(), anyString(), anyString());
     }

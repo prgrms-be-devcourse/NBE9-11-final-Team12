@@ -91,6 +91,30 @@ class SpeechReactionRepositoryTest {
     }
 
     @Test
+    void countReceivedByUserId_countsReactionsOnVisibleSpeeches() {
+        Speech visible = speechRepository.saveAndFlush(
+                Speech.createMainOpinion(1L, 10L, "공개 의견", SpeechStance.PRO)
+        );
+        Speech deleted = speechRepository.saveAndFlush(
+                Speech.createMainOpinion(1L, 10L, "삭제 의견", SpeechStance.CON)
+        );
+        Speech otherUser = speechRepository.saveAndFlush(
+                Speech.createMainOpinion(1L, 20L, "다른 사용자 의견", SpeechStance.PRO)
+        );
+        deleted.softDelete(java.time.LocalDateTime.of(2026, 6, 23, 12, 0));
+        speechReactionRepository.saveAllAndFlush(java.util.List.of(
+                SpeechReaction.create(visible.getId(), 100L),
+                SpeechReaction.create(visible.getId(), 101L),
+                SpeechReaction.create(deleted.getId(), 102L),
+                SpeechReaction.create(otherUser.getId(), 103L)
+        ));
+
+        long count = speechReactionRepository.countReceivedByUserId(10L);
+
+        assertThat(count).isEqualTo(2L);
+    }
+
+    @Test
     void findBestSpeechReactions_ordersByReactionCountThenCreatedOrder() {
         Speech mostReacted = speechRepository.saveAndFlush(
                 Speech.createMainOpinion(1L, 10L, "공감 2개", SpeechStance.PRO)

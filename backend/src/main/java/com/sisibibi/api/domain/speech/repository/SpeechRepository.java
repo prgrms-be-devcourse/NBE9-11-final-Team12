@@ -15,6 +15,8 @@ public interface SpeechRepository extends JpaRepository<Speech, Long> {
 
     boolean existsByRoomIdAndUserIdAndDeletedFalse(Long roomId, Long userId);
 
+    long countByUserIdAndDeletedFalse(Long userId);
+
     @Query("""
             select speech
             from Speech speech
@@ -28,4 +30,17 @@ public interface SpeechRepository extends JpaRepository<Speech, Long> {
             @Param("cursor") Long cursor,
             Pageable pageable
     );
+
+    @Query("""
+            select speech
+            from Speech speech
+            where speech.roomId = :roomId
+              and speech.deleted = false
+              and speech.status = com.sisibibi.api.domain.speech.entity.SpeechStatus.COMPLETED
+              and speech.stance is not null
+              and speech.content is not null
+              and trim(speech.content) <> ''
+            order by speech.createdAt asc, speech.id asc
+            """)
+    List<Speech> findAiReportSourceSpeeches(@Param("roomId") Long roomId);
 }

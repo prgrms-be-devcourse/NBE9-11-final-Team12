@@ -63,8 +63,18 @@ public class AuthService {
 
     @Transactional
     public void logout(String refreshToken) {
-        TokenClaims claims = jwtTokenProvider.parseRefreshToken(refreshToken);
-        refreshTokenStore.delete(claims.userId(), claims.tokenId());
+        if (refreshToken == null || refreshToken.isBlank()) {
+            return;
+        }
+
+        try {
+            TokenClaims claims = jwtTokenProvider.parseRefreshToken(refreshToken);
+            refreshTokenStore.delete(claims.userId(), claims.tokenId());
+        } catch (CustomException tokenException) {
+            if (!isIgnorableLogoutTokenError(tokenException.getErrorCode())) {
+                throw tokenException;
+            }
+        }
     }
 
     @Transactional
@@ -72,9 +82,10 @@ public class AuthService {
         TokenClaims claims = jwtTokenProvider.parseRefreshToken(refreshToken);
         refreshTokenStore.verifyAndDelete(claims.userId(), claims.tokenId(), refreshToken);
 
-        User user = userRepository.findById(claims.userId())
+        User user = userRepository.findByIdForUpdate(claims.userId())
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
         validateLoginAvailable(user);
+        validateTokenVersion(user, claims);
 
         return issueTokens(user, TokenReissueRes.from(user));
     }
@@ -84,7 +95,8 @@ public class AuthService {
         AuthPrincipal principal = new AuthPrincipal(
                 user.getId(),
                 user.getEmail(),
-                user.getRole().name()
+                user.getRole().name(),
+                user.getTokenVersion()
         );
 
         String accessToken = jwtTokenProvider.createAccessToken(principal);
@@ -104,4 +116,14 @@ public class AuthService {
         }
     }
 
+    private void validateTokenVersion(User user, TokenClaims claims) {
+        if (!user.getTokenVersion().equals(claims.tokenVersion())) {
+            throw new CustomException(ErrorCode.INVALID_TOKEN);
+        }
+    }
+
+    private boolean isIgnorableLogoutTokenError(ErrorCode errorCode) {
+        return errorCode == ErrorCode.INVALID_TOKEN
+                || errorCode == ErrorCode.EXPIRED_TOKEN;
+    }
 }

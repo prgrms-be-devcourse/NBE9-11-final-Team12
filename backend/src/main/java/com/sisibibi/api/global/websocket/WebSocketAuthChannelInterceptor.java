@@ -49,7 +49,7 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
 
         if (command == StompCommand.SUBSCRIBE) {
             AuthPrincipal principal = requirePrincipal(accessor);
-            validateRoomDestinationAccess(principal, accessor.getDestination());
+            validateDestinationAccess(principal, accessor.getDestination());
             return MessageBuilder.createMessage(message.getPayload(), accessor.getMessageHeaders());
         }
 
@@ -100,9 +100,21 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
         );
     }
 
-    private void validateRoomDestinationAccess(AuthPrincipal principal, String destination) {
+    private void validateDestinationAccess(AuthPrincipal principal, String destination) {
         if (destination == null) {
             return;
+        }
+
+        Optional<Long> sanctionEventUserId =
+                UserWebSocketDestinations.findSanctionEventUserId(destination);
+        if (sanctionEventUserId.isPresent()) {
+            if (!sanctionEventUserId.get().equals(principal.userId())) {
+                throw new AccessDeniedException(ErrorCode.FORBIDDEN.name());
+            }
+            return;
+        }
+        if (UserWebSocketDestinations.isUserTopic(destination)) {
+            throw new AccessDeniedException(ErrorCode.FORBIDDEN.name());
         }
 
         Optional<Long> allowedRoomId =

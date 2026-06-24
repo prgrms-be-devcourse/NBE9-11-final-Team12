@@ -1,12 +1,14 @@
 package com.sisibibi.api.domain.speech.service;
 
 import com.sisibibi.api.domain.room.entity.Room;
-import com.sisibibi.api.domain.room.entity.RoomStatus;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
 import com.sisibibi.api.domain.speech.dto.command.SpeechCreateCommand;
 import com.sisibibi.api.domain.speech.dto.command.SpeechUpdateCommand;
+import com.sisibibi.api.domain.speech.dto.event.SpeechChangedEvent;
+import com.sisibibi.api.domain.speech.dto.event.SpeechEventPayload;
+import com.sisibibi.api.domain.speech.dto.event.SpeechEventType;
 import com.sisibibi.api.domain.speech.dto.response.SpeechCreateRes;
 import com.sisibibi.api.domain.speech.dto.response.SpeechCursorPageRes;
 import com.sisibibi.api.domain.speech.dto.response.SpeechDetailRes;
@@ -16,11 +18,13 @@ import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speechreaction.repository.SpeechReactionRepository;
 import com.sisibibi.api.domain.speechreaction.repository.projection.SpeechReactionSummaryProjection;
+import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.moderation.ProfanityDetector;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.PageRequest;
@@ -42,6 +46,8 @@ public class SpeechService {
     private final SpeechRepository speechRepository;
     private final SpeechReactionRepository speechReactionRepository;
     private final ProfanityDetector profanityDetector;
+    private final UserSanctionPolicyService userSanctionPolicyService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public SpeechCreateRes createMainOpinion(
@@ -49,12 +55,12 @@ public class SpeechService {
             Long userId,
             SpeechCreateCommand command
     ) {
+        userSanctionPolicyService.validateSpeechAllowed(userId);
+
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
 
-        if (room.getStatus() != RoomStatus.OPEN) {
-            throw new CustomException(ErrorCode.ROOM_CLOSED);
-        }
+        validateRoomActive(room, LocalDateTime.now());
 
         boolean isParticipating = roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
                 roomId,
@@ -75,7 +81,9 @@ public class SpeechService {
                 command.stance()
         );
 
-        return SpeechCreateRes.from(speechRepository.save(speech));
+        Speech savedSpeech = speechRepository.save(speech);
+        publishSpeechChangedEvent(SpeechEventType.SPEECH_CREATED, savedSpeech);
+        return SpeechCreateRes.from(savedSpeech);
     }
 
     @Transactional(readOnly = true)
@@ -125,10 +133,13 @@ public class SpeechService {
             Long userId,
             SpeechUpdateCommand command
     ) {
+        userSanctionPolicyService.validateSpeechAllowed(userId);
+
         Speech speech = findEditableOwnedSpeech(speechId, userId);
 
         validateContent(command.content(), "update", speech.getRoomId(), userId, speechId);
         speech.updateMainOpinion(command.content(), command.stance());
+        publishSpeechChangedEvent(SpeechEventType.SPEECH_UPDATED, speech);
         return toDetailResponse(speech, userId);
     }
 
@@ -137,6 +148,7 @@ public class SpeechService {
         Speech speech = findEditableOwnedSpeech(speechId, userId);
 
         speech.softDelete(LocalDateTime.now());
+        publishSpeechChangedEvent(SpeechEventType.SPEECH_DELETED, speech);
         log.info(
                 "Speech soft deleted. speechId={}, roomId={}, userId={}",
                 speechId,
@@ -147,9 +159,12 @@ public class SpeechService {
 
     @Transactional
     public SpeechDetailRes updateSpeechLink(Long speechId, Long userId, String linkUrl) {
+        userSanctionPolicyService.validateSpeechAllowed(userId);
+
         Speech speech = findEditableOwnedSpeech(speechId, userId);
 
         speech.updateLink(linkUrl);
+        publishSpeechChangedEvent(SpeechEventType.SPEECH_LINK_UPDATED, speech);
         return toDetailResponse(speech, userId);
     }
 
@@ -165,7 +180,20 @@ public class SpeechService {
             throw new CustomException(ErrorCode.SPEECH_NOT_EDITABLE);
         }
 
+        validateRoomActive(speech.getRoomId());
         return speech;
+    }
+
+    private void validateRoomActive(Long roomId) {
+        Room room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+        validateRoomActive(room, LocalDateTime.now());
+    }
+
+    private void validateRoomActive(Room room, LocalDateTime now) {
+        if (!room.isActiveAt(now)) {
+            throw new CustomException(ErrorCode.ROOM_CLOSED);
+        }
     }
 
     private void validateContent(
@@ -224,5 +252,14 @@ public class SpeechService {
                 summary == null ? 0 : summary.getReactionCount(),
                 summary != null && summary.getMyReactionCount() > 0
         );
+    }
+
+    private void publishSpeechChangedEvent(SpeechEventType type, Speech speech) {
+        SpeechEventPayload payload = SpeechEventPayload.from(speech);
+        eventPublisher.publishEvent(new SpeechChangedEvent(
+                type,
+                speech.getRoomId(),
+                payload
+        ));
     }
 }

@@ -20,6 +20,15 @@ public interface SpeechReactionRepository extends JpaRepository<SpeechReaction, 
     long countBySpeechId(Long speechId);
 
     @Query("""
+            select count(reaction.id)
+            from SpeechReaction reaction, Speech speech
+            where reaction.speechId = speech.id
+              and speech.userId = :userId
+              and speech.deleted = false
+            """)
+    long countReceivedByUserId(@Param("userId") Long userId);
+
+    @Query("""
             select reaction.speechId as speechId,
                    count(reaction.id) as reactionCount,
                    sum(case when reaction.userId = :userId then 1 else 0 end) as myReactionCount

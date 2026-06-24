@@ -1,8 +1,8 @@
 package com.sisibibi.api.domain.chat.service;
 
-import com.sisibibi.api.domain.chat.dto.response.ChatEventRes;
+import com.sisibibi.api.domain.chat.dto.event.ChatEventType;
+import com.sisibibi.api.domain.chat.dto.event.ChatMessageChangedEvent;
 import com.sisibibi.api.domain.chat.dto.response.ChatMessageCursorPageRes;
-import com.sisibibi.api.domain.chat.entity.ChatEventType;
 import com.sisibibi.api.domain.chat.entity.ChatMessage;
 import com.sisibibi.api.domain.chat.repository.ChatMessageRepository;
 import com.sisibibi.api.domain.room.entity.Room;
@@ -13,6 +13,7 @@ import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantReposit
 import com.sisibibi.api.domain.user.entity.User;
 import com.sisibibi.api.domain.user.entity.UserStatus;
 import com.sisibibi.api.domain.user.repository.UserRepository;
+import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.moderation.ProfanityDetector;
@@ -25,6 +26,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -32,6 +34,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -50,16 +53,37 @@ class ChatServiceTest {
     private UserRepository userRepository;
 
     @Mock
+    private UserSanctionPolicyService userSanctionPolicyService;
+
+    @Mock
     private ProfanityDetector profanityDetector;
 
     @Mock
     private ChatRateLimiter chatRateLimiter;
 
     @Mock
-    private AfterCommitChatMessagePublisher afterCommitChatMessagePublisher;
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private ChatService chatService;
+
+    @Test
+    void createMessage_throwsChatRestricted_whenUserHasActiveSanction() {
+        Long roomId = 1L;
+        Long userId = 2L;
+        User user = user(UserStatus.ACTIVE);
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        doThrow(new CustomException(ErrorCode.USER_CHAT_RESTRICTED))
+                .when(userSanctionPolicyService)
+                .validateChatAllowed(userId);
+
+        assertThatThrownBy(() -> chatService.createMessage(roomId, userId, "hello"))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.USER_CHAT_RESTRICTED);
+
+        verify(chatMessageRepository, never()).save(any(ChatMessage.class));
+    }
 
     @Test
     void createMessage_savesMessageAndSchedulesPublish_whenRequestIsValid() {
@@ -83,7 +107,7 @@ class ChatServiceTest {
             return message;
         });
 
-        ChatEventRes response = chatService.createMessage(roomId, userId, "hello");
+        chatService.createMessage(roomId, userId, "hello");
 
         ArgumentCaptor<ChatMessage> messageCaptor = ArgumentCaptor.forClass(ChatMessage.class);
         verify(chatMessageRepository).save(messageCaptor.capture());
@@ -93,9 +117,18 @@ class ChatServiceTest {
         assertThat(saved.getNicknameSnapshot()).isEqualTo("tester");
         assertThat(saved.getContent()).isEqualTo("hello");
         assertThat(saved.isDeleted()).isFalse();
-        assertThat(response.type()).isEqualTo(ChatEventType.MESSAGE_CREATED);
-        assertThat(response.messageId()).isEqualTo(10L);
-        verify(afterCommitChatMessagePublisher).publishAfterCommit(response);
+        ArgumentCaptor<ChatMessageChangedEvent> eventCaptor =
+                ArgumentCaptor.forClass(ChatMessageChangedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        ChatMessageChangedEvent event = eventCaptor.getValue();
+        assertThat(event.type()).isEqualTo(ChatEventType.MESSAGE_CREATED);
+        assertThat(event.roomId()).isEqualTo(roomId);
+        assertThat(event.payload().type()).isEqualTo(ChatEventType.MESSAGE_CREATED);
+        assertThat(event.payload().messageId()).isEqualTo(10L);
+        assertThat(event.payload().roomId()).isEqualTo(roomId);
+        assertThat(event.payload().userId()).isEqualTo(userId);
+        assertThat(event.payload().nicknameSnapshot()).isEqualTo("tester");
+        assertThat(event.payload().content()).isEqualTo("hello");
     }
 
     @Test
@@ -273,10 +306,12 @@ class ChatServiceTest {
         assertThat(message.isDeleted()).isTrue();
         assertThat(message.getDeletedBy()).isEqualTo(2L);
         assertThat(message.getDeletedAt()).isNotNull();
-        ArgumentCaptor<ChatEventRes> eventCaptor = ArgumentCaptor.forClass(ChatEventRes.class);
-        verify(afterCommitChatMessagePublisher).publishAfterCommit(eventCaptor.capture());
+        ArgumentCaptor<ChatMessageChangedEvent> eventCaptor =
+                ArgumentCaptor.forClass(ChatMessageChangedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
         assertThat(eventCaptor.getValue().type()).isEqualTo(ChatEventType.MESSAGE_DELETED);
-        assertThat(eventCaptor.getValue().content()).isNull();
+        assertThat(eventCaptor.getValue().roomId()).isEqualTo(1L);
+        assertThat(eventCaptor.getValue().payload().content()).isNull();
     }
 
     @Test

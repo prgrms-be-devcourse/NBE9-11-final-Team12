@@ -1,0 +1,248 @@
+package com.sisibibi.api.domain.report.entity;
+
+import com.sisibibi.api.domain.report.client.dto.AiReportGenerateRes;
+import com.sisibibi.api.domain.report.client.dto.AiReportCustomReportPayload;
+import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Getter
+@Entity
+@EntityListeners(AuditingEntityListener.class)
+@Table(
+        name = "ai_reports",
+        uniqueConstraints = @UniqueConstraint(name = "uk_ai_reports_room_id", columnNames = "room_id")
+)
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class AiReport {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "room_id", nullable = false)
+    private Long roomId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private AiReportStatus status;
+
+    @Column(name = "core_line", columnDefinition = "TEXT")
+    private String coreLine;
+
+    @Convert(converter = KeyIssuesConverter.class)
+    @Column(name = "key_issues", columnDefinition = "TEXT")
+    private List<String> keyIssues = List.of();
+
+    @Convert(converter = CustomPromptsConverter.class)
+    @Column(name = "custom_prompts", columnDefinition = "TEXT")
+    private List<AiReportCustomPrompt> customPrompts = List.of();
+
+    @Convert(converter = CustomReportsConverter.class)
+    @Column(name = "custom_reports", columnDefinition = "TEXT")
+    private List<AiReportCustomReport> customReports = List.of();
+
+    @Column(name = "ai_summary", columnDefinition = "TEXT")
+    private String aiSummary;
+
+    @Column(name = "common_ground", columnDefinition = "TEXT")
+    private String commonGround;
+
+    @Column(name = "ai_opinion", columnDefinition = "TEXT")
+    private String aiOpinion;
+
+    @Column(name = "error_message", length = 1000)
+    private String errorMessage;
+
+    @Column(name = "requested_at", nullable = false)
+    private LocalDateTime requestedAt;
+
+    @Column(name = "completed_at")
+    private LocalDateTime completedAt;
+
+    @CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @LastModifiedDate
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+
+    public static AiReport pending(Long roomId) {
+        return pending(roomId, List.of());
+    }
+
+    public static AiReport pending(Long roomId, List<AiReportCustomPrompt> customPrompts) {
+        AiReport report = new AiReport();
+        report.roomId = roomId;
+        report.markPending(customPrompts);
+        return report;
+    }
+
+    public boolean shouldSkipGeneration() {
+        return status == AiReportStatus.PENDING || status == AiReportStatus.COMPLETED;
+    }
+
+    public void retry() {
+        retry(List.of());
+    }
+
+    public void retry(List<AiReportCustomPrompt> customPrompts) {
+        markPending(customPrompts);
+    }
+
+    public void complete(AiReportGenerateRes response) {
+        this.status = AiReportStatus.COMPLETED;
+        this.coreLine = response.coreLine();
+        this.keyIssues = response.keyIssues();
+        this.aiSummary = response.aiSummary();
+        this.commonGround = response.commonGround();
+        this.aiOpinion = response.aiOpinion();
+        this.customReports = toCustomReports(this.customPrompts, response.customReports());
+        this.errorMessage = null;
+        this.completedAt = LocalDateTime.now();
+    }
+
+    public void appendCustomReports(
+            Long userId,
+            List<AiReportCustomPrompt> customPrompts,
+            List<AiReportCustomReportPayload> customReportPayloads
+    ) {
+        this.customPrompts = mergePrompts(this.customPrompts, customPrompts);
+        this.customReports = mergeReports(this.customReports, toCustomReports(userId, customPrompts, customReportPayloads));
+        this.errorMessage = null;
+    }
+
+    public void appendCustomReports(
+            List<AiReportCustomPrompt> customPrompts,
+            List<AiReportCustomReportPayload> customReportPayloads
+    ) {
+        appendCustomReports(null, customPrompts, customReportPayloads);
+    }
+
+    public void fail(String errorMessage) {
+        this.status = AiReportStatus.FAILED;
+        this.errorMessage = truncate(errorMessage);
+        this.completedAt = null;
+    }
+
+    private void markPending(List<AiReportCustomPrompt> customPrompts) {
+        this.status = AiReportStatus.PENDING;
+        this.coreLine = null;
+        this.keyIssues = List.of();
+        this.customPrompts = customPrompts == null ? List.of() : List.copyOf(customPrompts);
+        this.customReports = List.of();
+        this.aiSummary = null;
+        this.commonGround = null;
+        this.aiOpinion = null;
+        this.errorMessage = null;
+        this.requestedAt = LocalDateTime.now();
+        this.completedAt = null;
+    }
+
+    private String truncate(String message) {
+        if (message == null) {
+            return null;
+        }
+
+        return message.length() > 1000 ? message.substring(0, 1000) : message;
+    }
+
+    private List<AiReportCustomReport> toCustomReports(
+            List<AiReportCustomPrompt> prompts,
+            List<AiReportCustomReportPayload> reports
+    ) {
+        if (reports == null || reports.isEmpty()) {
+            return List.of();
+        }
+
+        return java.util.stream.IntStream.range(0, reports.size())
+                .mapToObj(index -> {
+                    AiReportCustomPrompt prompt = prompts != null && prompts.size() > index
+                            ? prompts.get(index)
+                            : new AiReportCustomPrompt("custom " + (index + 1), "");
+                    AiReportCustomReportPayload report = reports.get(index);
+                    return new AiReportCustomReport(
+                            prompt.userId(),
+                            prompt.label(),
+                            prompt.prompt(),
+                            report.label(),
+                            report.content()
+                    );
+                })
+                .toList();
+    }
+
+    private List<AiReportCustomReport> toCustomReports(
+            Long userId,
+            List<AiReportCustomPrompt> prompts,
+            List<AiReportCustomReportPayload> reports
+    ) {
+        if (reports == null || reports.isEmpty()) {
+            return List.of();
+        }
+
+        return java.util.stream.IntStream.range(0, reports.size())
+                .mapToObj(index -> {
+                    AiReportCustomPrompt prompt = prompts != null && prompts.size() > index
+                            ? prompts.get(index)
+                            : new AiReportCustomPrompt(userId, "custom " + (index + 1), "");
+                    AiReportCustomReportPayload report = reports.get(index);
+                    return new AiReportCustomReport(
+                            prompt.userId() == null ? userId : prompt.userId(),
+                            prompt.label(),
+                            prompt.prompt(),
+                            report.label(),
+                            report.content()
+                    );
+                })
+                .toList();
+    }
+
+    private List<AiReportCustomPrompt> mergePrompts(
+            List<AiReportCustomPrompt> existingPrompts,
+            List<AiReportCustomPrompt> newPrompts
+    ) {
+        if (newPrompts == null || newPrompts.isEmpty()) {
+            return existingPrompts == null ? List.of() : List.copyOf(existingPrompts);
+        }
+
+        java.util.ArrayList<AiReportCustomPrompt> merged = new java.util.ArrayList<>(
+                existingPrompts == null ? List.of() : existingPrompts
+        );
+        merged.addAll(newPrompts);
+        return List.copyOf(merged);
+    }
+
+    private List<AiReportCustomReport> mergeReports(
+            List<AiReportCustomReport> existingReports,
+            List<AiReportCustomReport> newReports
+    ) {
+        if (newReports == null || newReports.isEmpty()) {
+            return existingReports == null ? List.of() : List.copyOf(existingReports);
+        }
+
+        java.util.ArrayList<AiReportCustomReport> merged = new java.util.ArrayList<>(
+                existingReports == null ? List.of() : existingReports
+        );
+        merged.addAll(newReports);
+        return List.copyOf(merged);
+    }
+}

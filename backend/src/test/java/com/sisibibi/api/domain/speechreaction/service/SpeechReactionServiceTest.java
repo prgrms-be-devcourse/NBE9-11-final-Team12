@@ -1,5 +1,7 @@
 package com.sisibibi.api.domain.speechreaction.service;
 
+import com.sisibibi.api.domain.room.entity.Room;
+import com.sisibibi.api.domain.room.entity.RoomStatus;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
@@ -59,6 +61,7 @@ class SpeechReactionServiceTest {
         Speech speech = Speech.createMainOpinion(1L, 30L, "공감 대상 의견", SpeechStance.PRO);
         ReflectionTestUtils.setField(speech, "id", 10L);
         given(speechRepository.findByIdAndDeletedFalse(10L)).willReturn(Optional.of(speech));
+        givenOpenRoom(1L);
         given(roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
                 1L,
                 20L,
@@ -108,9 +111,26 @@ class SpeechReactionServiceTest {
     }
 
     @Test
+    void createReaction_throwsRoomClosed_whenRoomIsClosed() {
+        Speech speech = Speech.createMainOpinion(1L, 30L, "공감 대상 의견", SpeechStance.PRO);
+        Room room = org.mockito.Mockito.mock(Room.class);
+        given(speechRepository.findByIdAndDeletedFalse(10L)).willReturn(Optional.of(speech));
+        given(roomRepository.findById(1L)).willReturn(Optional.of(room));
+        given(room.getStatus()).willReturn(RoomStatus.CLOSED);
+
+        assertThatThrownBy(() -> speechReactionService.createReaction(10L, 20L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ROOM_CLOSED);
+
+        verify(speechReactionRepository, never()).saveAndFlush(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void createReaction_throwsAlreadyExists_whenUserAlreadyReacted() {
         Speech speech = Speech.createMainOpinion(1L, 30L, "공감 대상 의견", SpeechStance.PRO);
         given(speechRepository.findByIdAndDeletedFalse(10L)).willReturn(Optional.of(speech));
+        givenOpenRoom(1L);
         given(roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
                 1L,
                 20L,
@@ -131,6 +151,7 @@ class SpeechReactionServiceTest {
     void createReaction_throwsParticipationRequired_whenUserIsNotJoined() {
         Speech speech = Speech.createMainOpinion(1L, 30L, "공감 대상 의견", SpeechStance.PRO);
         given(speechRepository.findByIdAndDeletedFalse(10L)).willReturn(Optional.of(speech));
+        givenOpenRoom(1L);
         given(roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
                 1L,
                 20L,
@@ -149,6 +170,7 @@ class SpeechReactionServiceTest {
     void createReaction_throwsSelfNotAllowed_whenUserOwnsSpeech() {
         Speech speech = Speech.createMainOpinion(1L, 20L, "본인 의견", SpeechStance.PRO);
         given(speechRepository.findByIdAndDeletedFalse(10L)).willReturn(Optional.of(speech));
+        givenOpenRoom(1L);
         given(roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
                 1L,
                 20L,
@@ -167,7 +189,15 @@ class SpeechReactionServiceTest {
     void deleteReaction_deletesExistingReaction() {
         SpeechReaction reaction = SpeechReaction.create(10L, 20L);
         Speech speech = Speech.createMainOpinion(1L, 30L, "공감 대상 의견", SpeechStance.PRO);
+        Room room = org.mockito.Mockito.mock(Room.class);
         given(speechRepository.findByIdAndDeletedFalse(10L)).willReturn(Optional.of(speech));
+        given(roomRepository.findById(1L)).willReturn(Optional.of(room));
+        given(room.getStatus()).willReturn(RoomStatus.OPEN);
+        given(roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
+                1L,
+                20L,
+                RoomParticipantStatus.JOINED
+        )).willReturn(true);
         given(speechReactionRepository.findBySpeechIdAndUserId(10L, 20L))
                 .willReturn(Optional.of(reaction));
         given(speechReactionRepository.countBySpeechId(10L)).willReturn(2L);
@@ -197,7 +227,15 @@ class SpeechReactionServiceTest {
     @Test
     void deleteReaction_throwsReactionNotFound_whenUserHasNotReacted() {
         Speech speech = Speech.createMainOpinion(1L, 30L, "공감 대상 의견", SpeechStance.PRO);
+        Room room = org.mockito.Mockito.mock(Room.class);
         given(speechRepository.findByIdAndDeletedFalse(10L)).willReturn(Optional.of(speech));
+        given(roomRepository.findById(1L)).willReturn(Optional.of(room));
+        given(room.getStatus()).willReturn(RoomStatus.OPEN);
+        given(roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
+                1L,
+                20L,
+                RoomParticipantStatus.JOINED
+        )).willReturn(true);
         given(speechReactionRepository.findBySpeechIdAndUserId(10L, 20L))
                 .willReturn(Optional.empty());
 
@@ -205,6 +243,43 @@ class SpeechReactionServiceTest {
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.SPEECH_REACTION_NOT_FOUND);
+    }
+
+    @Test
+    void deleteReaction_throwsRoomClosed_whenRoomIsClosed() {
+        Speech speech = Speech.createMainOpinion(1L, 30L, "공감 대상 의견", SpeechStance.PRO);
+        Room room = org.mockito.Mockito.mock(Room.class);
+        given(speechRepository.findByIdAndDeletedFalse(10L)).willReturn(Optional.of(speech));
+        given(roomRepository.findById(1L)).willReturn(Optional.of(room));
+        given(room.getStatus()).willReturn(RoomStatus.CLOSED);
+
+        assertThatThrownBy(() -> speechReactionService.deleteReaction(10L, 20L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ROOM_CLOSED);
+
+        verify(speechReactionRepository, never()).delete(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void deleteReaction_throwsParticipationRequired_whenUserIsNotJoined() {
+        Speech speech = Speech.createMainOpinion(1L, 30L, "공감 대상 의견", SpeechStance.PRO);
+        Room room = org.mockito.Mockito.mock(Room.class);
+        given(speechRepository.findByIdAndDeletedFalse(10L)).willReturn(Optional.of(speech));
+        given(roomRepository.findById(1L)).willReturn(Optional.of(room));
+        given(room.getStatus()).willReturn(RoomStatus.OPEN);
+        given(roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
+                1L,
+                20L,
+                RoomParticipantStatus.JOINED
+        )).willReturn(false);
+
+        assertThatThrownBy(() -> speechReactionService.deleteReaction(10L, 20L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ROOM_PARTICIPATION_REQUIRED);
+
+        verify(speechReactionRepository, never()).delete(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -262,5 +337,11 @@ class SpeechReactionServiceTest {
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.BEST_SPEECH_NOT_FOUND);
+    }
+
+    private void givenOpenRoom(Long roomId) {
+        Room room = org.mockito.Mockito.mock(Room.class);
+        given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
+        given(room.getStatus()).willReturn(RoomStatus.OPEN);
     }
 }

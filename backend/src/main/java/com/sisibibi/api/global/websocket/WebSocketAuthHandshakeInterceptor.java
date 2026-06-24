@@ -3,6 +3,8 @@ package com.sisibibi.api.global.websocket;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.security.cookie.AuthCookieProvider;
 import com.sisibibi.api.global.security.jwt.JwtTokenProvider;
+import com.sisibibi.api.global.security.jwt.JwtTokenProvider.TokenClaims;
+import com.sisibibi.api.global.security.session.TokenSessionValidator;
 import jakarta.servlet.http.Cookie;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +23,7 @@ import java.util.Map;
 public class WebSocketAuthHandshakeInterceptor implements HandshakeInterceptor {
 
     private final JwtTokenProvider jwtTokenProvider;
+    private final TokenSessionValidator tokenSessionValidator;
 
     @Override
     public boolean beforeHandshake(
@@ -39,9 +42,11 @@ public class WebSocketAuthHandshakeInterceptor implements HandshakeInterceptor {
         }
 
         try {
+            TokenClaims claims = jwtTokenProvider.parseAccessToken(accessToken);
+            tokenSessionValidator.validate(claims);
             attributes.put(
                     WebSocketAuthAttributes.AUTH_PRINCIPAL,
-                    jwtTokenProvider.parseAccessToken(accessToken).toPrincipal()
+                    claims.toPrincipal()
             );
             return true;
         } catch (CustomException e) {

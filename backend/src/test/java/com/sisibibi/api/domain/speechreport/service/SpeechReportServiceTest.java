@@ -5,9 +5,14 @@ import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speechreport.dto.command.SpeechReportCreateCommand;
 import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportCreateRes;
+import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportDetailRes;
+import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportSummaryRes;
+import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportReviewRes;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReport;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportReason;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportStatus;
+import com.sisibibi.api.domain.speechreport.entity.SpeechReportReviewAction;
+import com.sisibibi.api.domain.speechreport.entity.ViolationSeverity;
 import com.sisibibi.api.domain.speechreport.repository.SpeechReportRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
@@ -18,8 +23,12 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -39,6 +48,82 @@ class SpeechReportServiceTest {
 
     @InjectMocks
     private SpeechReportService speechReportService;
+
+    @Test
+    void getReports_returnsFilteredReportPage() {
+        SpeechReport report = createReport(100L, SpeechReportStatus.PENDING);
+        PageRequest pageable = PageRequest.of(0, 20);
+        given(speechReportRepository.findAllByFilters(
+                SpeechReportStatus.PENDING,
+                SpeechReportReason.SPAM,
+                pageable
+        )).willReturn(new PageImpl<>(List.of(report), pageable, 1));
+
+        Page<SpeechReportSummaryRes> response = speechReportService.getReports(
+                SpeechReportStatus.PENDING,
+                SpeechReportReason.SPAM,
+                pageable
+        );
+
+        assertThat(response.getTotalElements()).isEqualTo(1);
+        assertThat(response.getContent().getFirst().reportId()).isEqualTo(100L);
+        assertThat(response.getContent().getFirst().status()).isEqualTo(SpeechReportStatus.PENDING);
+    }
+
+    @Test
+    void getReport_returnsReportDetail() {
+        SpeechReport report = createReport(100L, SpeechReportStatus.PENDING);
+        given(speechReportRepository.findById(100L)).willReturn(Optional.of(report));
+
+        SpeechReportDetailRes response = speechReportService.getReport(100L);
+
+        assertThat(response.reportId()).isEqualTo(100L);
+        assertThat(response.contentSnapshot()).isEqualTo("신고 대상 의견");
+        assertThat(response.reason()).isEqualTo(SpeechReportReason.SPAM);
+    }
+
+    @Test
+    void getReport_throwsNotFound_whenReportDoesNotExist() {
+        given(speechReportRepository.findById(999L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> speechReportService.getReport(999L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SPEECH_REPORT_NOT_FOUND);
+    }
+
+    @Test
+    void reviewReport_startsReview() {
+        SpeechReport report = createReport(100L, SpeechReportStatus.PENDING);
+        given(speechReportRepository.findByIdForUpdate(100L)).willReturn(Optional.of(report));
+
+        SpeechReportReviewRes response = speechReportService.reviewReport(
+                100L,
+                99L,
+                SpeechReportReviewAction.START_REVIEW,
+                null,
+                null
+        );
+
+        assertThat(response.status()).isEqualTo(SpeechReportStatus.REVIEWING);
+        assertThat(response.reviewedBy()).isEqualTo(99L);
+    }
+
+    @Test
+    void reviewReport_throwsNotFound_whenReportDoesNotExist() {
+        given(speechReportRepository.findByIdForUpdate(999L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> speechReportService.reviewReport(
+                999L,
+                99L,
+                SpeechReportReviewAction.START_REVIEW,
+                null,
+                null
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SPEECH_REPORT_NOT_FOUND);
+    }
 
     @Test
     void createReport_savesPendingReport() {
@@ -141,5 +226,21 @@ class SpeechReportServiceTest {
         verify(speechRepository, never()).findByIdAndDeletedFalse(10L);
         verify(speechReportRepository, never())
                 .save(org.mockito.ArgumentMatchers.any(SpeechReport.class));
+    }
+
+    private SpeechReport createReport(Long reportId, SpeechReportStatus status) {
+        SpeechReport report = SpeechReport.create(
+                10L,
+                30L,
+                20L,
+                "신고 대상 의견",
+                SpeechReportReason.SPAM,
+                null
+        );
+        ReflectionTestUtils.setField(report, "id", reportId);
+        ReflectionTestUtils.setField(report, "status", status);
+        ReflectionTestUtils.setField(report, "createdAt", LocalDateTime.of(2026, 6, 21, 12, 0));
+        ReflectionTestUtils.setField(report, "updatedAt", LocalDateTime.of(2026, 6, 21, 12, 0));
+        return report;
     }
 }

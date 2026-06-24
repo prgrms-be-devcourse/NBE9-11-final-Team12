@@ -20,6 +20,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -31,6 +33,10 @@ import java.util.stream.IntStream;
 @Service
 @RequiredArgsConstructor
 public class SpeakingQueueService {
+
+    private static final int REDIS_PROJECTION_REBUILD_MAX_ATTEMPTS = 3;
+    private static final long REDIS_PROJECTION_REBUILD_INITIAL_BACKOFF_MS = 50L;
+    private static final int REDIS_PROJECTION_REBUILD_BACKOFF_MULTIPLIER = 2;
 
     private final RedisSpeakingQueueRepository redisSpeakingQueueRepository;
     private final SpeakingQueuePersistenceService speakingQueuePersistenceService;
@@ -63,12 +69,24 @@ public class SpeakingQueueService {
 
     public Optional<SpeakingQueue> assignNextSpeaker(Long roomId) {
         LocalDateTime assignedAt = LocalDateTime.now();
-        Optional<SpeakingQueue> assigned =
+        SpeakingQueueAssignmentResult assignmentResult =
                 speakingQueuePersistenceService.assignNextSpeaker(
                         roomId,
                         assignedAt,
                         assignedAt.plus(speakingQueueProperties.getTurnDuration())
-        );
+                );
+        assignmentResult.canceledRequests().forEach(this::synchronizeCanceledRedisProjection);
+        assignmentResult.canceledRequests().forEach(speakingQueue -> log.info(
+                "Speaking request canceled because participant left room. "
+                        + "roomId={}, userId={}, queueOrder={}",
+                speakingQueue.getRoomId(),
+                speakingQueue.getUserId(),
+                speakingQueue.getQueueOrder()
+        ));
+        assignmentResult.canceledRequests().forEach(speakingQueue ->
+                publishStageChanged(StageEventType.SPEAKING_CANCELED, speakingQueue));
+
+        Optional<SpeakingQueue> assigned = assignmentResult.assignedRequest();
         assigned.ifPresent(this::synchronizeAssignedRedisProjection);
         assigned.ifPresent(speakingQueue -> log.info(
                 "Speaking request assigned. roomId={}, userId={}, queueOrder={}, expiresAt={}",
@@ -124,6 +142,31 @@ public class SpeakingQueueService {
                 StageTurnEndReason.COMPLETED
         );
         tryAssignNextSpeaker(roomId);
+    }
+
+    public void completeCurrentSpeakerWhenParticipantLeft(Long roomId, Long userId) {
+        Optional<SpeakingQueue> completed =
+                speakingQueuePersistenceService.completeCurrentSpeakerIfMatches(roomId, userId);
+        completed.ifPresent(this::handleParticipantLeftTurnCompletion);
+    }
+
+    public void closeSpeakingQueuesWhenRoomClosed(Long roomId, LocalDateTime closedAt) {
+        SpeakingQueueRoomCloseResult closeResult =
+                speakingQueuePersistenceService.closeActiveRequestsByRoomId(roomId, closedAt);
+
+        closeResult.canceledRequests().forEach(this::synchronizeCanceledRedisProjection);
+        closeResult.completedRequests().forEach(this::synchronizeCompletedRedisProjection);
+
+        if (!closeResult.canceledRequests().isEmpty()
+                || !closeResult.completedRequests().isEmpty()) {
+            log.info(
+                    "Speaking requests closed because room was closed. "
+                            + "roomId={}, canceledCount={}, completedCount={}",
+                    roomId,
+                    closeResult.canceledRequests().size(),
+                    closeResult.completedRequests().size()
+            );
+        }
     }
 
     public StageCurrentSpeakerRes getCurrentSpeaker(Long roomId) {
@@ -217,6 +260,45 @@ public class SpeakingQueueService {
         ));
     }
 
+    private void handleParticipantLeftTurnCompletion(SpeakingQueue completed) {
+        log.info(
+                "Speaking request completed because participant left room. "
+                        + "roomId={}, userId={}, queueOrder={}",
+                completed.getRoomId(),
+                completed.getUserId(),
+                completed.getQueueOrder()
+        );
+
+        publishStageChanged(
+                StageEventType.SPEAKER_COMPLETED,
+                completed,
+                StageTurnEndReason.LEFT_ROOM
+        );
+
+        synchronizeParticipantLeftTurnCompletionAfterCommit(completed);
+    }
+
+    private void synchronizeParticipantLeftTurnCompletionAfterCommit(SpeakingQueue completed) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            synchronizeParticipantLeftTurnCompletion(completed);
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        synchronizeParticipantLeftTurnCompletion(completed);
+                    }
+                }
+        );
+    }
+
+    private void synchronizeParticipantLeftTurnCompletion(SpeakingQueue completed) {
+        synchronizeCompletedRedisProjection(completed);
+        tryAssignNextSpeaker(completed.getRoomId());
+    }
+
     private Optional<SpeakingQueue> tryAssignNextSpeaker(Long roomId) {
         try {
             return assignNextSpeaker(roomId);
@@ -288,6 +370,7 @@ public class SpeakingQueueService {
                     speakingQueue.getQueueOrder(),
                     synchronizationException
             );
+            rebuildRedisProjection(speakingQueue.getRoomId());
         }
     }
 
@@ -306,6 +389,7 @@ public class SpeakingQueueService {
                     speakingQueue.getQueueOrder(),
                     synchronizationException
             );
+            rebuildRedisProjection(speakingQueue.getRoomId());
         }
     }
 
@@ -324,6 +408,7 @@ public class SpeakingQueueService {
                     speakingQueue.getQueueOrder(),
                     synchronizationException
             );
+            rebuildRedisProjection(speakingQueue.getRoomId());
         }
     }
 
@@ -342,7 +427,201 @@ public class SpeakingQueueService {
                     speakingQueue.getQueueOrder(),
                     synchronizationException
             );
+            rebuildRedisProjection(speakingQueue.getRoomId());
         }
+    }
+
+    private void rebuildRedisProjection(Long roomId) {
+        for (int attempt = 1; attempt <= REDIS_PROJECTION_REBUILD_MAX_ATTEMPTS; attempt++) {
+            RedisProjectionRebuildAttemptResult attemptResult =
+                    rebuildRedisProjectionOnce(roomId, attempt);
+            if (attemptResult.isFinished()) {
+                return;
+            }
+            if (!sleepBeforeRedisProjectionRebuildRetry(roomId, attempt)) {
+                return;
+            }
+        }
+    }
+
+    private RedisProjectionRebuildAttemptResult rebuildRedisProjectionOnce(
+            Long roomId,
+            int attempt
+    ) {
+        Optional<Long> expectedVersion = currentProjectionVersionForRebuild(roomId, attempt);
+        if (expectedVersion.isEmpty()) {
+            return retryOrStopRedisProjectionRebuild(attempt);
+        }
+
+        Optional<RedisProjectionSource> projectionSource =
+                projectionSourceForRebuild(roomId, attempt);
+        if (projectionSource.isEmpty()) {
+            return retryOrStopRedisProjectionRebuild(attempt);
+        }
+
+        return replaceRedisProjectionForRebuild(
+                roomId,
+                projectionSource.get(),
+                expectedVersion.get(),
+                attempt
+        );
+    }
+
+    private Optional<Long> currentProjectionVersionForRebuild(Long roomId, int attempt) {
+        try {
+            return Optional.of(redisSpeakingQueueRepository.currentProjectionVersion(roomId));
+        } catch (RuntimeException versionException) {
+            if (attempt == REDIS_PROJECTION_REBUILD_MAX_ATTEMPTS) {
+                log.error(
+                        "Failed to read speaking Redis projection version. "
+                                + "roomId={}, attempts={}",
+                        roomId,
+                        attempt,
+                        versionException
+                );
+                return Optional.empty();
+            }
+            log.warn(
+                    "Retrying speaking Redis projection version read. "
+                            + "roomId={}, attempt={}",
+                    roomId,
+                    attempt,
+                    versionException
+            );
+            return Optional.empty();
+        }
+    }
+
+    private Optional<RedisProjectionSource> projectionSourceForRebuild(
+            Long roomId,
+            int attempt
+    ) {
+        try {
+            return Optional.of(new RedisProjectionSource(
+                    speakingQueuePersistenceService.findWaitingRequestsForRedisProjection(roomId),
+                    speakingQueuePersistenceService.findCurrentSpeakerForRedisProjection(roomId)
+            ));
+        } catch (RuntimeException projectionSourceException) {
+            if (attempt == REDIS_PROJECTION_REBUILD_MAX_ATTEMPTS) {
+                log.error(
+                        "Failed to load speaking Redis projection source. "
+                                + "roomId={}, attempts={}",
+                        roomId,
+                        attempt,
+                        projectionSourceException
+                );
+                return Optional.empty();
+            }
+            log.warn(
+                    "Retrying speaking Redis projection source load. roomId={}, attempt={}",
+                    roomId,
+                    attempt,
+                    projectionSourceException
+            );
+            return Optional.empty();
+        }
+    }
+
+    private RedisProjectionRebuildAttemptResult replaceRedisProjectionForRebuild(
+            Long roomId,
+            RedisProjectionSource projectionSource,
+            long expectedVersion,
+            int attempt
+    ) {
+        try {
+            boolean replaced =
+                    redisSpeakingQueueRepository.replaceRoomProjectionIfVersionMatches(
+                            roomId,
+                            projectionSource.waitingQueues(),
+                            projectionSource.currentSpeaker(),
+                            expectedVersion
+                    );
+            if (!replaced) {
+                log.warn(
+                        "Skipped stale speaking Redis projection rebuild. "
+                                + "roomId={}, attempt={}, expectedVersion={}",
+                        roomId,
+                        attempt,
+                        expectedVersion
+                );
+                return RedisProjectionRebuildAttemptResult.RETRY;
+            }
+            log.info(
+                    "Speaking Redis projection rebuilt. "
+                            + "roomId={}, attempt={}, expectedVersion={}",
+                    roomId,
+                    attempt,
+                    expectedVersion
+            );
+            return RedisProjectionRebuildAttemptResult.SUCCESS;
+        } catch (RuntimeException rebuildException) {
+            if (attempt == REDIS_PROJECTION_REBUILD_MAX_ATTEMPTS) {
+                log.error(
+                        "Failed to rebuild speaking Redis projection. roomId={}, attempts={}",
+                        roomId,
+                        attempt,
+                        rebuildException
+                );
+                return RedisProjectionRebuildAttemptResult.STOP;
+            }
+            log.warn(
+                    "Retrying speaking Redis projection rebuild. roomId={}, attempt={}",
+                    roomId,
+                    attempt,
+                    rebuildException
+            );
+            return RedisProjectionRebuildAttemptResult.RETRY;
+        }
+    }
+
+    private RedisProjectionRebuildAttemptResult retryOrStopRedisProjectionRebuild(int attempt) {
+        if (attempt == REDIS_PROJECTION_REBUILD_MAX_ATTEMPTS) {
+            return RedisProjectionRebuildAttemptResult.STOP;
+        }
+        return RedisProjectionRebuildAttemptResult.RETRY;
+    }
+
+    private boolean sleepBeforeRedisProjectionRebuildRetry(Long roomId, int attempt) {
+        if (attempt >= REDIS_PROJECTION_REBUILD_MAX_ATTEMPTS) {
+            return true;
+        }
+
+        long delayMillis = REDIS_PROJECTION_REBUILD_INITIAL_BACKOFF_MS;
+        for (int index = 1; index < attempt; index++) {
+            delayMillis *= REDIS_PROJECTION_REBUILD_BACKOFF_MULTIPLIER;
+        }
+
+        try {
+            Thread.sleep(delayMillis);
+            return true;
+        } catch (InterruptedException interruptedException) {
+            Thread.currentThread().interrupt();
+            log.warn(
+                    "Interrupted while waiting to retry speaking Redis projection rebuild. "
+                            + "roomId={}, attempt={}, delayMillis={}",
+                    roomId,
+                    attempt,
+                    delayMillis,
+                    interruptedException
+            );
+            return false;
+        }
+    }
+
+    private enum RedisProjectionRebuildAttemptResult {
+        SUCCESS,
+        RETRY,
+        STOP;
+
+        private boolean isFinished() {
+            return this != RETRY;
+        }
+    }
+
+    private record RedisProjectionSource(
+            List<SpeakingQueue> waitingQueues,
+            Optional<SpeakingQueue> currentSpeaker
+    ) {
     }
 
 }

@@ -6,6 +6,7 @@ import com.sisibibi.api.global.security.cookie.AuthCookieProvider;
 import com.sisibibi.api.global.security.handler.SecurityExceptionHandler;
 import com.sisibibi.api.global.security.jwt.JwtTokenProvider;
 import com.sisibibi.api.global.security.jwt.JwtTokenProvider.TokenClaims;
+import com.sisibibi.api.global.security.session.TokenSessionValidator;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
@@ -25,15 +26,20 @@ import java.util.List;
 @ConditionalOnBean(JwtTokenProvider.class)
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
+    private static final String AUTH_API_PREFIX = "/api/v1/auth/";
+
     private final JwtTokenProvider jwtTokenProvider;
     private final SecurityExceptionHandler securityExceptionHandler;
+    private final TokenSessionValidator tokenSessionValidator;
 
     public JwtAuthenticationFilter(
             JwtTokenProvider jwtTokenProvider,
-            SecurityExceptionHandler securityExceptionHandler
+            SecurityExceptionHandler securityExceptionHandler,
+            TokenSessionValidator tokenSessionValidator
     ) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.securityExceptionHandler = securityExceptionHandler;
+        this.tokenSessionValidator = tokenSessionValidator;
     }
 
     @Override
@@ -51,6 +57,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         try {
             TokenClaims claims = jwtTokenProvider.parseAccessToken(accessToken);
+            tokenSessionValidator.validate(claims);
             AuthPrincipal principal = claims.toPrincipal();
 
             UsernamePasswordAuthenticationToken authentication =
@@ -66,6 +73,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             SecurityContextHolder.clearContext();
             securityExceptionHandler.write(response, e.getErrorCode());
         }
+    }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return request.getRequestURI().startsWith(AUTH_API_PREFIX);
     }
 
     private String findCookieValue(HttpServletRequest request, String cookieName) {

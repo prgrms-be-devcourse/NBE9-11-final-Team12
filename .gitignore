@@ -16,6 +16,9 @@ Thumbs.db
 db/mysql
 db/redis
 
+# Local application logs
+backend/logs/
+
 # Local root documents
 /AGENTS.md
 /ARCHITECTURE.md

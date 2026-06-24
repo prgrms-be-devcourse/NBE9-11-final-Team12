@@ -82,7 +82,7 @@ class WebSocketAuthChannelInterceptorTest {
                 2L,
                 RoomParticipantStatus.JOINED
         )).willReturn(true);
-        Message<byte[]> message = message(StompCommand.SUBSCRIBE, "/topic/rooms/1/chat/messages", user, null);
+        Message<byte[]> message = message(StompCommand.SUBSCRIBE, "/topic/rooms/1/chat/events", user, null);
 
         Message<?> result = interceptor.preSend(message, null);
 
@@ -120,6 +120,15 @@ class WebSocketAuthChannelInterceptorTest {
                 ),
                 null
         )).isNotNull();
+        assertThat(interceptor.preSend(
+                message(
+                        StompCommand.SUBSCRIBE,
+                        "/topic/rooms/1/speeches/events",
+                        user,
+                        null
+                ),
+                null
+        )).isNotNull();
     }
 
     @Test
@@ -131,7 +140,7 @@ class WebSocketAuthChannelInterceptorTest {
                 2L,
                 RoomParticipantStatus.JOINED
         )).willReturn(false);
-        Message<byte[]> message = message(StompCommand.SUBSCRIBE, "/topic/rooms/1/chat/messages", user, null);
+        Message<byte[]> message = message(StompCommand.SUBSCRIBE, "/topic/rooms/1/chat/events", user, null);
 
         assertThatThrownBy(() -> interceptor.preSend(message, null))
                 .isInstanceOf(AccessDeniedException.class);
@@ -150,6 +159,39 @@ class WebSocketAuthChannelInterceptorTest {
                 2L,
                 RoomParticipantStatus.JOINED
         );
+    }
+
+    @Test
+    void preSend_allowsSubscribeToOwnSanctionTopic() {
+        AuthPrincipal principal = new AuthPrincipal(2L, "user@example.com", "USER");
+        Principal user = authenticatedPrincipal(principal);
+
+        Message<?> result = interceptor.preSend(
+                message(
+                        StompCommand.SUBSCRIBE,
+                        "/topic/users/2/sanctions/events",
+                        user,
+                        null
+                ),
+                null
+        );
+
+        assertThat(result).isNotNull();
+    }
+
+    @Test
+    void preSend_rejectsSubscribeToOtherUsersSanctionTopic() {
+        AuthPrincipal principal = new AuthPrincipal(2L, "user@example.com", "USER");
+        Principal user = authenticatedPrincipal(principal);
+        Message<byte[]> message = message(
+                StompCommand.SUBSCRIBE,
+                "/topic/users/3/sanctions/events",
+                user,
+                null
+        );
+
+        assertThatThrownBy(() -> interceptor.preSend(message, null))
+                .isInstanceOf(AccessDeniedException.class);
     }
 
     private Message<byte[]> message(

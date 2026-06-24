@@ -4,6 +4,7 @@ import com.sisibibi.api.ApiApplication;
 import com.sisibibi.api.global.response.ApiResponse;
 import com.sisibibi.api.global.security.cookie.AuthCookieProvider;
 import com.sisibibi.api.global.security.jwt.JwtTokenProvider;
+import com.sisibibi.api.global.security.session.TokenSessionValidator;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -12,8 +13,10 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.servlet.http.Cookie;
@@ -27,6 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import org.springframework.http.MediaType;
 
 @SpringBootTest(classes = ApiApplication.class)
@@ -40,6 +44,9 @@ class SecurityConfigTest {
 
     @Autowired
     private JwtTokenProvider jwtTokenProvider;
+
+    @MockitoBean
+    private TokenSessionValidator tokenSessionValidator;
 
     @Test
     void protectedApi_returnsApiResponse401WithoutAuthentication() throws Exception {
@@ -112,6 +119,13 @@ class SecurityConfigTest {
     }
 
     @Test
+    void authApi_isPublicAndDoesNotRequireCsrfToken() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/test"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code", is("SUCCESS")));
+    }
+
+    @Test
     void actuatorHealth_isPublic() throws Exception {
         mockMvc.perform(get("/actuator/health"))
                 .andExpect(status().isOk())
@@ -123,6 +137,45 @@ class SecurityConfigTest {
         mockMvc.perform(get("/actuator/prometheus"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("jvm_memory_used_bytes")));
+    }
+
+    @Test
+    void roomListAndOpenRooms_arePublic() throws Exception {
+        mockMvc.perform(get("/api/v1/rooms"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/rooms/open"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void roomDetailAndParticipantCount_arePublic() throws Exception {
+        mockMvc.perform(get("/api/v1/rooms/999999"))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(get("/api/v1/rooms/999999/participants/count"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void participationChatStageAndParticipantList_stayProtected() throws Exception {
+        mockMvc.perform(post("/api/v1/rooms/1/participants").with(csrf()))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/v1/rooms/1/participants"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/v1/rooms/1/chat/messages"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/v1/rooms/1/speeches"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/v1/speeches/1"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/v1/rooms/1/stage"))
+                .andExpect(status().isUnauthorized());
     }
 
     @RestController
@@ -140,6 +193,11 @@ class SecurityConfigTest {
                 @AuthenticationPrincipal AuthPrincipal principal
         ) {
             return ResponseEntity.ok(ApiResponse.ok(principal.userId()));
+        }
+
+        @PostMapping("/api/v1/auth/test")
+        ResponseEntity<ApiResponse<Void>> publicAuthApi() {
+            return ResponseEntity.ok(ApiResponse.okMessage("인증 공개 API입니다."));
         }
     }
 }
