@@ -1,8 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { Suspense, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -12,14 +12,17 @@ import { ApiError } from "@/lib/api/client"
 import { useAuth } from "@/components/auth-provider"
 import { Zap, Mail, Lock, Eye, EyeOff, ArrowRight, Radio } from "lucide-react"
 
-export default function LoginPage() {
+function LoginContent() {
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading,    setIsLoading]    = useState(false)
   const [email,        setEmail]        = useState("")
   const [password,     setPassword]     = useState("")
   const [error, setError] = useState("")
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { refresh } = useAuth()
+  const redirect = searchParams.get("redirect")
+  const redirectPath = redirect?.startsWith("/") && !redirect.startsWith("//") ? redirect : "/"
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -28,7 +31,7 @@ export default function LoginPage() {
     try {
       await authApi.login({ email, password })
       await refresh()
-      router.replace("/")
+      router.replace(redirectPath)
     } catch (requestError) {
       setError(requestError instanceof ApiError ? requestError.message : "로그인에 실패했습니다.")
     } finally {
@@ -224,5 +227,13 @@ export default function LoginPage() {
         </div>
       </main>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginContent />
+    </Suspense>
   )
 }

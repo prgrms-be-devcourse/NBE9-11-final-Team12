@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
+import { useAuth } from "@/components/auth-provider"
 import { cn } from "@/lib/utils"
 import {
   Users,
@@ -43,6 +44,9 @@ const defaultCat = { bg: "bg-muted", text: "text-muted-foreground", border: "bor
 
 export function TopicCard({ topic, className }: TopicCardProps) {
   const cat = categoryConfig[topic.category] ?? defaultCat
+  const { user } = useAuth()
+  const roomHref = `/rooms/${topic.id}`
+  const entryHref = user ? roomHref : `/login?redirect=${encodeURIComponent(roomHref)}`
 
   return (
     <Card
@@ -111,7 +115,7 @@ export function TopicCard({ topic, className }: TopicCardProps) {
             <span className="font-medium text-foreground">{topic.participants.toLocaleString()}</span>
           </span>
         </div>
-        <Link href={`/rooms/${topic.id}`}>
+        <Link href={entryHref}>
           <Button
             size="sm"
             variant="outline"

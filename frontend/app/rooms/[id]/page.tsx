@@ -63,42 +63,10 @@ export default function RoomDetailPage() {
       router.replace("/rooms")
       return
     }
-
-    async function loadPublicRoom() {
-      setJoinError("")
-      try {
-        const [room, countResponse] = await Promise.all([
-          roomApi.detail(roomId),
-          roomApi.participantCount(roomId),
-        ])
-        const topicDetail = await topicApi.detail(room.topicId)
-        setRoomView({
-          id: String(room.roomId),
-          title: room.title,
-          description: topicDetail.description ?? "승인된 토픽으로 개설된 실시간 토론방입니다.",
-          category: topicDetail.category,
-          status: room.status,
-          tags: [topicDetail.category],
-          isLive: room.status === "OPEN",
-        })
-        setParticipantCount(countResponse.participantCount)
-      } catch (error) {
-        setJoinError(error instanceof ApiError ? error.message : "토론방 정보를 불러오지 못했습니다.")
-      }
-    }
-
-    void loadPublicRoom()
-  }, [roomId, router])
-
-  useEffect(() => {
-    if (!Number.isSafeInteger(roomId) || roomId <= 0) {
-      router.replace("/rooms")
-      return
-    }
     if (authLoading) return
     if (!user) {
       setJoined(false)
-      setJoinError("로그인 후 토론방에 참여할 수 있습니다.")
+      router.replace(`/login?redirect=${encodeURIComponent(`/rooms/${roomId}`)}`)
       return
     }
 

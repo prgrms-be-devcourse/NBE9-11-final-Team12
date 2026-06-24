@@ -185,7 +185,13 @@ export default function HomePage() {
                       <span className="text-xs text-muted-foreground">
                         {featuredTopic.status === "OPEN" ? "진행 중" : "종료"}
                       </span>
-                      <Link href={`/rooms/${featuredTopic.id}`}>
+                      <Link
+                        href={
+                          user
+                            ? `/rooms/${featuredTopic.id}`
+                            : `/login?redirect=${encodeURIComponent(`/rooms/${featuredTopic.id}`)}`
+                        }
+                      >
                         <Button size="sm" className="gap-1.5 text-xs font-semibold shadow-sm">
                           입장하기
                           <ArrowRight className="size-3.5" />
