@@ -3,6 +3,8 @@ package com.sisibibi.api.domain.report.controller;
 import com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq;
 import com.sisibibi.api.domain.report.dto.response.AiReportRes;
 import com.sisibibi.api.domain.report.service.AiReportService;
+import com.sisibibi.api.global.exception.CustomException;
+import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.response.ApiResponse;
 import com.sisibibi.api.global.security.AuthPrincipal;
 import jakarta.validation.constraints.Positive;
@@ -30,11 +32,13 @@ public class AiReportController {
             @PathVariable @Positive Long roomId,
             @AuthenticationPrincipal AuthPrincipal principal
     ) {
+        if (principal == null) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
+
         return ResponseEntity.ok(ApiResponse.ok(
                 "AI 리포트 조회가 완료되었습니다.",
-                principal == null
-                        ? aiReportService.getReport(roomId)
-                        : aiReportService.getReport(roomId, principal.userId())
+                aiReportService.getReport(roomId, principal.userId())
         ));
     }
 
@@ -44,11 +48,15 @@ public class AiReportController {
             @AuthenticationPrincipal AuthPrincipal principal,
             @RequestBody(required = false) AiReportGenerateReq request
     ) {
+        if (principal == null) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
+
+        AiReportGenerateReq finalRequest = (request == null) ? AiReportGenerateReq.empty() : request;
+
         return ResponseEntity.ok(ApiResponse.ok(
                 "AI 리포트 생성 요청이 완료되었습니다.",
-                principal == null
-                        ? aiReportService.generateReport(roomId, request == null ? AiReportGenerateReq.empty() : request)
-                        : aiReportService.generateReport(roomId, principal.userId(), request == null ? AiReportGenerateReq.empty() : request)
+                aiReportService.generateReport(roomId, principal.userId(), finalRequest)
         ));
     }
 }

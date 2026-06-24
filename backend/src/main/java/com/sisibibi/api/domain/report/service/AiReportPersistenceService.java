@@ -41,11 +41,6 @@ public class AiReportPersistenceService {
     private final AiReportRepository aiReportRepository;
 
     @Transactional
-    public AiReportRequestResult requestGeneration(Long roomId, List<CustomPromptCommand> customPrompts) {
-        return requestGeneration(roomId, null, customPrompts);
-    }
-
-    @Transactional
     public AiReportRequestResult requestGeneration(Long roomId, Long userId, List<CustomPromptCommand> customPrompts) {
         Room room = roomRepository.findByIdForUpdate(roomId)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
@@ -208,10 +203,6 @@ public class AiReportPersistenceService {
 
         report.fail(errorMessage);
         return AiReportRes.from(report);
-    }
-
-    public AiReportRes getReport(Long roomId) {
-        return getReport(roomId, null);
     }
 
     public AiReportRes getReport(Long roomId, Long userId) {

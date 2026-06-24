@@ -51,10 +51,10 @@ class AiReportServiceTest {
     void generateReport_savesRequestedReportAndPublishesEvent_withoutCallingAiServer() {
         AiReportRes requested = requestedResponse();
 
-        given(aiReportPersistenceService.requestGeneration(10L, List.of()))
+        given(aiReportPersistenceService.requestGeneration(10L, 7L, List.of()))
                 .willReturn(AiReportRequestResult.publish(requested, AiReportGenerationType.BASE_ONLY));
 
-        AiReportRes result = aiReportService.generateReport(10L, AiReportGenerateReq.empty());
+        AiReportRes result = aiReportService.generateReport(10L, 7L, AiReportGenerateReq.empty());
 
         ArgumentCaptor<AiReportGenerationRequestedEvent> eventCaptor =
                 ArgumentCaptor.forClass(AiReportGenerationRequestedEvent.class);
@@ -69,10 +69,10 @@ class AiReportServiceTest {
     void generateReport_returnsExistingReportWithoutPublishingEvent_whenGenerationIsAlreadyInProgress() {
         AiReportRes requested = requestedResponse();
 
-        given(aiReportPersistenceService.requestGeneration(10L, List.of()))
+        given(aiReportPersistenceService.requestGeneration(10L, 7L, List.of()))
                 .willReturn(AiReportRequestResult.skip(requested));
 
-        AiReportRes result = aiReportService.generateReport(10L, AiReportGenerateReq.empty());
+        AiReportRes result = aiReportService.generateReport(10L, 7L, AiReportGenerateReq.empty());
 
         assertThat(result.status()).isEqualTo("REQUESTED");
         verify(eventPublisher, never()).publishEvent(any());
@@ -101,12 +101,13 @@ class AiReportServiceTest {
         given(customPromptValidator.normalizeAndScan(request))
                 .willThrow(new CustomException(ErrorCode.AI_REPORT_CUSTOM_PROMPT_REQUIRED));
 
-        assertThatThrownBy(() -> aiReportService.generateReport(10L, request))
+        assertThatThrownBy(() -> aiReportService.generateReport(10L, 7L, request))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.AI_REPORT_CUSTOM_PROMPT_REQUIRED);
 
         verify(aiReportPersistenceService, never()).requestGeneration(
+                org.mockito.ArgumentMatchers.anyLong(),
                 org.mockito.ArgumentMatchers.anyLong(),
                 org.mockito.ArgumentMatchers.<List<CustomPromptCommand>>any()
         );

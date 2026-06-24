@@ -19,28 +19,13 @@ public class AiReportService {
     private final CustomPromptValidator customPromptValidator;
     private final ApplicationEventPublisher eventPublisher;
 
-    public AiReportRes generateReport(Long roomId) {
-        return generateReport(roomId, AiReportGenerateReq.empty());
-    }
-
-    public AiReportRes generateReport(Long roomId, AiReportGenerateReq request) {
-        return generateReportInternal(roomId, null, request, false);
+    public AiReportRes generateReport(Long roomId, Long userId) {
+        return generateReport(roomId, userId, AiReportGenerateReq.empty());
     }
 
     public AiReportRes generateReport(Long roomId, Long userId, AiReportGenerateReq request) {
-        return generateReportInternal(roomId, userId, request, true);
-    }
-
-    private AiReportRes generateReportInternal(
-            Long roomId,
-            Long userId,
-            AiReportGenerateReq request,
-            boolean userScopedCustomReports
-    ) {
         List<CustomPromptCommand> customPrompts = customPromptValidator.normalizeAndScan(request);
-        AiReportRequestResult result = userScopedCustomReports
-                ? aiReportPersistenceService.requestGeneration(roomId, userId, customPrompts)
-                : aiReportPersistenceService.requestGeneration(roomId, customPrompts);
+        AiReportRequestResult result = aiReportPersistenceService.requestGeneration(roomId, userId, customPrompts);
 
         if (result.shouldPublish()) {
             eventPublisher.publishEvent(new AiReportGenerationRequestedEvent(
@@ -51,10 +36,6 @@ public class AiReportService {
         }
 
         return result.response();
-    }
-
-    public AiReportRes getReport(Long roomId) {
-        return aiReportPersistenceService.getReport(roomId);
     }
 
     public AiReportRes getReport(Long roomId, Long userId) {
