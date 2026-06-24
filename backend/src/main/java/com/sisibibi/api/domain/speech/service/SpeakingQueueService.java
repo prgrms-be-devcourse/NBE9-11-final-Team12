@@ -150,6 +150,25 @@ public class SpeakingQueueService {
         completed.ifPresent(this::handleParticipantLeftTurnCompletion);
     }
 
+    public void closeSpeakingQueuesWhenRoomClosed(Long roomId, LocalDateTime closedAt) {
+        SpeakingQueueRoomCloseResult closeResult =
+                speakingQueuePersistenceService.closeActiveRequestsByRoomId(roomId, closedAt);
+
+        closeResult.canceledRequests().forEach(this::synchronizeCanceledRedisProjection);
+        closeResult.completedRequests().forEach(this::synchronizeCompletedRedisProjection);
+
+        if (!closeResult.canceledRequests().isEmpty()
+                || !closeResult.completedRequests().isEmpty()) {
+            log.info(
+                    "Speaking requests closed because room was closed. "
+                            + "roomId={}, canceledCount={}, completedCount={}",
+                    roomId,
+                    closeResult.canceledRequests().size(),
+                    closeResult.completedRequests().size()
+            );
+        }
+    }
+
     public StageCurrentSpeakerRes getCurrentSpeaker(Long roomId) {
         Optional<CurrentSpeakerProjection> currentSpeaker =
                 speakingQueuePersistenceService.findCurrentSpeaker(roomId);

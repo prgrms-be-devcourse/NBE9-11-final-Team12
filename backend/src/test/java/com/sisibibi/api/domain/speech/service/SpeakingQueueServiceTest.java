@@ -763,6 +763,31 @@ class SpeakingQueueServiceTest {
     }
 
     @Test
+    void closeSpeakingQueuesWhenRoomClosed_cleansRedisWithoutAssigningNextSpeaker() {
+        LocalDateTime closedAt = LocalDateTime.of(2026, 6, 24, 12, 0);
+        SpeakingQueue canceled = persistedWaitingRequest(1L, 7L, 15);
+        canceled.cancel(closedAt);
+        SpeakingQueue completed = completedRequest(1L, 8L, 16);
+        given(speakingQueuePersistenceService.closeActiveRequestsByRoomId(1L, closedAt))
+                .willReturn(SpeakingQueueRoomCloseResult.of(
+                        List.of(canceled),
+                        List.of(completed)
+                ));
+
+        speakingQueueService.closeSpeakingQueuesWhenRoomClosed(1L, closedAt);
+
+        verify(speakingQueuePersistenceService).closeActiveRequestsByRoomId(1L, closedAt);
+        verify(redisSpeakingQueueRepository).remove(1L, 7L);
+        verify(redisSpeakingQueueRepository).removeCurrentSpeaker(1L, 8L);
+        verify(speakingQueuePersistenceService, never()).assignNextSpeaker(
+                eq(1L),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        );
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
     void expireCurrentSpeaker_removesExpiredSpeakerFromRedis() {
         SpeakingQueue completed = completedRequest(1L, 7L, 15);
         LocalDateTime now = LocalDateTime.of(2026, 6, 12, 11, 34);

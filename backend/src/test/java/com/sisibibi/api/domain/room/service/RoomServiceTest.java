@@ -10,6 +10,7 @@ import com.sisibibi.api.domain.room.dto.response.RoomSummaryRes;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
+import com.sisibibi.api.domain.speech.service.SpeakingQueueService;
 import com.sisibibi.api.domain.topic.entity.Topic;
 import com.sisibibi.api.domain.topic.entity.TopicStatus;
 import com.sisibibi.api.domain.topic.repository.TopicRepository;
@@ -58,6 +59,9 @@ class RoomServiceTest {
 
   @Mock
   private RoomTopicGenerator roomTopicGenerator;
+
+  @Mock
+  private SpeakingQueueService speakingQueueService;
 
   @Test
   void createRoom_createsRoomWithAiGeneratedTitle_whenTopicIsApproved() {
@@ -381,6 +385,7 @@ class RoomServiceTest {
     assertThat(room.getEndedAt()).isNotNull();
 
     verify(roomRepository).findByIdForUpdate(10L);
+    verify(speakingQueueService).closeSpeakingQueuesWhenRoomClosed(10L, room.getEndedAt());
     ArgumentCaptor<RoomClosedEvent> eventCaptor =
         ArgumentCaptor.forClass(RoomClosedEvent.class);
     verify(eventPublisher).publishEvent(eventCaptor.capture());
@@ -404,6 +409,7 @@ class RoomServiceTest {
 
     roomService.deleteRoom(10L);
 
+    verify(speakingQueueService, never()).closeSpeakingQueuesWhenRoomClosed(anyLong(), any());
     verify(eventPublisher, never()).publishEvent(any());
   }
 

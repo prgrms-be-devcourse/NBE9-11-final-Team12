@@ -147,6 +147,35 @@ public class SpeakingQueuePersistenceService {
     }
 
     @Transactional
+    public SpeakingQueueRoomCloseResult closeActiveRequestsByRoomId(
+            Long roomId,
+            LocalDateTime closedAt
+    ) {
+        List<SpeakingQueue> activeRequests =
+                speakingQueueRepository.findByRoomIdAndStatusInOrderByQueueOrderAsc(
+                        roomId,
+                        ACTIVE_STATUSES
+                );
+        List<SpeakingQueue> canceledRequests = new ArrayList<>();
+        List<SpeakingQueue> completedRequests = new ArrayList<>();
+
+        for (SpeakingQueue speakingQueue : activeRequests) {
+            if (speakingQueue.getStatus() == SpeakingQueueStatus.WAITING) {
+                speakingQueue.cancel(closedAt);
+                canceledRequests.add(speakingQueue);
+                continue;
+            }
+
+            if (speakingQueue.getStatus() == SpeakingQueueStatus.ASSIGNED) {
+                speakingQueue.complete();
+                completedRequests.add(speakingQueue);
+            }
+        }
+
+        return SpeakingQueueRoomCloseResult.of(canceledRequests, completedRequests);
+    }
+
+    @Transactional
     public SpeakingQueueAssignmentResult assignNextSpeaker(
             Long roomId,
             LocalDateTime assignedAt,
