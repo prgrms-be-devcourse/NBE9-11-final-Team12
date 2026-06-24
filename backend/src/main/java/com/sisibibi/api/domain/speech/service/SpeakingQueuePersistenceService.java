@@ -4,9 +4,11 @@ import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
+import com.sisibibi.api.domain.speech.entity.RoomQueueSequence;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
+import com.sisibibi.api.domain.speech.repository.RoomQueueSequenceRepository;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.domain.user.repository.UserRepository;
@@ -22,6 +24,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -35,20 +38,26 @@ public class SpeakingQueuePersistenceService {
     private static final int BALANCE_STREAK_THRESHOLD = 3;
 
     private final SpeakingQueueRepository speakingQueueRepository;
+    private final RoomQueueSequenceRepository roomQueueSequenceRepository;
     private final RoomRepository roomRepository;
     private final RoomParticipantRepository roomParticipantRepository;
     private final UserRepository userRepository;
     private final UserSanctionPolicyService userSanctionPolicyService;
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public SpeakingQueue createWaitingRequest(
             Long roomId,
             Long userId,
             SpeechStance stance
     ) {
         LocalDateTime requestedAt = LocalDateTime.now();
-        Room room = findRoomForUpdate(roomId);
+        Room room = findRoom(roomId);
         userSanctionPolicyService.validateStageAllowed(userId);
+        validateRoomActive(room, requestedAt);
+        validateJoinedParticipant(roomId, userId);
+
+        RoomQueueSequence queueSequence = findQueueSequenceForUpdate(roomId);
+        room = findRoom(roomId);
         validateRoomActive(room, requestedAt);
         validateJoinedParticipant(roomId, userId);
 
@@ -60,8 +69,7 @@ public class SpeakingQueuePersistenceService {
             throw new CustomException(ErrorCode.SPEAKING_REQUEST_ALREADY_EXISTS);
         }
 
-        int nextQueueOrder =
-                speakingQueueRepository.findMaxQueueOrderByRoomId(roomId) + 1;
+        int nextQueueOrder = queueSequence.issueNextQueueOrder(requestedAt);
         SpeakingQueue speakingQueue = SpeakingQueue.waiting(
                 roomId,
                 userId,
@@ -150,6 +158,7 @@ public class SpeakingQueuePersistenceService {
             Long roomId,
             LocalDateTime closedAt
     ) {
+        lockQueueSequenceIfExists(roomId);
         List<SpeakingQueue> activeRequests =
                 speakingQueueRepository.findByRoomIdAndStatusInOrderByQueueOrderAsc(
                         roomId,
@@ -219,6 +228,20 @@ public class SpeakingQueuePersistenceService {
     private Room findRoomForUpdate(Long roomId) {
         return roomRepository.findByIdForUpdate(roomId)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+    }
+
+    private Room findRoom(Long roomId) {
+        return roomRepository.findById(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+    }
+
+    private RoomQueueSequence findQueueSequenceForUpdate(Long roomId) {
+        return roomQueueSequenceRepository.findByRoomIdForUpdate(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.INTERNAL_SERVER_ERROR));
+    }
+
+    private void lockQueueSequenceIfExists(Long roomId) {
+        roomQueueSequenceRepository.findByRoomIdForUpdate(roomId);
     }
 
     private void validateRoomActive(Room room, LocalDateTime now) {

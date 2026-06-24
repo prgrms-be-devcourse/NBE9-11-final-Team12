@@ -13,9 +13,11 @@ import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
+import com.sisibibi.api.domain.speech.entity.RoomQueueSequence;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
+import com.sisibibi.api.domain.speech.repository.RoomQueueSequenceRepository;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import com.sisibibi.api.domain.user.repository.UserRepository;
@@ -46,6 +48,9 @@ class SpeakingQueuePersistenceServiceTest {
     private SpeakingQueueRepository speakingQueueRepository;
 
     @Mock
+    private RoomQueueSequenceRepository roomQueueSequenceRepository;
+
+    @Mock
     private RoomRepository roomRepository;
 
     @Mock
@@ -72,7 +77,7 @@ class SpeakingQueuePersistenceServiceTest {
 
     @Test
     void createWaitingRequest_throwsStageRestricted_whenUserHasActiveSanction() {
-        given(roomRepository.findByIdForUpdate(1L))
+        given(roomRepository.findById(1L))
                 .willReturn(Optional.of(openRoom(1L, "토론방")));
         doThrow(new CustomException(ErrorCode.USER_STAGE_RESTRICTED))
                 .when(userSanctionPolicyService)
@@ -88,23 +93,25 @@ class SpeakingQueuePersistenceServiceTest {
                 .isEqualTo(ErrorCode.USER_STAGE_RESTRICTED);
 
         InOrder order = inOrder(roomRepository, userSanctionPolicyService);
-        order.verify(roomRepository).findByIdForUpdate(1L);
+        order.verify(roomRepository).findById(1L);
         order.verify(userSanctionPolicyService).validateStageAllowed(7L);
         verify(speakingQueueRepository, never()).save(any(SpeakingQueue.class));
     }
 
     @Test
     void createWaitingRequest_persistsRequestWithNextRoomScopedOrder() {
-        given(roomRepository.findByIdForUpdate(1L))
-            .willReturn(Optional.of(openRoom(1L, "토론방")));
+        Room room = openRoom(1L, "토론방");
+        RoomQueueSequence queueSequence = queueSequenceWithNextOrder(1L, 3);
+        given(roomRepository.findById(1L))
+            .willReturn(Optional.of(room));
         givenJoined(1L, 7L);
+        given(roomQueueSequenceRepository.findByRoomIdForUpdate(1L))
+                .willReturn(Optional.of(queueSequence));
         given(speakingQueueRepository.existsByRoomIdAndUserIdAndStatusIn(
                 1L,
                 7L,
                 List.of(SpeakingQueueStatus.WAITING, SpeakingQueueStatus.ASSIGNED)
         )).willReturn(false);
-        given(speakingQueueRepository.findMaxQueueOrderByRoomId(1L))
-                .willReturn(2);
         given(speakingQueueRepository.save(any(SpeakingQueue.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
 
@@ -114,6 +121,7 @@ class SpeakingQueuePersistenceServiceTest {
         assertThat(saved.getQueueOrder()).isEqualTo(3);
         assertThat(saved.getStatus()).isEqualTo(SpeakingQueueStatus.WAITING);
         assertThat(saved.getStance()).isEqualTo(SpeechStance.PRO);
+        assertThat(queueSequence.getNextQueueOrder()).isEqualTo(4);
 
         ArgumentCaptor<SpeakingQueue> captor =
                 ArgumentCaptor.forClass(SpeakingQueue.class);
@@ -126,9 +134,11 @@ class SpeakingQueuePersistenceServiceTest {
 
     @Test
     void createWaitingRequest_rejectsExistingActiveRequest() {
-        given(roomRepository.findByIdForUpdate(1L))
+        given(roomRepository.findById(1L))
             .willReturn(Optional.of(openRoom(1L, "토론방")));
         givenJoined(1L, 7L);
+        given(roomQueueSequenceRepository.findByRoomIdForUpdate(1L))
+                .willReturn(Optional.of(queueSequenceWithNextOrder(1L, 3)));
         given(speakingQueueRepository.existsByRoomIdAndUserIdAndStatusIn(
                 1L,
                 7L,
@@ -141,13 +151,12 @@ class SpeakingQueuePersistenceServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.SPEAKING_REQUEST_ALREADY_EXISTS);
 
-        verify(speakingQueueRepository, never()).findMaxQueueOrderByRoomId(1L);
         verify(speakingQueueRepository, never()).save(any(SpeakingQueue.class));
     }
 
     @Test
     void createWaitingRequest_rejectsUserWhoIsNotJoinedParticipant() {
-        given(roomRepository.findByIdForUpdate(1L))
+        given(roomRepository.findById(1L))
                 .willReturn(Optional.of(openRoom(1L, "토론방")));
 
         assertThatThrownBy(() ->
@@ -167,7 +176,7 @@ class SpeakingQueuePersistenceServiceTest {
 
     @Test
     void createWaitingRequest_rejectsMissingRoom() {
-        given(roomRepository.findByIdForUpdate(1L)).willReturn(Optional.empty());
+        given(roomRepository.findById(1L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() ->
                 speakingQueuePersistenceService.createWaitingRequest(1L, 7L, SpeechStance.PRO))
@@ -193,7 +202,7 @@ class SpeakingQueuePersistenceServiceTest {
                 LocalDateTime.of(2000, 1, 1, 12, 0),
                 100
         );
-        given(roomRepository.findByIdForUpdate(1L)).willReturn(Optional.of(endedRoom));
+        given(roomRepository.findById(1L)).willReturn(Optional.of(endedRoom));
 
         assertThatThrownBy(() ->
                 speakingQueuePersistenceService.createWaitingRequest(1L, 7L, SpeechStance.PRO))
@@ -208,6 +217,17 @@ class SpeakingQueuePersistenceServiceTest {
                         RoomParticipantStatus.JOINED
                 );
         verify(speakingQueueRepository, never()).save(any(SpeakingQueue.class));
+    }
+
+    private RoomQueueSequence queueSequenceWithNextOrder(Long roomId, int nextQueueOrder) {
+        RoomQueueSequence queueSequence = RoomQueueSequence.create(
+                roomId,
+                LocalDateTime.of(2026, 6, 12, 11, 0)
+        );
+        while (queueSequence.getNextQueueOrder() < nextQueueOrder) {
+            queueSequence.issueNextQueueOrder(LocalDateTime.of(2026, 6, 12, 11, 0));
+        }
+        return queueSequence;
     }
 
     @Test
