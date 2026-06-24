@@ -45,6 +45,8 @@ public record AiReportGenerateRes(
     public boolean hasBaseRequiredFields() {
         return StringUtils.hasText(coreLine)
                 && keyIssues != null
+                && !keyIssues.isEmpty()
+                && keyIssues.stream().allMatch(StringUtils::hasText)
                 && StringUtils.hasText(aiSummary)
                 && StringUtils.hasText(commonGround)
                 && StringUtils.hasText(aiOpinion);

@@ -41,8 +41,23 @@ public class AiReportService {
     }
 
     public AiReportRes generateReport(Long roomId, AiReportGenerateReq request) {
+        return generateReportInternal(roomId, null, request, false);
+    }
+
+    public AiReportRes generateReport(Long roomId, Long userId, AiReportGenerateReq request) {
+        return generateReportInternal(roomId, userId, request, true);
+    }
+
+    private AiReportRes generateReportInternal(
+            Long roomId,
+            Long userId,
+            AiReportGenerateReq request,
+            boolean userScopedCustomReports
+    ) {
         List<CustomPromptCommand> customPrompts = normalizeAndScanCustomPrompts(request);
-        AiReportGenerationContext context = aiReportPersistenceService.prepareGeneration(roomId, customPrompts);
+        AiReportGenerationContext context = userScopedCustomReports
+                ? aiReportPersistenceService.prepareGeneration(roomId, userId, customPrompts)
+                : aiReportPersistenceService.prepareGeneration(roomId, customPrompts);
 
         if (!context.shouldCallAi()) {
             return context.response();
@@ -63,8 +78,17 @@ public class AiReportService {
             }
 
             if (context.generationType() == AiReportGenerationType.CUSTOM_ONLY) {
+                if (!userScopedCustomReports) {
+                    return aiReportPersistenceService.appendCustomReports(
+                            context.reportId(),
+                            context.request().customPrompts(),
+                            response.customReports()
+                    );
+                }
+
                 return aiReportPersistenceService.appendCustomReports(
                         context.reportId(),
+                        userId,
                         context.request().customPrompts(),
                         response.customReports()
                 );
@@ -91,6 +115,10 @@ public class AiReportService {
 
     public AiReportRes getReport(Long roomId) {
         return aiReportPersistenceService.getReport(roomId);
+    }
+
+    public AiReportRes getReport(Long roomId, Long userId) {
+        return aiReportPersistenceService.getReport(roomId, userId);
     }
 
     private boolean isValidResponse(AiReportGenerationContext context, AiReportGenerateRes response) {

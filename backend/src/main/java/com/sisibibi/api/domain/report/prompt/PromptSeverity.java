@@ -32,8 +32,29 @@ public enum PromptSeverity {
             return UNKNOWN;
         }
 
+        String normalized = value.trim();
+        switch (normalized) {
+            case "0" -> {
+                return SAFE;
+            }
+            case "1" -> {
+                return LOW;
+            }
+            case "2" -> {
+                return MEDIUM;
+            }
+            case "3" -> {
+                return HIGH;
+            }
+            case "4" -> {
+                return CRITICAL;
+            }
+            default -> {
+            }
+        }
+
         try {
-            return PromptSeverity.valueOf(value.trim().toUpperCase());
+            return PromptSeverity.valueOf(normalized.toUpperCase());
         } catch (IllegalArgumentException e) {
             return UNKNOWN;
         }

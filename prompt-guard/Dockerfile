@@ -12,7 +12,11 @@ WORKDIR /opt
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git \
-    && git clone --depth 1 --branch "${PROMPT_GUARD_REF}" "${PROMPT_GUARD_REPO}" /opt/prompt-guard \
+    && git clone --depth 1 --branch "${PROMPT_GUARD_REF}" "${PROMPT_GUARD_REPO}" /opt/prompt-guard
+
+COPY patch_patterns.py /tmp/patch_patterns.py
+
+RUN python /tmp/patch_patterns.py \
     && pip install --no-cache-dir -e "/opt/prompt-guard[dev]" \
     && apt-get purge -y --auto-remove git \
     && rm -rf /var/lib/apt/lists/*

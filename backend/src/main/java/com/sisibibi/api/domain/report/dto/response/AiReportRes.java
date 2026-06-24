@@ -50,6 +50,10 @@ public record AiReportRes(
     }
 
     public static AiReportRes from(AiReport report) {
+        return from(report, null);
+    }
+
+    public static AiReportRes from(AiReport report, Long viewerUserId) {
         return new AiReportRes(
                 report.getId(),
                 report.getRoomId(),
@@ -62,6 +66,7 @@ public record AiReportRes(
                 report.getCustomReports() == null
                         ? List.of()
                         : report.getCustomReports().stream()
+                        .filter(customReport -> customReport.isVisibleTo(viewerUserId))
                         .map(customReport -> new CustomReportRes(
                                 customReport.requestLabel(),
                                 customReport.prompt(),

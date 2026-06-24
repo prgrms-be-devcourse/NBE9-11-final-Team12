@@ -13,11 +13,18 @@ if str(PROJECT_ROOT) not in sys.path:
 from aireport import AiReportConfig, DEFAULT_MODEL_PATH as CONFIG_DEFAULT_MODEL_PATH
 from aireport import LlamaCppClient
 from aireport import ReportGenerator
+from aireport.report_generator import (
+    PROMPT_MODE_BASE,
+    PROMPT_MODE_CUSTOM_WITH_BASE,
+    PROMPT_MODE_CUSTOM_WITHOUT_BASE,
+)
 from aireport.report_schema import validate_report_file
 
 DEFAULT_MODEL_PATH = CONFIG_DEFAULT_MODEL_PATH
 DEFAULT_SAMPLE_PATH = PROJECT_ROOT / "samples" / "anonymous_debate_3h_sample.json"
-DEFAULT_PROMPT_PATH = PROJECT_ROOT / "prompts" / "report_generation_prompt.md"
+BASE_PROMPT_PATH = PROJECT_ROOT / "prompts" / "report_base_prompt.md"
+CUSTOM_WITHOUT_BASE_PROMPT_PATH = PROJECT_ROOT / "prompts" / "report_custom_without_base_prompt.md"
+CUSTOM_WITH_BASE_PROMPT_PATH = PROJECT_ROOT / "prompts" / "report_custom_with_base_prompt.md"
 DEFAULT_FEW_SHOT_PATH = PROJECT_ROOT / "prompts" / "few_shot_examples.md"
 DEFAULT_OUTPUT_PATH = PROJECT_ROOT / "outputs" / "latest_ai_report.json"
 DEFAULT_MODEL_INPUT_OUTPUT_PATH = PROJECT_ROOT / "outputs" / "latest_model_input.json"
@@ -66,8 +73,8 @@ def run_report():
     config = AiReportConfig.from_env()
     print(f"2/5 샘플 데이터를 읽는 중: {DEFAULT_SAMPLE_PATH}", flush=True)
     sample = _read_json(DEFAULT_SAMPLE_PATH)
-    print(f"3/5 프롬프트 템플릿과 few-shot 예시를 읽는 중: {DEFAULT_PROMPT_PATH}", flush=True)
-    prompt_template = DEFAULT_PROMPT_PATH.read_text(encoding="utf-8")
+    print("3/5 요청 유형별 프롬프트 템플릿과 few-shot 예시를 읽는 중", flush=True)
+    prompt_templates = _read_prompt_templates()
     few_shot_examples = _read_text_if_exists(DEFAULT_FEW_SHOT_PATH)
     print(f"4/5 모델 클라이언트를 준비하는 중: {config.model_path}", flush=True)
     client = LlamaCppClient(
@@ -81,7 +88,7 @@ def run_report():
     client.warm_up()
     generator = ReportGenerator(
         client,
-        prompt_template=prompt_template,
+        prompt_templates=prompt_templates,
         few_shot_examples=few_shot_examples,
     )
     print("5/5 모델로 AI 리포트를 생성하는 중입니다. 모델 로딩과 추론 때문에 시간이 걸릴 수 있습니다.", flush=True)
@@ -93,14 +100,15 @@ def preview_prompt():
     # 모델을 로딩하지 않고 최종 프롬프트만 출력합니다.
     # 모델 응답 품질이 이상할 때 입력 프롬프트부터 확인하기 위한 모드입니다.
     sample = _read_json(DEFAULT_SAMPLE_PATH)
-    prompt_template = DEFAULT_PROMPT_PATH.read_text(encoding="utf-8")
+    prompt_templates = _read_prompt_templates()
     few_shot_examples = _read_text_if_exists(DEFAULT_FEW_SHOT_PATH)
     generator = ReportGenerator(
         _PreviewClient(),
-        prompt_template=prompt_template,
+        prompt_templates=prompt_templates,
         few_shot_examples=few_shot_examples,
     )
     print(generator.build_prompt(sample))
+    print(f"선택된 프롬프트 모드: {generator.last_prompt_mode}")
 
 
 def _read_json(path):
@@ -112,6 +120,14 @@ def _read_text_if_exists(path):
     if not path.exists():
         return ""
     return path.read_text(encoding="utf-8")
+
+
+def _read_prompt_templates():
+    return {
+        PROMPT_MODE_BASE: _read_text_if_exists(BASE_PROMPT_PATH),
+        PROMPT_MODE_CUSTOM_WITHOUT_BASE: _read_text_if_exists(CUSTOM_WITHOUT_BASE_PROMPT_PATH),
+        PROMPT_MODE_CUSTOM_WITH_BASE: _read_text_if_exists(CUSTOM_WITH_BASE_PROMPT_PATH),
+    }
 
 
 def save_report(report, output_path=DEFAULT_OUTPUT_PATH):

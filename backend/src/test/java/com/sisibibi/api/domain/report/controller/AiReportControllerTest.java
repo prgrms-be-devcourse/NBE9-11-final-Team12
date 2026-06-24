@@ -10,10 +10,12 @@ import com.sisibibi.api.domain.report.service.AiReportService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.exception.GlobalExceptionHandler;
+import com.sisibibi.api.global.security.AuthPrincipal;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -21,6 +23,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
@@ -128,6 +131,39 @@ class AiReportControllerTest {
         verify(aiReportService).generateReport(10L, new AiReportGenerateReq(List.of(
                 new AiReportGenerateReq.CustomPromptReq("custom 1", "핵심 쟁점을 더 자세히 정리해줘")
         )));
+    }
+
+    @Test
+    void generateAiReport_passesAuthenticatedUserIdForUserScopedCustomReports() throws Exception {
+        AiReportGenerateReq request = new AiReportGenerateReq(List.of(
+                new AiReportGenerateReq.CustomPromptReq("custom 1", "minority view")
+        ));
+        given(aiReportService.generateReport(10L, 7L, request)).willReturn(new AiReportRes(
+                55L,
+                10L,
+                "COMPLETED",
+                "core",
+                List.of("issue"),
+                "summary",
+                "common",
+                "opinion",
+                List.of(new AiReportRes.CustomReportRes(
+                        "custom 1",
+                        "minority view",
+                        "minority",
+                        "minority content"
+                )),
+                null,
+                LocalDateTime.of(2026, 6, 22, 13, 0),
+                LocalDateTime.of(2026, 6, 22, 13, 1)
+        ));
+
+        ResponseEntity<com.sisibibi.api.global.response.ApiResponse<AiReportRes>> response =
+                new AiReportController(aiReportService)
+                        .generateAiReport(10L, new AuthPrincipal(7L, "user7@example.com", "USER"), request);
+
+        assertThat(response.getBody().getData().customReports().getFirst().content()).isEqualTo("minority content");
+        verify(aiReportService).generateReport(10L, 7L, request);
     }
 
     @Test

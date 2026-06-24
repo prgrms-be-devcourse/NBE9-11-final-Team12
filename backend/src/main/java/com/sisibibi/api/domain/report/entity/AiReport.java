@@ -121,12 +121,20 @@ public class AiReport {
     }
 
     public void appendCustomReports(
+            Long userId,
             List<AiReportCustomPrompt> customPrompts,
             List<AiReportCustomReportPayload> customReportPayloads
     ) {
         this.customPrompts = mergePrompts(this.customPrompts, customPrompts);
-        this.customReports = mergeReports(this.customReports, toCustomReports(customPrompts, customReportPayloads));
+        this.customReports = mergeReports(this.customReports, toCustomReports(userId, customPrompts, customReportPayloads));
         this.errorMessage = null;
+    }
+
+    public void appendCustomReports(
+            List<AiReportCustomPrompt> customPrompts,
+            List<AiReportCustomReportPayload> customReportPayloads
+    ) {
+        appendCustomReports(null, customPrompts, customReportPayloads);
     }
 
     public void fail(String errorMessage) {
@@ -172,6 +180,33 @@ public class AiReport {
                             : new AiReportCustomPrompt("custom " + (index + 1), "");
                     AiReportCustomReportPayload report = reports.get(index);
                     return new AiReportCustomReport(
+                            prompt.userId(),
+                            prompt.label(),
+                            prompt.prompt(),
+                            report.label(),
+                            report.content()
+                    );
+                })
+                .toList();
+    }
+
+    private List<AiReportCustomReport> toCustomReports(
+            Long userId,
+            List<AiReportCustomPrompt> prompts,
+            List<AiReportCustomReportPayload> reports
+    ) {
+        if (reports == null || reports.isEmpty()) {
+            return List.of();
+        }
+
+        return java.util.stream.IntStream.range(0, reports.size())
+                .mapToObj(index -> {
+                    AiReportCustomPrompt prompt = prompts != null && prompts.size() > index
+                            ? prompts.get(index)
+                            : new AiReportCustomPrompt(userId, "custom " + (index + 1), "");
+                    AiReportCustomReportPayload report = reports.get(index);
+                    return new AiReportCustomReport(
+                            prompt.userId() == null ? userId : prompt.userId(),
                             prompt.label(),
                             prompt.prompt(),
                             report.label(),

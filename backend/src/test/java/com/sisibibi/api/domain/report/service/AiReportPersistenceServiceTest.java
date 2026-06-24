@@ -60,6 +60,48 @@ class AiReportPersistenceServiceTest {
     private AiReportPersistenceService aiReportPersistenceService;
 
     @Test
+    void prepareGeneration_buildsBaseOnlyRequest_whenReportDoesNotExistAndNoCustomPrompts() throws Exception {
+        Room room = closedRoom(10L, 1L, "room title");
+        Topic topic = Topic.approved("topic title", "topic description", "IT", "https://example.com");
+        ReflectionTestUtils.setField(topic, "id", 1L);
+        Speech speech = completedSpeech(
+                100L,
+                10L,
+                7L,
+                "base speech",
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 22, 10, 0)
+        );
+
+        given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
+        given(aiReportRepository.findByRoomIdForUpdate(10L)).willReturn(Optional.empty());
+        given(topicRepository.findById(1L)).willReturn(Optional.of(topic));
+        given(speechRepository.findAiReportSourceSpeeches(10L)).willReturn(List.of(speech));
+        given(aiReportRepository.save(any(AiReport.class))).willAnswer(invocation -> {
+            AiReport report = invocation.getArgument(0);
+            ReflectionTestUtils.setField(report, "id", 55L);
+            return report;
+        });
+
+        AiReportGenerationContext context = aiReportPersistenceService.prepareGeneration(10L, List.of());
+
+        String requestJson = new ObjectMapper().findAndRegisterModules().writeValueAsString(context.request());
+
+        assertThat(context.shouldCallAi()).isTrue();
+        assertThat(context.generationType()).isEqualTo(AiReportGenerationType.BASE_ONLY);
+        assertThat(context.reportId()).isEqualTo(55L);
+        assertThat(context.request().customPrompts()).isEmpty();
+        assertThat(context.request().baseReport()).isNull();
+        assertThat(requestJson).contains("\"speeches\":[");
+        assertThat(requestJson).contains("\"speechId\":100");
+        assertThat(requestJson).contains("\"userId\":7");
+        assertThat(requestJson).contains("\"stance\":\"PRO\"");
+        assertThat(requestJson).doesNotContain("nickname");
+        assertThat(requestJson).doesNotContain("email");
+        assertThat(requestJson).doesNotContain("password");
+    }
+
+    @Test
     void prepareGeneration_savesPendingReportAndBuildsMinimalAiRequest() throws Exception {
         Room room = closedRoom(10L, 1L, "토론방 제목");
         Topic topic = Topic.approved("토픽 제목", "토픽 설명", "IT", "https://example.com");
@@ -160,6 +202,32 @@ class AiReportPersistenceServiceTest {
         assertThat(requestJson).contains("\"coreLine\":\"기본 핵심 한줄\"");
         assertThat(requestJson).contains("\"aiSummary\":\"기본 종합 정리\"");
         assertThat(requestJson).contains("\"customPrompts\":[{\"label\":\"custom 1\",\"prompt\":\"표현의 자유를 반박하는 의견 정리해줘\"}]");
+        verify(aiReportRepository, never()).save(any());
+    }
+
+    @Test
+    void prepareGeneration_returnsCompletedReportWithoutAiCall_whenBaseReportAlreadyCompletedAndNoCustomPrompts() {
+        Room room = closedRoom(10L, 1L, "room title");
+        AiReport existing = AiReport.pending(10L);
+        ReflectionTestUtils.setField(existing, "id", 55L);
+        existing.complete(new AiReportGenerateRes(
+                "core",
+                List.of("issue"),
+                "summary",
+                "common",
+                "opinion"
+        ));
+
+        given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
+        given(aiReportRepository.findByRoomIdForUpdate(10L)).willReturn(Optional.of(existing));
+
+        AiReportGenerationContext context = aiReportPersistenceService.prepareGeneration(10L, List.of());
+
+        assertThat(context.shouldCallAi()).isFalse();
+        assertThat(context.response().status()).isEqualTo("COMPLETED");
+        assertThat(context.response().coreLine()).isEqualTo("core");
+        verify(topicRepository, never()).findById(any());
+        verify(speechRepository, never()).findAiReportSourceSpeeches(any());
         verify(aiReportRepository, never()).save(any());
     }
 
@@ -270,6 +338,47 @@ class AiReportPersistenceServiceTest {
                 "소수 의견 내용"
         ));
         assertThat(result.customReports()).hasSize(1);
+    }
+
+    @Test
+    void appendCustomReports_returnsOnlyCustomResultsForCurrentUser() {
+        AiReport report = AiReport.pending(10L);
+        ReflectionTestUtils.setField(report, "id", 55L);
+        report.complete(new AiReportGenerateRes(
+                "core",
+                List.of("issue"),
+                "summary",
+                "common",
+                "opinion",
+                List.of()
+        ));
+        List<CustomPromptCommand> prompts = List.of(new CustomPromptCommand("custom 1", "minority view"));
+
+        given(aiReportRepository.findById(55L)).willReturn(Optional.of(report));
+
+        aiReportPersistenceService.appendCustomReports(
+                55L,
+                7L,
+                prompts,
+                List.of(new AiReportCustomReportPayload("user seven", "only user seven"))
+        );
+        AiReportRes result = aiReportPersistenceService.appendCustomReports(
+                55L,
+                8L,
+                prompts,
+                List.of(new AiReportCustomReportPayload("user eight", "only user eight"))
+        );
+
+        assertThat(report.getCustomReports()).containsExactly(
+                new AiReportCustomReport(7L, "custom 1", "minority view", "user seven", "only user seven"),
+                new AiReportCustomReport(8L, "custom 1", "minority view", "user eight", "only user eight")
+        );
+        assertThat(result.customReports()).containsExactly(new AiReportRes.CustomReportRes(
+                "custom 1",
+                "minority view",
+                "user eight",
+                "only user eight"
+        ));
     }
 
     @Test

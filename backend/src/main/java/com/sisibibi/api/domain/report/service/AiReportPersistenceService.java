@@ -42,6 +42,11 @@ public class AiReportPersistenceService {
 
     @Transactional
     public AiReportGenerationContext prepareGeneration(Long roomId, List<CustomPromptCommand> customPrompts) {
+        return prepareGeneration(roomId, null, customPrompts);
+    }
+
+    @Transactional
+    public AiReportGenerationContext prepareGeneration(Long roomId, Long userId, List<CustomPromptCommand> customPrompts) {
         Room room = roomRepository.findByIdForUpdate(roomId)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
 
@@ -53,12 +58,12 @@ public class AiReportPersistenceService {
                 .orElse(null);
 
         if (report != null && report.getStatus() == com.sisibibi.api.domain.report.entity.AiReportStatus.PENDING) {
-            return AiReportGenerationContext.skipAi(AiReportRes.from(report));
+            return AiReportGenerationContext.skipAi(AiReportRes.from(report, userId));
         }
 
         if (report != null && report.getStatus() == com.sisibibi.api.domain.report.entity.AiReportStatus.COMPLETED) {
             if (customPrompts == null || customPrompts.isEmpty()) {
-                return AiReportGenerationContext.skipAi(AiReportRes.from(report));
+                return AiReportGenerationContext.skipAi(AiReportRes.from(report, userId));
             }
 
             Topic topic = topicRepository.findById(room.getTopicId())
@@ -78,9 +83,9 @@ public class AiReportPersistenceService {
         }
 
         if (report == null) {
-            report = aiReportRepository.save(AiReport.pending(roomId, toSnapshots(customPrompts)));
+            report = aiReportRepository.save(AiReport.pending(roomId, toSnapshots(userId, customPrompts)));
         } else {
-            report.retry(toSnapshots(customPrompts));
+            report.retry(toSnapshots(userId, customPrompts));
         }
 
         Topic topic = topicRepository.findById(room.getTopicId())
@@ -117,11 +122,21 @@ public class AiReportPersistenceService {
             List<CustomPromptCommand> customPrompts,
             List<AiReportCustomReportPayload> customReports
     ) {
+        return appendCustomReports(reportId, null, customPrompts, customReports);
+    }
+
+    @Transactional
+    public AiReportRes appendCustomReports(
+            Long reportId,
+            Long userId,
+            List<CustomPromptCommand> customPrompts,
+            List<AiReportCustomReportPayload> customReports
+    ) {
         AiReport report = aiReportRepository.findById(reportId)
                 .orElseThrow(() -> new CustomException(ErrorCode.AI_REPORT_NOT_FOUND));
 
-        report.appendCustomReports(toSnapshots(customPrompts), customReports);
-        return AiReportRes.from(report);
+        report.appendCustomReports(userId, toSnapshots(userId, customPrompts), customReports);
+        return AiReportRes.from(report, userId);
     }
 
     @Transactional
@@ -134,8 +149,12 @@ public class AiReportPersistenceService {
     }
 
     public AiReportRes getReport(Long roomId) {
+        return getReport(roomId, null);
+    }
+
+    public AiReportRes getReport(Long roomId, Long userId) {
         return aiReportRepository.findByRoomId(roomId)
-                .map(AiReportRes::from)
+                .map(report -> AiReportRes.from(report, userId))
                 .orElseThrow(() -> new CustomException(ErrorCode.AI_REPORT_NOT_FOUND));
     }
 
@@ -188,12 +207,16 @@ public class AiReportPersistenceService {
     }
 
     private List<AiReportCustomPrompt> toSnapshots(List<CustomPromptCommand> customPrompts) {
+        return toSnapshots(null, customPrompts);
+    }
+
+    private List<AiReportCustomPrompt> toSnapshots(Long userId, List<CustomPromptCommand> customPrompts) {
         if (customPrompts == null || customPrompts.isEmpty()) {
             return List.of();
         }
 
         return customPrompts.stream()
-                .map(prompt -> new AiReportCustomPrompt(prompt.label(), prompt.prompt()))
+                .map(prompt -> new AiReportCustomPrompt(userId, prompt.label(), prompt.prompt()))
                 .toList();
     }
 }

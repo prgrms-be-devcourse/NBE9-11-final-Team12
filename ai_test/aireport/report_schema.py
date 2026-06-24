@@ -56,7 +56,10 @@ def _validate_base_report(report):
 
 def _validate_custom_reports(custom_reports, expected_count):
     if not isinstance(custom_reports, list):
-        raise ValueError("Report schema validation failed: customReports must be a list")
+        raise ValueError(
+            "Report schema validation failed: customPrompts were provided, "
+            "so model response must include customReports as a list"
+        )
     if len(custom_reports) != expected_count:
         raise ValueError(
             f"Report schema validation failed: customReports length must be {expected_count}, got {len(custom_reports)}"

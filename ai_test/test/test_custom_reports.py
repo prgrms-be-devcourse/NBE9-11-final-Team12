@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import patch
 
 from aireport.input_contract import normalize_report_request
+from aireport.api import AiReportGenerateResponse
 from aireport.report_generator import ReportGenerator
 from aireport.report_schema import AiReportModel, validate_report
 from aireport.prompt_security import NoOpPromptGuard, PromptSecurityService
@@ -74,6 +75,15 @@ class ConditionalReportSchemaTest(unittest.TestCase):
             )
 
 
+class AiReportApiResponseContractTest(unittest.TestCase):
+    def test_response_model_accepts_custom_reports_only(self):
+        response = AiReportGenerateResponse.model_validate({
+            "customReports": [{"label": "Minority view", "content": "summary"}],
+        })
+
+        self.assertEqual(response.customReports[0]["label"], "Minority view")
+
+
 class ReportGeneratorCustomReportTest(unittest.TestCase):
     def setUp(self):
         self.clustering_patch = patch("aireport.report_generator.USE_TEXT_CLUSTERING", False)
@@ -126,6 +136,7 @@ def _generator(model_client):
         model_client,
         prompt_template="SYSTEM\n{{FEW_SHOT_EXAMPLES}}\nINPUT\n{{DEBATE_JSON}}",
         prompt_security=PromptSecurityService(guard=NoOpPromptGuard()),
+        debug_output_path=None,
     )
     original_build_prompt = generator.build_prompt
 

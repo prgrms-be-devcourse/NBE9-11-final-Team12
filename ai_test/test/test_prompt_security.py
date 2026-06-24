@@ -179,6 +179,7 @@ class ReportGeneratorPromptSecurityTest(unittest.TestCase):
             model_client,
             prompt_template=_prompt_template(),
             prompt_security=_BlockingSecurity(block_input_label="custom 1"),
+            debug_output_path=None,
         )
 
         with self.assertRaisesRegex(PromptSecurityError, "custom 1"):
@@ -192,6 +193,7 @@ class ReportGeneratorPromptSecurityTest(unittest.TestCase):
             model_client,
             prompt_template=_prompt_template(),
             prompt_security=_BlockingSecurity(block_final_prompt=True),
+            debug_output_path=None,
         )
 
         with self.assertRaisesRegex(PromptSecurityError, "final prompt"):
@@ -207,6 +209,7 @@ class ReportGeneratorPromptSecurityTest(unittest.TestCase):
             model_client,
             prompt_template=_prompt_template(),
             prompt_security=PromptSecurityService(guard=NoOpPromptGuard()),
+            debug_output_path=None,
         )
 
         generator.generate(_payload_with_custom_prompts(["개인화 관점을 반영해줘."]))
@@ -223,6 +226,7 @@ class ReportGeneratorPromptSecurityTest(unittest.TestCase):
             model_client,
             prompt_template=_prompt_template(),
             prompt_security=_OutputSanitizingSecurity(sanitized_json),
+            debug_output_path=None,
         )
 
         report = generator.generate(_payload_with_custom_prompts([]))
@@ -235,6 +239,7 @@ class ReportGeneratorPromptSecurityTest(unittest.TestCase):
             model_client,
             prompt_template=_prompt_template(),
             prompt_security=_OutputBlockingSecurity(),
+            debug_output_path=None,
         )
 
         with self.assertRaises(PromptSecurityError):

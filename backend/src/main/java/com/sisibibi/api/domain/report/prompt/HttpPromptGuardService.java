@@ -134,7 +134,19 @@ public class HttpPromptGuardService implements PromptGuardService {
     private record PromptGuardMatch(
             String severity,
             String action,
-            String reason
+            String reason,
+            String type,
+            String pattern
     ) {
+        @Override
+        public String reason() {
+            if (StringUtils.hasText(reason)) {
+                return reason;
+            }
+            if (StringUtils.hasText(type)) {
+                return type;
+            }
+            return pattern;
+        }
     }
 }
