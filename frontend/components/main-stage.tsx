@@ -69,6 +69,13 @@ export function MainStage({
   const [reportError, setReportError] = useState("")
 
   const loadSpeeches = useCallback(async () => {
+    if (!liveEnabled) {
+      setSpeeches([])
+      setLoading(false)
+      setError("")
+      return
+    }
+
     setLoading(true)
     setError("")
     try {
@@ -79,7 +86,7 @@ export function MainStage({
     } finally {
       setLoading(false)
     }
-  }, [roomId])
+  }, [liveEnabled, roomId])
 
   const loadStage = useCallback(async () => {
     if (!liveEnabled) {
@@ -253,7 +260,12 @@ export function MainStage({
           <Badge className="bg-rose-50 text-rose-600 border-rose-200 text-[11px]">LIVE</Badge>
           <span className="text-sm font-semibold">MAIN STAGE</span>
         </div>
-        <Button size="sm" className="gap-1.5 text-xs" onClick={() => setCreateOpen(true)}>
+        <Button
+          size="sm"
+          className="gap-1.5 text-xs"
+          disabled={!liveEnabled}
+          onClick={() => setCreateOpen(true)}
+        >
           <MessageSquarePlus className="size-3.5" /> 의견 작성
         </Button>
       </div>

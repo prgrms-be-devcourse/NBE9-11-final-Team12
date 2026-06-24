@@ -30,6 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import org.springframework.http.MediaType;
 
 @SpringBootTest(classes = ApiApplication.class)
@@ -136,6 +137,45 @@ class SecurityConfigTest {
         mockMvc.perform(get("/actuator/prometheus"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("jvm_memory_used_bytes")));
+    }
+
+    @Test
+    void roomListAndOpenRooms_arePublic() throws Exception {
+        mockMvc.perform(get("/api/v1/rooms"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/rooms/open"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void roomDetailAndParticipantCount_arePublic() throws Exception {
+        mockMvc.perform(get("/api/v1/rooms/999999"))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(get("/api/v1/rooms/999999/participants/count"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void participationChatStageAndParticipantList_stayProtected() throws Exception {
+        mockMvc.perform(post("/api/v1/rooms/1/participants").with(csrf()))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/v1/rooms/1/participants"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/v1/rooms/1/chat/messages"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/v1/rooms/1/speeches"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/v1/speeches/1"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/v1/rooms/1/stage"))
+                .andExpect(status().isUnauthorized());
     }
 
     @RestController

@@ -66,7 +66,7 @@ export default function RoomDetailPage() {
     if (authLoading) return
     if (!user) {
       setJoined(false)
-      setJoinError("로그인 후 토론방에 참여할 수 있습니다.")
+      router.replace(`/login?redirect=${encodeURIComponent(`/rooms/${roomId}`)}`)
       return
     }
 
@@ -234,7 +234,9 @@ export default function RoomDetailPage() {
       {/* Body — fills remaining space, scrollable on mobile, fixed on desktop */}
       <div className="min-h-0 flex-1 overflow-y-auto lg:overflow-hidden">
         <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col px-4 py-4 md:px-6 lg:py-4">
-          {joinError && <p className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{joinError}</p>}
+          {joinError && (user || !roomView) && (
+            <p className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{joinError}</p>
+          )}
 
           {/* 3-column layout on desktop */}
           <div className="flex min-h-0 flex-col gap-6 lg:flex-1 lg:flex-row">
