@@ -48,19 +48,21 @@ public class AiReportWorkerCallbackService {
 
     @Transactional
     public AiReportWorkerProcessingRes startProcessing(Long reportId, AiReportGenerationType generationType) {
+        // 1. 리포트 및 방 데이터 조회 (비관적 락 적용으로 정합성 보장)
         AiReport report = findReportForUpdate(reportId);
         Room room = roomRepository.findByIdForUpdate(report.getRoomId())
                 .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
-
+        // 2. 방 상태 체크 및 리포트 상태를 PROCESSING으로 변경
         if (room.getStatus() != RoomStatus.CLOSED) {
             throw new CustomException(ErrorCode.AI_REPORT_ROOM_NOT_CLOSED);
         }
-
+        // 3. 토론 주제 및 발언 내역 조회
         Topic topic = topicRepository.findById(room.getTopicId())
                 .orElseThrow(() -> new CustomException(ErrorCode.TOPIC_NOT_FOUND));
 
         report.markProcessing(LocalDateTime.now(), aiReportProperties.getTimeout());
 
+        // 4. 생성 분기에 따른 최적의 프롬프트 및 데이터 조립
         AiReportGenerateReq request = buildRequest(
                 room,
                 topic,
@@ -80,10 +82,13 @@ public class AiReportWorkerCallbackService {
     @Transactional
     public AiReportRes complete(Long reportId, AiReportWorkerCompleteReq request) {
         AiReport report = findReportForUpdate(reportId);
+
+        // 만약 이미 완료 처리된 리포트라면 중복 처리하지 않고 즉시 반환
         if (report.getStatus() == AiReportStatus.COMPLETED) {
             return AiReportRes.from(report);
         }
 
+        // 모드에 따른 정밀 검증 후 저장
         AiReportGenerateRes response = request.toGenerateResponse();
         if (request.generationType() == AiReportGenerationType.CUSTOM_ONLY) {
             validateCustomReports(response, report.getCustomPrompts().size());
@@ -91,7 +96,7 @@ public class AiReportWorkerCallbackService {
             return AiReportRes.from(report);
         }
 
-        validateBaseReport(response);
+        validateBaseReport(response); // 기본 필드(요약, 총평 등)가 잘 들어왔나 검사
         if (request.generationType() == AiReportGenerationType.BASE_WITH_CUSTOM) {
             validateCustomReports(response, report.getCustomPrompts().size());
         }
@@ -103,10 +108,13 @@ public class AiReportWorkerCallbackService {
     @Transactional
     public AiReportRes fail(Long reportId, AiReportWorkerFailReq request) {
         AiReport report = findReportForUpdate(reportId);
+
+        // 이미 완료된 리포트라면 실패 처리를 무시
         if (report.getStatus() == AiReportStatus.COMPLETED) {
             return AiReportRes.from(report);
         }
 
+        // 엔티티에 실패 상태와 원인 기록
         report.fail(request.errorCode(), request.errorMessage());
         return AiReportRes.from(report);
     }
