@@ -3,6 +3,7 @@ package com.sisibibi.api.domain.speech.entity;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 
@@ -111,6 +112,104 @@ class SpeakingQueueTest {
         assertThat(speakingQueue.getActiveRequest()).isTrue();
         assertThat(speakingQueue.getAssignedAt()).isEqualTo(assignedAt);
         assertThat(speakingQueue.getExpiresAt()).isEqualTo(expiresAt);
+        assertThat(speakingQueue.getLastActivityAt()).isEqualTo(assignedAt);
+        assertThat(speakingQueue.isIdleWarningSent()).isFalse();
+        assertThat(speakingQueue.getIdleWarnedAt()).isNull();
+    }
+
+    @Test
+    void recordActivity_updatesLastActivityAndClearsIdleWarning() {
+        SpeakingQueue speakingQueue = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        LocalDateTime assignedAt = LocalDateTime.of(2026, 6, 12, 11, 31);
+        speakingQueue.assign(assignedAt, assignedAt.plusMinutes(3));
+        speakingQueue.markIdleWarningIfDue(
+                assignedAt.plusSeconds(20),
+                Duration.ofSeconds(20),
+                Duration.ofSeconds(40)
+        );
+        LocalDateTime activityAt = assignedAt.plusSeconds(25);
+
+        speakingQueue.recordActivity(activityAt);
+
+        assertThat(speakingQueue.getLastActivityAt()).isEqualTo(activityAt);
+        assertThat(speakingQueue.isIdleWarningSent()).isFalse();
+        assertThat(speakingQueue.getIdleWarnedAt()).isNull();
+    }
+
+    @Test
+    void markIdleWarningIfDue_marksWarningAfterConfiguredIdleDelay() {
+        SpeakingQueue speakingQueue = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        LocalDateTime assignedAt = LocalDateTime.of(2026, 6, 12, 11, 31);
+        LocalDateTime warnedAt = assignedAt.plusSeconds(20);
+        speakingQueue.assign(assignedAt, assignedAt.plusMinutes(3));
+
+        boolean warned = speakingQueue.markIdleWarningIfDue(
+                warnedAt,
+                Duration.ofSeconds(20),
+                Duration.ofSeconds(40)
+        );
+
+        assertThat(warned).isTrue();
+        assertThat(speakingQueue.isIdleWarningSent()).isTrue();
+        assertThat(speakingQueue.getIdleWarnedAt()).isEqualTo(warnedAt);
+    }
+
+    @Test
+    void markIdleWarningIfDue_skipsWarningWhenExpirationIsSoon() {
+        SpeakingQueue speakingQueue = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        LocalDateTime assignedAt = LocalDateTime.of(2026, 6, 12, 11, 31);
+        speakingQueue.assign(assignedAt, assignedAt.plusSeconds(55));
+
+        boolean warned = speakingQueue.markIdleWarningIfDue(
+                assignedAt.plusSeconds(20),
+                Duration.ofSeconds(20),
+                Duration.ofSeconds(40)
+        );
+
+        assertThat(warned).isFalse();
+        assertThat(speakingQueue.isIdleWarningSent()).isFalse();
+        assertThat(speakingQueue.getIdleWarnedAt()).isNull();
+    }
+
+    @Test
+    void isIdleTimedOut_returnsTrueAfterWarningDelay() {
+        SpeakingQueue speakingQueue = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        LocalDateTime assignedAt = LocalDateTime.of(2026, 6, 12, 11, 31);
+        speakingQueue.assign(assignedAt, assignedAt.plusMinutes(3));
+        speakingQueue.markIdleWarningIfDue(
+                assignedAt.plusSeconds(20),
+                Duration.ofSeconds(20),
+                Duration.ofSeconds(40)
+        );
+
+        assertThat(speakingQueue.isIdleTimedOut(
+                assignedAt.plusSeconds(40),
+                Duration.ofSeconds(20)
+        )).isTrue();
     }
 
     @Test

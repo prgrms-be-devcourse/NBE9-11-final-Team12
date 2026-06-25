@@ -110,8 +110,8 @@ resource "aws_route_table_association" "association_4" {
   route_table_id = aws_route_table.rt_1.id
 }
 
-resource "aws_security_group" "sg_1" {
-  name   = "${var.prefix}-sg-1"
+resource "aws_security_group" "app_sg" {
+  name   = "${var.prefix}-app-sg"
   vpc_id = aws_vpc.vpc_1.id
 
   # HTTP
@@ -130,8 +130,7 @@ resource "aws_security_group" "sg_1" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Nginx Proxy Manager 관리자 페이지
-  # 팀원들이 접속해야 하므로 전체 허용
+  # NPM 관리자 페이지 - 전체 공개 X
   ingress {
     from_port   = 81
     to_port     = 81
@@ -139,7 +138,6 @@ resource "aws_security_group" "sg_1" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Outbound 전체 허용
   egress {
     from_port   = 0
     to_port     = 0
@@ -148,7 +146,32 @@ resource "aws_security_group" "sg_1" {
   }
 
   tags = {
-    Name = "${var.prefix}-sg-1"
+    Name = "${var.prefix}-app-sg"
+  }
+}
+
+
+resource "aws_security_group" "db_sg" {
+  name   = "${var.prefix}-db-sg"
+  vpc_id = aws_vpc.vpc_1.id
+
+  # MySQL은 App EC2에서만 접근 허용
+  ingress {
+    from_port       = 3306
+    to_port         = 3306
+    protocol        = "tcp"
+    security_groups = [aws_security_group.app_sg.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "${var.prefix}-db-sg"
   }
 }
 
@@ -210,9 +233,92 @@ resource "aws_iam_role_policy_attachment" "ssm_core" {
 }
 
 # EC2 역할에 AmazonS3FullAccess 정책을 부착
-resource "aws_iam_role_policy_attachment" "s3_full_access" {
+resource "aws_s3_bucket" "speech_images" {
+  bucket = var.s3_speech_image_bucket_name
+
+  tags = {
+    Name = "${var.prefix}-speech-images"
+  }
+}
+
+resource "aws_s3_bucket_ownership_controls" "speech_images" {
+  bucket = aws_s3_bucket.speech_images.id
+
+  rule {
+    object_ownership = "BucketOwnerEnforced"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "speech_images" {
+  bucket = aws_s3_bucket.speech_images.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "speech_images" {
+  bucket = aws_s3_bucket.speech_images.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_cors_configuration" "speech_images" {
+  bucket = aws_s3_bucket.speech_images.id
+
+  cors_rule {
+    allowed_methods = ["PUT", "HEAD", "GET"]
+    allowed_origins = [var.frontend_origin]
+    allowed_headers = ["*"]
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3000
+  }
+}
+
+resource "aws_iam_policy" "speech_image_s3_policy" {
+  name = "${var.prefix}-speech-image-s3-policy"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:HeadObject",
+          "s3:DeleteObject"
+        ]
+        Resource = "${aws_s3_bucket.speech_images.arn}/speeches/*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket"
+        ]
+        Resource = aws_s3_bucket.speech_images.arn
+        Condition = {
+          StringLike = {
+            "s3:prefix" = ["speeches/*"]
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "speech_image_s3_policy" {
   role       = data.aws_iam_role.ec2_role_1.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+  policy_arn = aws_iam_policy.speech_image_s3_policy.arn
+}
+
+output "speech_image_bucket_name" {
+  value = aws_s3_bucket.speech_images.bucket
 }
 
 locals {
@@ -257,42 +363,16 @@ docker run -d \
 
 # redis 설치
 docker run -d \
-  --name=redis_1 \
+  --name redis_1 \
   --restart unless-stopped \
   --network common \
-  -p 6379:6379 \
+  --memory=512m \
+  --memory-swap=512m \
   -e TZ=Asia/Seoul \
-  redis --requirepass ${var.password_1}
-
-# mysql 설치
-docker run -d \
-  --name mysql_1 \
-  --restart unless-stopped \
-  -v /dockerProjects/mysql_1/volumes/var/lib/mysql:/var/lib/mysql \
-  -v /dockerProjects/mysql_1/volumes/etc/mysql/conf.d:/etc/mysql/conf.d \
-  --network common \
-  -p 3306:3306 \
-  -e MYSQL_ROOT_PASSWORD=${var.password_1} \
-  -e TZ=Asia/Seoul \
-  mysql:latest
-
-# MySQL 컨테이너가 준비될 때까지 대기
-echo "MySQL이 기동될 때까지 대기 중..."
-until docker exec mysql_1 mysql -uroot -p${var.password_1} -e "SELECT 1" &> /dev/null; do
-  echo "MySQL이 아직 준비되지 않음. 5초 후 재시도..."
-  sleep 5
-done
-echo "MySQL이 준비됨. 초기화 스크립트 실행 중..."
-
-docker exec mysql_1 mysql -uroot -p${var.password_1} -e "
-CREATE USER IF NOT EXISTS 'sisibibi'@'%' IDENTIFIED WITH caching_sha2_password BY '${var.password_1}';
-
-GRANT ALL PRIVILEGES ON sisibibi.* TO 'sisibibi'@'%';
-
-CREATE DATABASE sisibibi;
-
-FLUSH PRIVILEGES;
-"
+  redis:latest redis-server \
+  --requirepass ${var.password_1} \
+  --maxmemory 256mb \
+  --maxmemory-policy allkeys-lru
 
 END_OF_FILE
 }
@@ -307,11 +387,11 @@ resource "aws_instance" "ec2_1" {
   # 사용할 AMI ID
   ami = data.aws_ssm_parameter.amazon_linux_ami.value
   # EC2 인스턴스 유형
-  instance_type = "t3.small"
+  instance_type = "t3.medium"
   # 사용할 서브넷 ID
   subnet_id = aws_subnet.subnet_2.id
   # 적용할 보안 그룹 ID
-  vpc_security_group_ids = [aws_security_group.sg_1.id]
+  vpc_security_group_ids = [aws_security_group.app_sg.id]
   # 퍼블릭 IP 연결 설정
   associate_public_ip_address = true
 
@@ -320,7 +400,7 @@ resource "aws_instance" "ec2_1" {
 
   # 인스턴스에 태그 설정
   tags = {
-    Name = "${var.prefix}-ec2-1"
+    Name = "${var.prefix}-web"
   }
 
   # 루트 볼륨 설정
@@ -334,10 +414,79 @@ ${local.ec2_user_data_base}
 EOF
 }
 
+
+resource "aws_instance" "mysql_1" {
+  ami           = data.aws_ssm_parameter.amazon_linux_ami.value
+  instance_type = "t3.small"
+
+  subnet_id                   = aws_subnet.subnet_3.id
+  vpc_security_group_ids      = [aws_security_group.db_sg.id]
+  associate_public_ip_address = true
+
+  iam_instance_profile = data.aws_iam_instance_profile.instance_profile_1.name
+
+  tags = {
+    Name = "${var.prefix}-mysql"
+  }
+
+  root_block_device {
+    volume_type = "gp3"
+    volume_size = 30
+  }
+
+  user_data = <<-EOF
+#!/bin/bash
+
+# swap 설정
+dd if=/dev/zero of=/swapfile bs=128M count=32
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+sh -c 'echo "/swapfile swap swap defaults 0 0" >> /etc/fstab'
+
+# docker 설치
+yum install docker -y
+systemctl enable docker
+systemctl start docker
+
+docker network create db-network || true
+
+# MySQL 실행
+docker run -d \
+  --name mysql_1 \
+  --restart unless-stopped \
+  --network db-network \
+  -p 3306:3306 \
+  --memory=1200m \
+  --memory-swap=1500m \
+  -v /dockerProjects/mysql_1/volumes/var/lib/mysql:/var/lib/mysql \
+  -v /dockerProjects/mysql_1/volumes/etc/mysql/conf.d:/etc/mysql/conf.d \
+  -e MYSQL_ROOT_PASSWORD=${var.password_1} \
+  -e TZ=Asia/Seoul \
+  mysql:latest
+
+echo "MySQL이 기동될 때까지 대기 중..."
+until docker exec mysql_1 mysql -uroot -p${var.password_1} -e "SELECT 1" &> /dev/null; do
+  echo "MySQL이 아직 준비되지 않음. 5초 후 재시도..."
+  sleep 5
+done
+
+docker exec mysql_1 mysql -uroot -p${var.password_1} -e "
+CREATE DATABASE IF NOT EXISTS sisibibi;
+
+CREATE USER IF NOT EXISTS 'sisibibi'@'%' IDENTIFIED BY '${var.password_1}';
+
+GRANT ALL PRIVILEGES ON sisibibi.* TO 'sisibibi'@'%';
+
+FLUSH PRIVILEGES;
+"
+EOF
+}
+
 data "aws_eip" "eip_ec2_1" {
   filter {
     name   = "tag:Name"
-    values = ["${var.prefix}-ec2-1"]
+    values = ["${var.prefix}-eip"]
   }
 }
 
@@ -346,7 +495,11 @@ resource "aws_eip_association" "ec2_1" {
   allocation_id = data.aws_eip.eip_ec2_1.id
 }
 
-resource "aws_ec2_instance_state" "ec2_1" {
-  instance_id = aws_instance.ec2_1.id
-  state       = "stopped"
+# resource "aws_ec2_instance_state" "ec2_1" {
+#   instance_id = aws_instance.ec2_1.id
+#   state       = "stopped"
+# }
+
+output "mysql_private_ip" {
+  value = aws_instance.mysql_1.private_ip
 }

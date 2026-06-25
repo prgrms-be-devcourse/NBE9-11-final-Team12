@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -40,44 +41,6 @@ class SpeakingQueueRepositoryTest {
                 7L,
                 List.of(SpeakingQueueStatus.WAITING, SpeakingQueueStatus.ASSIGNED)
         )).isTrue();
-    }
-
-    @Test
-    void findMaxQueueOrderByRoomId_returnsRoomScopedMaxOrder() {
-        speakingQueueRepository.saveAllAndFlush(List.of(
-                SpeakingQueue.waiting(
-                        1L,
-                        10L,
-                        1,
-                        SpeechStance.PRO,
-                LocalDateTime.of(2026, 6, 12, 11, 30)
-                ),
-                SpeakingQueue.waiting(
-                        1L,
-                        20L,
-                        3,
-                        SpeechStance.PRO,
-                LocalDateTime.of(2026, 6, 12, 11, 31)
-                ),
-                SpeakingQueue.waiting(
-                        2L,
-                        30L,
-                        9,
-                        SpeechStance.PRO,
-                LocalDateTime.of(2026, 6, 12, 11, 32)
-                )
-        ));
-
-        int maxQueueOrder = speakingQueueRepository.findMaxQueueOrderByRoomId(1L);
-
-        assertThat(maxQueueOrder).isEqualTo(3);
-    }
-
-    @Test
-    void findMaxQueueOrderByRoomId_returnsZeroWhenRoomHasNoRequest() {
-        int maxQueueOrder = speakingQueueRepository.findMaxQueueOrderByRoomId(1L);
-
-        assertThat(maxQueueOrder).isZero();
     }
 
     @Test
@@ -158,6 +121,97 @@ class SpeakingQueueRepositoryTest {
 
         assertThat(found.getId()).isEqualTo(first.getId());
         assertThat(found.getQueueOrder()).isEqualTo(15);
+    }
+
+    @Test
+    void findWaitingPageForRedisReadFallback_returnsRequestedOffsetAndLimit() {
+        speakingQueueRepository.saveAllAndFlush(List.of(
+                SpeakingQueue.waiting(
+                        1L,
+                        10L,
+                        10,
+                        SpeechStance.PRO,
+                        LocalDateTime.of(2026, 6, 12, 11, 30)
+                ),
+                SpeakingQueue.waiting(
+                        1L,
+                        20L,
+                        20,
+                        SpeechStance.PRO,
+                        LocalDateTime.of(2026, 6, 12, 11, 31)
+                ),
+                SpeakingQueue.waiting(
+                        1L,
+                        30L,
+                        30,
+                        SpeechStance.PRO,
+                        LocalDateTime.of(2026, 6, 12, 11, 32)
+                ),
+                SpeakingQueue.waiting(
+                        1L,
+                        40L,
+                        40,
+                        SpeechStance.PRO,
+                        LocalDateTime.of(2026, 6, 12, 11, 33)
+                )
+        ));
+
+        List<SpeakingQueue> waitingQueues =
+                speakingQueueRepository.findWaitingPageForRedisReadFallback(
+                        1L,
+                        SpeakingQueueStatus.WAITING.name(),
+                        1,
+                        2
+                );
+
+        assertThat(waitingQueues)
+                .extracting(SpeakingQueue::getQueueOrder)
+                .containsExactly(20, 30);
+    }
+
+    @Test
+    void countByRoomIdAndStatusAndQueueOrderLessThan_countsPreviousWaitingRequests() {
+        SpeakingQueue assigned = SpeakingQueue.waiting(
+                1L,
+                40L,
+                5,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 29)
+        );
+        assign(assigned);
+        speakingQueueRepository.saveAllAndFlush(List.of(
+                assigned,
+                SpeakingQueue.waiting(
+                        1L,
+                        10L,
+                        10,
+                        SpeechStance.PRO,
+                        LocalDateTime.of(2026, 6, 12, 11, 30)
+                ),
+                SpeakingQueue.waiting(
+                        1L,
+                        20L,
+                        20,
+                        SpeechStance.PRO,
+                        LocalDateTime.of(2026, 6, 12, 11, 31)
+                ),
+                SpeakingQueue.waiting(
+                        1L,
+                        30L,
+                        30,
+                        SpeechStance.PRO,
+                        LocalDateTime.of(2026, 6, 12, 11, 32)
+                )
+        ));
+
+        long previousWaitingCount =
+                speakingQueueRepository.countByRoomIdAndStatusAndQueueOrderLessThan(
+                        1L,
+                        SpeakingQueueStatus.WAITING,
+                        30
+                );
+
+        assertThat(previousWaitingCount).isEqualTo(2L);
     }
 
     @Test
@@ -353,6 +407,109 @@ class SpeakingQueueRepositoryTest {
                 speakingQueueRepository.findRoomIdsWithExpiredSpeaker(now);
 
         assertThat(expiredRoomIds).containsExactly(1L);
+    }
+
+    @Test
+    void findRoomIdsRequiringIdleWarning_returnsOnlyIdleAssignedRoomsBeforeWarning() {
+        LocalDateTime now = LocalDateTime.of(2026, 6, 12, 11, 31, 20);
+        SpeakingQueue warningRequired = SpeakingQueue.waiting(
+                1L,
+                10L,
+                1,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        warningRequired.assign(
+                LocalDateTime.of(2026, 6, 12, 11, 31),
+                LocalDateTime.of(2026, 6, 12, 11, 34)
+        );
+        speakingQueueRepository.saveAndFlush(warningRequired);
+
+        SpeakingQueue alreadyWarned = SpeakingQueue.waiting(
+                2L,
+                20L,
+                1,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        alreadyWarned.assign(
+                LocalDateTime.of(2026, 6, 12, 11, 31),
+                LocalDateTime.of(2026, 6, 12, 11, 34)
+        );
+        alreadyWarned.markIdleWarningIfDue(
+                now,
+                Duration.ofSeconds(20),
+                Duration.ofSeconds(40)
+        );
+        speakingQueueRepository.saveAndFlush(alreadyWarned);
+
+        SpeakingQueue expiringSoon = SpeakingQueue.waiting(
+                3L,
+                30L,
+                1,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        expiringSoon.assign(
+                LocalDateTime.of(2026, 6, 12, 11, 31),
+                LocalDateTime.of(2026, 6, 12, 11, 31, 50)
+        );
+        speakingQueueRepository.saveAndFlush(expiringSoon);
+
+        List<Long> roomIds = speakingQueueRepository.findRoomIdsRequiringIdleWarning(
+                now,
+                Duration.ofSeconds(20),
+                Duration.ofSeconds(40)
+        );
+
+        assertThat(roomIds).containsExactly(1L);
+    }
+
+    @Test
+    void findRoomIdsWithIdleTimedOutSpeaker_returnsOnlyWarnedRoomsAfterTimeoutDelay() {
+        LocalDateTime now = LocalDateTime.of(2026, 6, 12, 11, 31, 40);
+        SpeakingQueue timedOut = SpeakingQueue.waiting(
+                1L,
+                10L,
+                1,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        timedOut.assign(
+                LocalDateTime.of(2026, 6, 12, 11, 31),
+                LocalDateTime.of(2026, 6, 12, 11, 34)
+        );
+        timedOut.markIdleWarningIfDue(
+                LocalDateTime.of(2026, 6, 12, 11, 31, 20),
+                Duration.ofSeconds(20),
+                Duration.ofSeconds(40)
+        );
+        speakingQueueRepository.saveAndFlush(timedOut);
+
+        SpeakingQueue notYetTimedOut = SpeakingQueue.waiting(
+                2L,
+                20L,
+                1,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        notYetTimedOut.assign(
+                LocalDateTime.of(2026, 6, 12, 11, 31),
+                LocalDateTime.of(2026, 6, 12, 11, 34)
+        );
+        notYetTimedOut.markIdleWarningIfDue(
+                LocalDateTime.of(2026, 6, 12, 11, 31, 30),
+                Duration.ofSeconds(20),
+                Duration.ofSeconds(40)
+        );
+        speakingQueueRepository.saveAndFlush(notYetTimedOut);
+
+        List<Long> roomIds = speakingQueueRepository.findRoomIdsWithIdleTimedOutSpeaker(
+                now,
+                Duration.ofSeconds(20)
+        );
+
+        assertThat(roomIds).containsExactly(1L);
     }
 
     private void assign(SpeakingQueue speakingQueue) {

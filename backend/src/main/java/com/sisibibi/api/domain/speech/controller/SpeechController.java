@@ -1,11 +1,10 @@
 package com.sisibibi.api.domain.speech.controller;
 
-import com.sisibibi.api.domain.speech.dto.request.SpeechCreateReq;
-import com.sisibibi.api.domain.speech.dto.request.SpeechLinkUpdateReq;
-import com.sisibibi.api.domain.speech.dto.request.SpeechUpdateReq;
+import com.sisibibi.api.domain.speech.dto.request.*;
 import com.sisibibi.api.domain.speech.dto.response.SpeechCreateRes;
 import com.sisibibi.api.domain.speech.dto.response.SpeechCursorPageRes;
 import com.sisibibi.api.domain.speech.dto.response.SpeechDetailRes;
+import com.sisibibi.api.domain.speech.dto.response.SpeechImageUploadUrlRes;
 import com.sisibibi.api.domain.speech.service.SpeechService;
 import com.sisibibi.api.global.response.ApiResponse;
 import com.sisibibi.api.global.security.AuthPrincipal;
@@ -97,6 +96,39 @@ public class SpeechController {
         speechService.deleteSpeech(speechId, principal.userId());
 
         return ResponseEntity.ok(ApiResponse.okMessage("내 의견 삭제가 완료되었습니다."));
+    }
+
+    @PostMapping("/speeches/{speechId}/image-upload-url")
+    public ResponseEntity<ApiResponse<SpeechImageUploadUrlRes>> createSpeechImageUploadUrl(
+        @PathVariable @Positive Long speechId,
+        @AuthenticationPrincipal AuthPrincipal principal,
+        @Valid @RequestBody SpeechImageUploadUrlReq request
+    ) {
+        return ResponseEntity.ok(ApiResponse.ok(
+            "이미지 업로드 URL 발급이 완료되었습니다.",
+            speechService.createSpeechImageUploadUrl(
+                speechId,
+                principal.userId(),
+                request.contentType(),
+                request.fileSize()
+            )
+        ));
+    }
+
+    @PatchMapping("/speeches/{speechId}/image")
+    public ResponseEntity<ApiResponse<SpeechDetailRes>> confirmSpeechImage(
+        @PathVariable @Positive Long speechId,
+        @AuthenticationPrincipal AuthPrincipal principal,
+        @Valid @RequestBody SpeechImageConfirmReq request
+    ) {
+        return ResponseEntity.ok(ApiResponse.ok(
+            "의견 이미지 첨부가 완료되었습니다.",
+            speechService.confirmSpeechImage(
+                speechId,
+                principal.userId(),
+                request.imageKey()
+            )
+        ));
     }
 
     @PatchMapping("/speeches/{speechId}/link")

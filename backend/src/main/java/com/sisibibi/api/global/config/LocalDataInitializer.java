@@ -6,11 +6,13 @@ import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipant;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
+import com.sisibibi.api.domain.speech.entity.RoomQueueSequence;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.entity.Speech;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.RedisSpeakingQueueRepository;
+import com.sisibibi.api.domain.speech.repository.RoomQueueSequenceRepository;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReport;
@@ -55,6 +57,7 @@ public class LocalDataInitializer implements ApplicationRunner {
     private final SpeechRepository speechRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final SpeakingQueueRepository speakingQueueRepository;
+    private final RoomQueueSequenceRepository roomQueueSequenceRepository;
     private final RedisSpeakingQueueRepository redisSpeakingQueueRepository;
     private final SpeechReportRepository speechReportRepository;
     private final PasswordEncoder passwordEncoder;
@@ -196,13 +199,27 @@ public class LocalDataInitializer implements ApplicationRunner {
             LocalDateTime endedAt
     ) {
         return roomRepository.findByTopicId(topic.getId())
-                .orElseGet(() -> roomRepository.save(Room.open(
-                        topic.getId(),
-                        topic.getTitle(),
-                        startedAt,
-                        endedAt,
-                    100
-                )));
+                .map(room -> {
+                    createQueueSequenceIfMissing(room.getId(), startedAt);
+                    return room;
+                })
+                .orElseGet(() -> {
+                    Room room = roomRepository.save(Room.open(
+                            topic.getId(),
+                            topic.getTitle(),
+                            startedAt,
+                            endedAt,
+                            100
+                    ));
+                    createQueueSequenceIfMissing(room.getId(), startedAt);
+                    return room;
+                });
+    }
+
+    private void createQueueSequenceIfMissing(Long roomId, LocalDateTime now) {
+        if (!roomQueueSequenceRepository.existsById(roomId)) {
+            roomQueueSequenceRepository.save(RoomQueueSequence.create(roomId, now));
+        }
     }
 
     private void join(Room room, User user) {

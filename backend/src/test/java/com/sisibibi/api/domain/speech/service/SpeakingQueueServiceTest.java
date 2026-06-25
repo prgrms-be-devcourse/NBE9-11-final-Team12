@@ -104,7 +104,7 @@ class SpeakingQueueServiceTest {
     }
 
     @Test
-    void requestSpeakingTurn_doesNotWriteRedisWhenRdbPersistenceFails() {
+    void requestSpeakingTurn_doesNotWriteRedisWhenDbPersistenceFails() {
         given(speakingQueuePersistenceService.createWaitingRequest(1L, 7L, SpeechStance.PRO))
                 .willThrow(new IllegalStateException("database unavailable"));
 
@@ -267,7 +267,7 @@ class SpeakingQueueServiceTest {
     }
 
     @Test
-    void requestSpeakingTurn_reloadsRdbSnapshotWhenProjectionVersionChangesBeforeRebuild() {
+    void requestSpeakingTurn_reloadsDbSnapshotWhenProjectionVersionChangesBeforeRebuild() {
         SpeakingQueue saved = persistedWaitingRequest(1L, 7L, 15);
         SpeakingQueue laterWaiting = persistedWaitingRequest(1L, 8L, 16);
         given(speakingQueuePersistenceService.createWaitingRequest(1L, 7L, SpeechStance.PRO))
@@ -421,7 +421,6 @@ class SpeakingQueueServiceTest {
         verify(eventPublisher).publishEvent(eventCaptor.capture());
         assertThat(eventCaptor.getValue().type())
                 .isEqualTo(StageEventType.SPEAKER_ASSIGNED);
-        verify(aiCounterIssueService, never()).suggestIfNeeded(1L);
     }
 
     @Test
@@ -454,7 +453,6 @@ class SpeakingQueueServiceTest {
                         StageEventType.SPEAKING_CANCELED,
                         StageEventType.SPEAKER_ASSIGNED
                 );
-        verify(aiCounterIssueService, never()).suggestIfNeeded(1L);
     }
 
     @Test
@@ -483,7 +481,6 @@ class SpeakingQueueServiceTest {
                 expiresAtCaptor.getValue()
         )).isEqualTo(Duration.ofSeconds(90));
         verify(eventPublisher, never()).publishEvent(any());
-        verify(aiCounterIssueService, never()).suggestIfNeeded(1L);
     }
 
     @Test
@@ -518,7 +515,7 @@ class SpeakingQueueServiceTest {
     }
 
     @Test
-    void cancelSpeakingRequest_keepsCanceledRdbStateWhenRedisRemovalFails() {
+    void cancelSpeakingRequest_keepsCanceledDbStateWhenRedisRemovalFails() {
         SpeakingQueue canceled = persistedWaitingRequest(1L, 7L, 15);
         canceled.cancel(LocalDateTime.of(2026, 6, 12, 11, 35));
         given(speakingQueuePersistenceService.cancelWaitingRequest(1L, 7L))
@@ -607,19 +604,39 @@ class SpeakingQueueServiceTest {
     }
 
     @Test
-    void getMySpeakingRequestStatus_returnsNullRankWhenWaitingRequestIsMissingInRedis() {
+    void getMySpeakingRequestStatus_returnsDbRankWhenWaitingRequestIsMissingInRedis() {
         SpeakingQueue waiting = persistedWaitingRequest(1L, 7L, 15);
         given(speakingQueuePersistenceService.findMyActiveRequest(1L, 7L))
                 .willReturn(Optional.of(waiting));
         given(redisSpeakingQueueRepository.rank(1L, 7L))
                 .willReturn(Optional.empty());
+        given(speakingQueuePersistenceService.countWaitingRequestsBefore(1L, 15))
+                .willReturn(4L);
 
         StageRequestStatusRes response =
                 speakingQueueService.getMySpeakingRequestStatus(1L, 7L);
 
         assertThat(response.hasRequest()).isTrue();
         assertThat(response.status()).isEqualTo(SpeakingQueueStatus.WAITING);
-        assertThat(response.currentRank()).isNull();
+        assertThat(response.currentRank()).isEqualTo(5);
+    }
+
+    @Test
+    void getMySpeakingRequestStatus_returnsDbRankWhenRedisRankReadFails() {
+        SpeakingQueue waiting = persistedWaitingRequest(1L, 7L, 15);
+        given(speakingQueuePersistenceService.findMyActiveRequest(1L, 7L))
+                .willReturn(Optional.of(waiting));
+        given(redisSpeakingQueueRepository.rank(1L, 7L))
+                .willThrow(new IllegalStateException("redis unavailable"));
+        given(speakingQueuePersistenceService.countWaitingRequestsBefore(1L, 15))
+                .willReturn(2L);
+
+        StageRequestStatusRes response =
+                speakingQueueService.getMySpeakingRequestStatus(1L, 7L);
+
+        assertThat(response.hasRequest()).isTrue();
+        assertThat(response.status()).isEqualTo(SpeakingQueueStatus.WAITING);
+        assertThat(response.currentRank()).isEqualTo(3);
     }
 
     @Test
@@ -676,7 +693,7 @@ class SpeakingQueueServiceTest {
     }
 
     @Test
-    void completeSpeakingTurn_suggestsAiCounterIssueBeforeAssigningNextSpeaker() {
+    void completeSpeakingTurn_keepsCompletedDbStateWhenRedisRemovalFails() {
         SpeakingQueue completed = completedRequest(1L, 7L, 15);
         given(speakingQueuePersistenceService.completeCurrentSpeaker(1L, 7L))
                 .willReturn(completed);
@@ -742,7 +759,6 @@ class SpeakingQueueServiceTest {
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
         );
-        verify(aiCounterIssueService).suggestIfNeeded(1L);
         ArgumentCaptor<StageChangedEvent> eventCaptor =
                 ArgumentCaptor.forClass(StageChangedEvent.class);
         verify(eventPublisher).publishEvent(eventCaptor.capture());
@@ -881,6 +897,77 @@ class SpeakingQueueServiceTest {
     }
 
     @Test
+    void warnIdleCurrentSpeaker_publishesIdleWarningEvent() {
+        LocalDateTime now = LocalDateTime.of(2026, 6, 12, 11, 31, 20);
+        SpeakingQueue warned = assignedRequest(1L, 7L, 15);
+        warned.markIdleWarningIfDue(
+                now,
+                Duration.ofSeconds(20),
+                Duration.ofSeconds(40)
+        );
+        givenIdleProperties();
+        given(speakingQueuePersistenceService.warnCurrentSpeakerIfIdle(
+                1L,
+                now,
+                Duration.ofSeconds(20),
+                Duration.ofSeconds(40)
+        )).willReturn(Optional.of(warned));
+
+        Optional<SpeakingQueue> response =
+                speakingQueueService.warnIdleCurrentSpeaker(1L, now);
+
+        assertThat(response).contains(warned);
+        verify(redisSpeakingQueueRepository, never())
+                .removeCurrentSpeaker(anyLong(), anyLong());
+        ArgumentCaptor<StageChangedEvent> eventCaptor =
+                ArgumentCaptor.forClass(StageChangedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().type())
+                .isEqualTo(StageEventType.SPEAKER_IDLE_WARNED);
+        assertThat(eventCaptor.getValue().payload().status())
+                .isEqualTo(SpeakingQueueStatus.ASSIGNED);
+    }
+
+    @Test
+    void completeIdleCurrentSpeaker_removesRedisAndAssignsNextSpeaker() {
+        LocalDateTime now = LocalDateTime.of(2026, 6, 12, 11, 31, 40);
+        SpeakingQueue completed = idleTimedOutCompletedRequest(1L, 7L, 15);
+        givenIdleProperties();
+        given(speakingQueuePersistenceService.completeCurrentSpeakerIfIdleTimedOut(
+                1L,
+                now,
+                Duration.ofSeconds(20)
+        )).willReturn(Optional.of(completed));
+        given(speakingQueueProperties.getTurnDuration())
+                .willReturn(Duration.ofMinutes(2));
+        given(speakingQueuePersistenceService.assignNextSpeaker(
+                eq(1L),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        )).willReturn(SpeakingQueueAssignmentResult.empty());
+
+        Optional<SpeakingQueue> response =
+                speakingQueueService.completeIdleCurrentSpeaker(1L, now);
+
+        assertThat(response).contains(completed);
+        verify(redisSpeakingQueueRepository).removeCurrentSpeaker(1L, 7L);
+        verify(speakingQueuePersistenceService).assignNextSpeaker(
+                eq(1L),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        );
+        ArgumentCaptor<StageChangedEvent> eventCaptor =
+                ArgumentCaptor.forClass(StageChangedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().type())
+                .isEqualTo(StageEventType.SPEAKER_COMPLETED);
+        assertThat(eventCaptor.getValue().payload().status())
+                .isEqualTo(SpeakingQueueStatus.COMPLETED);
+        assertThat(eventCaptor.getValue().payload().endReason())
+                .isEqualTo(StageTurnEndReason.IDLE_TIMEOUT);
+    }
+
+    @Test
     void getCurrentSpeaker_returnsEmptyResponseWhenCurrentSpeakerDoesNotExist() {
         given(speakingQueuePersistenceService.findCurrentSpeaker(1L))
                 .willReturn(Optional.empty());
@@ -990,6 +1077,41 @@ class SpeakingQueueServiceTest {
     }
 
     @Test
+    void getWaitingQueue_returnsDbQueueWhenRedisReadFails() {
+        SpeakingQueue third = persistedWaitingRequest(1L, 30L, 3);
+        SpeakingQueue fourth = persistedWaitingRequest(1L, 40L, 4);
+        givenQueueProperties(5, 20, 100);
+        given(redisSpeakingQueueRepository.count(1L))
+                .willThrow(new IllegalStateException("redis unavailable"));
+        given(speakingQueuePersistenceService.countWaitingRequests(1L))
+                .willReturn(4L);
+        given(speakingQueuePersistenceService.findWaitingRequestsForRedisReadFallback(
+                1L,
+                2,
+                2
+        )).willReturn(List.of(third, fourth));
+        given(speakingQueuePersistenceService.findNicknamesByUserIds(List.of(30L, 40L)))
+                .willReturn(Map.of(
+                        30L, "neon_wave",
+                        40L, "open_mind"
+                ));
+
+        StageQueueRes response = speakingQueueService.getWaitingQueue(1L, 2, 2);
+
+        assertThat(response.totalWaitingCount()).isEqualTo(4L);
+        assertThat(response.offset()).isEqualTo(2);
+        assertThat(response.size()).isEqualTo(2);
+        assertThat(response.hasNext()).isFalse();
+        assertThat(response.items()).hasSize(2);
+        assertThat(response.items().get(0).rank()).isEqualTo(3);
+        assertThat(response.items().get(0).userId()).isEqualTo(30L);
+        assertThat(response.items().get(0).nickname()).isEqualTo("neon_wave");
+        assertThat(response.items().get(1).rank()).isEqualTo(4);
+        assertThat(response.items().get(1).userId()).isEqualTo(40L);
+        assertThat(response.items().get(1).nickname()).isEqualTo("open_mind");
+    }
+
+    @Test
     void getWaitingQueue_usesConfiguredDefaultPageSizeWhenSizeIsMissing() {
         givenQueueProperties(5, 30, 100);
         given(redisSpeakingQueueRepository.count(1L)).willReturn(0L);
@@ -1025,6 +1147,14 @@ class SpeakingQueueServiceTest {
         queue.setDefaultPageSize(defaultPageSize);
         queue.setMaxPageSize(maxPageSize);
         given(speakingQueueProperties.getQueue()).willReturn(queue);
+    }
+
+    private void givenIdleProperties() {
+        SpeakingQueueProperties.Idle idle = new SpeakingQueueProperties.Idle();
+        idle.setWarningDelay(Duration.ofSeconds(20));
+        idle.setTimeoutDelayAfterWarning(Duration.ofSeconds(20));
+        idle.setWarningSuppressionBeforeExpiration(Duration.ofSeconds(40));
+        given(speakingQueueProperties.getIdle()).willReturn(idle);
     }
 
     private CurrentSpeakerProjection currentSpeakerProjection(
@@ -1080,6 +1210,21 @@ class SpeakingQueueServiceTest {
 
     private SpeakingQueue completedRequest(Long roomId, Long userId, int queueOrder) {
         SpeakingQueue speakingQueue = assignedRequest(roomId, userId, queueOrder);
+        speakingQueue.complete();
+        return speakingQueue;
+    }
+
+    private SpeakingQueue idleTimedOutCompletedRequest(
+            Long roomId,
+            Long userId,
+            int queueOrder
+    ) {
+        SpeakingQueue speakingQueue = assignedRequest(roomId, userId, queueOrder);
+        speakingQueue.markIdleWarningIfDue(
+                LocalDateTime.of(2026, 6, 12, 11, 31, 20),
+                Duration.ofSeconds(20),
+                Duration.ofSeconds(40)
+        );
         speakingQueue.complete();
         return speakingQueue;
     }

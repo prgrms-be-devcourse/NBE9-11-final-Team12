@@ -59,7 +59,7 @@ class SpeakingQueueConsistencyRiskTest {
     }
 
     @Test
-    void requestSpeakingTurn_doesNotCreateRedisEntryWhenRdbSaveFails() {
+    void requestSpeakingTurn_doesNotCreateRedisEntryWhenDbSaveFails() {
         SpeakingQueuePersistenceService failingPersistenceService =
                 mock(SpeakingQueuePersistenceService.class);
         given(failingPersistenceService.createWaitingRequest(ROOM_ID, USER_ID, SpeechStance.PRO))

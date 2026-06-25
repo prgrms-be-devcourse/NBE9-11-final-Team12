@@ -59,6 +59,9 @@ class SpeechServiceTest {
     private SpeechReactionRepository speechReactionRepository;
 
     @Mock
+    private SpeakingQueuePersistenceService speakingQueuePersistenceService;
+
+    @Mock
     private ProfanityDetector profanityDetector;
 
     @Mock
@@ -124,6 +127,11 @@ class SpeechServiceTest {
         assertThat(savedSpeech.getStance()).isEqualTo(SpeechStance.PRO);
         assertThat(savedSpeech.getStatus()).isEqualTo(SpeechStatus.READY);
         assertThat(response.status()).isEqualTo(SpeechStatus.READY);
+        verify(speakingQueuePersistenceService).recordCurrentSpeakerActivityIfMatches(
+                org.mockito.ArgumentMatchers.eq(roomId),
+                org.mockito.ArgumentMatchers.eq(userId),
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class)
+        );
         verifySpeechEventPublished(SpeechEventType.SPEECH_CREATED, roomId, userId);
     }
 
