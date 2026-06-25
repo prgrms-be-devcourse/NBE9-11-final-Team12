@@ -6,6 +6,7 @@ import com.sisibibi.api.domain.topic.dto.response.issueRes.IssueCandidateRes;
 import com.sisibibi.api.domain.topic.dto.response.keywordres.ClassifiedIssueCandidateRes;
 import com.sisibibi.api.domain.topic.dto.response.topicRes.TopicCreateRes;
 import com.sisibibi.api.domain.topic.dto.response.topicRes.TopicDetailRes;
+import com.sisibibi.api.domain.topic.service.TopicCandidateService;
 import com.sisibibi.api.domain.topic.service.TopicIssueService;
 import com.sisibibi.api.domain.topic.service.TopicKeywordService;
 import com.sisibibi.api.domain.topic.service.TopicService;
@@ -26,6 +27,7 @@ public class AdminTopicController {
   private final TopicService topicService;
   private final TopicKeywordService topicKeywordService;
   private final TopicIssueService topicIssueService;
+  private final TopicCandidateService topicCandidateService;
 
   @PostMapping
   public ResponseEntity<ApiResponse<TopicCreateRes>> createApprovedTopic(
@@ -57,12 +59,20 @@ public class AdminTopicController {
     return ResponseEntity.ok(ApiResponse.okMessage("토픽 삭제가 완료되었습니다."));
   }
 
-  // 관리자용
-  @GetMapping("/candidates/classified")
-  public ResponseEntity<ApiResponse<List<ClassifiedIssueCandidateRes>>> createClassifiedIssue() {
-    List<IssueCandidateRes> candidates = topicIssueService.createIssue();
-    List<ClassifiedIssueCandidateRes> result = topicKeywordService.classify(candidates);
 
-    return ResponseEntity.ok(ApiResponse.ok("뉴스별 키워드 분류가 완료되었습니다.", result));
+  @GetMapping("/candidates/classified")
+  public ResponseEntity<ApiResponse<List<ClassifiedIssueCandidateRes>>> getClassifiedCandidates() {
+    List<ClassifiedIssueCandidateRes> result =
+        topicCandidateService.getLatestClassifiedCandidates();
+
+    return ResponseEntity.ok(ApiResponse.ok("캐시된 토픽 후보 조회가 완료되었습니다.", result));
+  }
+
+  @PostMapping("/candidates/classified/refresh")
+  public ResponseEntity<ApiResponse<List<ClassifiedIssueCandidateRes>>> refreshClassifiedCandidates() {
+    List<ClassifiedIssueCandidateRes> result =
+        topicCandidateService.refreshLatestClassifiedCandidates();
+
+    return ResponseEntity.ok(ApiResponse.ok("토픽 후보 새로고침이 완료되었습니다.", result));
   }
 }
