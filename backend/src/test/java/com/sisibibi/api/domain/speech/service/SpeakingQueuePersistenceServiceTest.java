@@ -25,6 +25,7 @@ import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -1074,6 +1075,156 @@ class SpeakingQueuePersistenceServiceTest {
                 );
 
         assertThat(expired).isEmpty();
+    }
+
+    @Test
+    void recordCurrentSpeakerActivityIfMatches_updatesCurrentSpeakerActivity() {
+        SpeakingQueue assigned = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        assign(assigned);
+        assigned.markIdleWarningIfDue(
+                ASSIGNED_AT.plusSeconds(20),
+                Duration.ofSeconds(20),
+                Duration.ofSeconds(40)
+        );
+        LocalDateTime activityAt = ASSIGNED_AT.plusSeconds(25);
+        given(speakingQueueRepository.findByRoomIdAndUserIdAndStatusIn(
+                1L,
+                7L,
+                List.of(SpeakingQueueStatus.ASSIGNED)
+        )).willReturn(Optional.of(assigned));
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(openRoom(1L, "토론방")));
+        given(speakingQueueRepository.findByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        )).willReturn(Optional.of(assigned));
+
+        speakingQueuePersistenceService.recordCurrentSpeakerActivityIfMatches(
+                1L,
+                7L,
+                activityAt
+        );
+
+        assertThat(assigned.getLastActivityAt()).isEqualTo(activityAt);
+        assertThat(assigned.isIdleWarningSent()).isFalse();
+        assertThat(assigned.getIdleWarnedAt()).isNull();
+    }
+
+    @Test
+    void recordCurrentSpeakerActivityIfMatches_doesNothingWhenUserIsNotCurrentSpeaker() {
+        given(speakingQueueRepository.findByRoomIdAndUserIdAndStatusIn(
+                1L,
+                7L,
+                List.of(SpeakingQueueStatus.ASSIGNED)
+        )).willReturn(Optional.empty());
+
+        speakingQueuePersistenceService.recordCurrentSpeakerActivityIfMatches(
+                1L,
+                7L,
+                ASSIGNED_AT.plusSeconds(10)
+        );
+
+        verify(roomRepository, never()).findByIdForUpdate(1L);
+    }
+
+    @Test
+    void warnCurrentSpeakerIfIdle_marksWarningAfterLockingRoom() {
+        SpeakingQueue assigned = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        assign(assigned);
+        LocalDateTime warnedAt = ASSIGNED_AT.plusSeconds(20);
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(openRoom(1L, "토론방")));
+        given(speakingQueueRepository.findByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        )).willReturn(Optional.of(assigned));
+
+        Optional<SpeakingQueue> warned =
+                speakingQueuePersistenceService.warnCurrentSpeakerIfIdle(
+                        1L,
+                        warnedAt,
+                        Duration.ofSeconds(20),
+                        Duration.ofSeconds(40)
+                );
+
+        assertThat(warned).contains(assigned);
+        assertThat(assigned.isIdleWarningSent()).isTrue();
+        assertThat(assigned.getIdleWarnedAt()).isEqualTo(warnedAt);
+    }
+
+    @Test
+    void warnCurrentSpeakerIfIdle_returnsEmptyWhenWarningIsNotDue() {
+        SpeakingQueue assigned = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        assign(assigned);
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(openRoom(1L, "토론방")));
+        given(speakingQueueRepository.findByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        )).willReturn(Optional.of(assigned));
+
+        Optional<SpeakingQueue> warned =
+                speakingQueuePersistenceService.warnCurrentSpeakerIfIdle(
+                        1L,
+                        ASSIGNED_AT.plusSeconds(19),
+                        Duration.ofSeconds(20),
+                        Duration.ofSeconds(40)
+                );
+
+        assertThat(warned).isEmpty();
+        assertThat(assigned.isIdleWarningSent()).isFalse();
+    }
+
+    @Test
+    void completeCurrentSpeakerIfIdleTimedOut_completesAfterWarningDelay() {
+        SpeakingQueue assigned = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        assign(assigned);
+        assigned.markIdleWarningIfDue(
+                ASSIGNED_AT.plusSeconds(20),
+                Duration.ofSeconds(20),
+                Duration.ofSeconds(40)
+        );
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(openRoom(1L, "토론방")));
+        given(speakingQueueRepository.findByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        )).willReturn(Optional.of(assigned));
+
+        Optional<SpeakingQueue> completed =
+                speakingQueuePersistenceService.completeCurrentSpeakerIfIdleTimedOut(
+                        1L,
+                        ASSIGNED_AT.plusSeconds(40),
+                        Duration.ofSeconds(20)
+                );
+
+        assertThat(completed).contains(assigned);
+        assertThat(assigned.getStatus()).isEqualTo(SpeakingQueueStatus.COMPLETED);
+        assertThat(assigned.getActiveRequest()).isNull();
     }
 
     private void givenJoined(Long roomId, Long userId) {
