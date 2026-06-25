@@ -74,14 +74,16 @@ export default function RoomDetailPage() {
       setJoinError("")
       try {
         const room = await roomApi.detail(roomId)
-        const topicDetail = await topicApi.detail(room.topicId)
+        const topicPage = await topicApi.list(0, 200)
+        const topic = topicPage.content.find((item) => item.id === room.topicId)
+        const category = topic?.category ?? "기타"
         setRoomView({
           id: String(room.roomId),
           title: room.title,
-          description: topicDetail.description ?? "승인된 토픽으로 개설된 실시간 토론방입니다.",
-          category: topicDetail.category,
+          description: topic?.title ?? "승인된 토픽으로 개설된 실시간 토론방입니다.",
+          category,
           status: room.status,
-          tags: [topicDetail.category],
+          tags: [category],
           isLive: room.status === "OPEN",
         })
       } catch (error) {
@@ -91,10 +93,16 @@ export default function RoomDetailPage() {
 
     async function joinRoom() {
       try {
+        const currentParticipants = await roomApi.participants(roomId)
+        if (currentParticipants.some((participant) => participant.userId === user.userId)) {
+          setParticipants(currentParticipants)
+          setJoined(true)
+          return
+        }
         await roomApi.join(roomId)
         setJoined(true)
       } catch (error) {
-        if (error instanceof ApiError && error.code === "ROOM_ALREADY_PARTICIPATED") {
+        if (error instanceof ApiError && (error.code === "ROOM_ALREADY_PARTICIPATED" || error.status === 409)) {
           setJoined(true)
           return
         }
