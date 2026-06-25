@@ -3,6 +3,8 @@ package com.sisibibi.api.domain.room.service;
 import com.sisibibi.api.domain.room.dto.response.CreateRoomRes;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
+import com.sisibibi.api.domain.speech.entity.RoomQueueSequence;
+import com.sisibibi.api.domain.speech.repository.RoomQueueSequenceRepository;
 import com.sisibibi.api.domain.topic.entity.Topic;
 import com.sisibibi.api.domain.topic.entity.TopicStatus;
 import com.sisibibi.api.domain.topic.repository.TopicRepository;
@@ -21,6 +23,7 @@ public class RoomCreateCommandService {
 
   private final RoomRepository roomRepository;
   private final TopicRepository topicRepository;
+  private final RoomQueueSequenceRepository roomQueueSequenceRepository;
 
   @Transactional
   public CreateRoomRes createRoom(Long topicId, String debateTitle, Integer maxParticipants) {
@@ -49,6 +52,7 @@ public class RoomCreateCommandService {
 
     try {
       Room savedRoom = roomRepository.save(room);
+      roomQueueSequenceRepository.save(RoomQueueSequence.create(savedRoom.getId(), startedAt));
       return CreateRoomRes.from(savedRoom);
     } catch (DataIntegrityViolationException e) {
       throw new CustomException(ErrorCode.ROOM_ALREADY_EXISTS);
