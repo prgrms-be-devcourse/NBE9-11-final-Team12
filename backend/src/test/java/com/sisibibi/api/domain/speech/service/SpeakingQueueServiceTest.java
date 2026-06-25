@@ -693,7 +693,7 @@ class SpeakingQueueServiceTest {
     }
 
     @Test
-    void completeSpeakingTurn_keepsCompletedDbStateWhenRedisRemovalFails() {
+    void completeSpeakingTurn_suggestsAiCounterIssueBeforeAssigningNextSpeaker() {
         SpeakingQueue completed = completedRequest(1L, 7L, 15);
         given(speakingQueuePersistenceService.completeCurrentSpeaker(1L, 7L))
                 .willReturn(completed);
@@ -759,6 +759,7 @@ class SpeakingQueueServiceTest {
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
         );
+        verify(aiCounterIssueService).suggestIfNeeded(1L);
         ArgumentCaptor<StageChangedEvent> eventCaptor =
                 ArgumentCaptor.forClass(StageChangedEvent.class);
         verify(eventPublisher).publishEvent(eventCaptor.capture());
