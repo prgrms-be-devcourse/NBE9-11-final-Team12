@@ -12,6 +12,7 @@ public class AsyncConfig {
 
     public static final String DOMAIN_EVENT_TASK_EXECUTOR = "domainEventTaskExecutor";
     public static final String AI_COUNTER_ISSUE_TASK_EXECUTOR = "aiCounterIssueTaskExecutor";
+    public static final String STAGE_SUMMARY_TASK_EXECUTOR = "stageSummaryTaskExecutor";
 
     @Bean(name = DOMAIN_EVENT_TASK_EXECUTOR)
     public Executor domainEventTaskExecutor() {
@@ -31,6 +32,17 @@ public class AsyncConfig {
         executor.setMaxPoolSize(4);
         executor.setQueueCapacity(50);
         executor.setThreadNamePrefix("ai-counter-issue-");
+        executor.initialize();
+        return executor;
+    }
+
+    @Bean(name = STAGE_SUMMARY_TASK_EXECUTOR)
+    public Executor stageSummaryTaskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(50);
+        executor.setThreadNamePrefix("stage-summary-");
         executor.initialize();
         return executor;
     }

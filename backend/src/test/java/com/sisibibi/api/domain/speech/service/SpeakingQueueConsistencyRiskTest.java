@@ -69,7 +69,8 @@ class SpeakingQueueConsistencyRiskTest {
                 failingPersistenceService,
                 mock(SpeakingQueueProperties.class),
                 mock(ApplicationEventPublisher.class),
-                mock(AiCounterIssueService.class)
+                mock(AiCounterIssueService.class),
+                mock(StageSummaryService.class)
         );
 
         assertThatThrownBy(() ->
@@ -103,7 +104,8 @@ class SpeakingQueueConsistencyRiskTest {
                 persistenceService,
                 mock(SpeakingQueueProperties.class),
                 mock(ApplicationEventPublisher.class),
-                mock(AiCounterIssueService.class)
+                mock(AiCounterIssueService.class),
+                mock(StageSummaryService.class)
         );
 
         StageRequestRes response =

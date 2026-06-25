@@ -99,6 +99,9 @@ public enum ErrorCode {
     IMAGE_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "이미지 업로드에 실패했습니다."),
     S3_CONFIG_MISSING(HttpStatus.INTERNAL_SERVER_ERROR, "서버 설정이 누락되었습니다."),
 
+    // Stage Summary
+    STAGE_SUMMARY_NOT_FOUND(HttpStatus.NOT_FOUND, "중간 정리를 찾을 수 없습니다."),
+
     // AI Report
     AI_REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "AI 리포트를 찾을 수 없습니다."),
     AI_REPORT_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 AI 리포트가 생성 중이거나 생성되었습니다."),

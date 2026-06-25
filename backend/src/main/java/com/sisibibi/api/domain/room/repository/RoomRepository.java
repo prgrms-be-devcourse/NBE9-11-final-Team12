@@ -41,6 +41,27 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
       Pageable pageable
   );
 
+  default List<Long> findStageSummaryCandidateRoomIds(LocalDateTime now, Pageable pageable) {
+    return findStageSummaryCandidateRoomIds(RoomStatus.OPEN, now, pageable);
+  }
+
+  @Query("""
+    select room.id
+    from Room room
+    where room.status = :status
+      and room.startedAt is not null
+      and room.endedAt is not null
+      and room.startedAt < room.endedAt
+      and room.startedAt <= :now
+      and room.endedAt > :now
+    order by room.startedAt asc, room.id asc
+    """)
+  List<Long> findStageSummaryCandidateRoomIds(
+      @Param("status") RoomStatus status,
+      @Param("now") LocalDateTime now,
+      Pageable pageable
+  );
+
   @Modifying(clearAutomatically = true, flushAutomatically = true)
   @Query("""
     update Room room

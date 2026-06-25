@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -43,4 +44,19 @@ public interface SpeechRepository extends JpaRepository<Speech, Long> {
             order by speech.createdAt asc, speech.id asc
             """)
     List<Speech> findAiReportSourceSpeeches(@Param("roomId") Long roomId);
+
+    @Query("""
+            select speech
+            from Speech speech
+            where speech.roomId = :roomId
+              and speech.deleted = false
+              and speech.content is not null
+              and function('regexp_replace', speech.content, '\\s+', '') <> ''
+              and speech.createdAt <= :triggeredAt
+            order by speech.createdAt asc, speech.id asc
+            """)
+    List<Speech> findStageSummarySourceSpeeches(
+            @Param("roomId") Long roomId,
+            @Param("triggeredAt") LocalDateTime triggeredAt
+    );
 }
