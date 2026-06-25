@@ -701,7 +701,7 @@ class SpeakingQueueServiceTest {
     }
 
     @Test
-    void completeSpeakingTurn_keepsCompletedRdbStateWhenRedisRemovalFails() {
+    void completeSpeakingTurn_keepsCompletedDbStateWhenRedisRemovalFails() {
         SpeakingQueue completed = completedRequest(1L, 7L, 15);
         given(speakingQueuePersistenceService.completeCurrentSpeaker(1L, 7L))
                 .willReturn(completed);
