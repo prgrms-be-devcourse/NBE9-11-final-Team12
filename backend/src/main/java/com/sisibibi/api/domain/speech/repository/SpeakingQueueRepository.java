@@ -42,14 +42,14 @@ public interface SpeakingQueueRepository extends JpaRepository<SpeakingQueue, Lo
             where room_id = :roomId
               and status = :status
             order by queue_order asc
-            limit :limit
+            limit :size
             offset :offset
             """, nativeQuery = true)
     List<SpeakingQueue> findWaitingPageForRedisReadFallback(
             @Param("roomId") Long roomId,
             @Param("status") String status,
             @Param("offset") int offset,
-            @Param("limit") int limit
+            @Param("size") int size
     );
 
     long countByRoomIdAndStatus(
