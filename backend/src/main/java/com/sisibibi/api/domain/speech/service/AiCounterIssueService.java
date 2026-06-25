@@ -3,6 +3,9 @@ package com.sisibibi.api.domain.speech.service;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.speech.config.SpeechAiGenerator;
+import com.sisibibi.api.domain.speech.dto.event.AiCounterIssueChangedEvent;
+import com.sisibibi.api.domain.speech.dto.event.AiCounterIssueEventPayload;
+import com.sisibibi.api.domain.speech.dto.event.AiCounterIssueEventType;
 import com.sisibibi.api.domain.speech.entity.*;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.domain.speech.util.SpeakingStreakPolicy;
@@ -12,6 +15,7 @@ import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -27,6 +31,7 @@ public class AiCounterIssueService {
     private final RoomRepository roomRepository;
     private final SpeakingStreakPolicy speakingStreakPolicy;
     private final SpeechAiGenerator aiCounterIssueGenerator;
+    private final ApplicationEventPublisher eventPublisher;
 
     public void suggestIfNeeded(Long roomId) {
         List<SpeakingQueue> recentAssignments =
@@ -61,7 +66,9 @@ public class AiCounterIssueService {
                     .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
 
             String content = aiCounterIssueGenerator.generate(room, issue.getTargetStance());
-            aiCounterIssuePersistenceService.complete(issue.getId(), content);
+            AiCounterIssue completedIssue =
+                    aiCounterIssuePersistenceService.complete(issue.getId(), content);
+            publishAiCounterIssueChangedEvent(completedIssue);
         } catch (RuntimeException exception) {
             log.warn(
                     "Failed to generate AI counter issue. roomId={}, triggerQueueId={}",
@@ -71,5 +78,13 @@ public class AiCounterIssueService {
             );
             aiCounterIssuePersistenceService.fail(issue.getId(), exception.getMessage());
         }
+    }
+
+    private void publishAiCounterIssueChangedEvent(AiCounterIssue issue) {
+        eventPublisher.publishEvent(new AiCounterIssueChangedEvent(
+                AiCounterIssueEventType.AI_COUNTER_ISSUE_SUGGESTED,
+                issue.getRoomId(),
+                AiCounterIssueEventPayload.from(issue)
+        ));
     }
 }

@@ -41,9 +41,10 @@ public class AiCounterIssuePersistenceService {
     }
 
     @Transactional
-    public void complete(Long issueId, String content) {
+    public AiCounterIssue complete(Long issueId, String content) {
         AiCounterIssue issue = findIssue(issueId);
         issue.complete(content, LocalDateTime.now());
+        return issue;
     }
 
     @Transactional
