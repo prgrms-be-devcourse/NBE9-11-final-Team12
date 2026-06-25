@@ -176,10 +176,21 @@ public class SpeechService {
     @Transactional
     public SpeechDetailRes confirmSpeechImage(Long speechId, Long userId, String imageKey) {
         Speech speech = findEditableOwnedSpeech(speechId, userId);
-        String imageUrl = s3ImageStorageService.resolveUploadedImageUrl(imageKey);
+        String imageUrl = s3ImageStorageService.resolveUploadedImageUrl(
+            speech.getId(),
+            userId,
+            imageKey
+        );
 
-        speech.updateImage(imageUrl);
-        return toDetailResponse(speech, userId);
+        try {
+            speech.updateImage(imageUrl);
+            speechRepository.saveAndFlush(speech);
+            publishSpeechChangedEvent(SpeechEventType.SPEECH_UPDATED, speech);
+            return toDetailResponse(speech, userId);
+        } catch (RuntimeException e) {
+            s3ImageStorageService.deleteObjectQuietly(imageKey);
+            throw e;
+        }
     }
 
     @Transactional
