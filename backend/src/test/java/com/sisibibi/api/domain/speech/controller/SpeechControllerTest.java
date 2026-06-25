@@ -161,15 +161,16 @@ class SpeechControllerTest {
     void getSpeeches_returnsOk() throws Exception {
         given(speechService.getSpeeches(1L, 2L, null, 20)).willReturn(
                 new SpeechCursorPageRes(List.of(new SpeechListRes(
-                        10L,
-                        1L,
-                        2L,
-                        "찬성 의견",
-                        SpeechStance.PRO,
-                        SpeechStatus.READY,
-                        LocalDateTime.of(2026, 6, 12, 12, 0),
-                        3L,
-                        true
+                    10L,
+                    1L,
+                    2L,
+                    "찬성 의견",
+                    SpeechStance.PRO,
+                    SpeechStatus.READY,
+                    "https://example.com/image.png",
+                    LocalDateTime.of(2026, 6, 12, 12, 0),
+                    3L,
+                    true
                 )), null, false));
 
         mockMvc.perform(get("/api/v1/rooms/{roomId}/speeches", 1L)
