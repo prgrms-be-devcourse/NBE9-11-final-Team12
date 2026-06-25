@@ -193,29 +193,19 @@ public class SpeakingQueueService {
 
         int resolvedOffset = resolveOffset(offset);
         int resolvedSize = resolveSize(size);
-        long totalWaitingCount = redisSpeakingQueueRepository.count(roomId);
-        long start = resolvedOffset;
-        long end = resolvedOffset + (long) resolvedSize - 1;
-        List<Long> userIds =
-                redisSpeakingQueueRepository.findWaitingUserIds(roomId, start, end);
-        Map<Long, String> nicknames =
-                speakingQueuePersistenceService.findNicknamesByUserIds(userIds);
-        List<StageQueueRes.WaitingSpeaker> items =
-                IntStream.range(0, userIds.size())
-                        .mapToObj(index -> waitingSpeaker(
-                                resolvedOffset,
-                                index,
-                                userIds.get(index),
-                                nicknames
-                        ))
-                        .toList();
-
-        return StageQueueRes.of(
-                totalWaitingCount,
-                resolvedOffset,
-                resolvedSize,
-                items
-        );
+        try {
+            return getWaitingQueueFromRedis(roomId, resolvedOffset, resolvedSize);
+        } catch (RuntimeException redisReadException) {
+            log.warn(
+                    "Failed to read speaking waiting queue from Redis. "
+                            + "fallback to DB. roomId={}, offset={}, size={}",
+                    roomId,
+                    resolvedOffset,
+                    resolvedSize,
+                    redisReadException
+            );
+            return getWaitingQueueFromDb(roomId, resolvedOffset, resolvedSize);
+        }
     }
 
     public Optional<SpeakingQueue> expireCurrentSpeaker(
@@ -317,10 +307,120 @@ public class SpeakingQueueService {
             return null;
         }
 
-        return redisSpeakingQueueRepository.rank(
-                speakingQueue.getRoomId(),
-                speakingQueue.getUserId()
-        ).orElse(null);
+        try {
+            Optional<Integer> redisRank = redisSpeakingQueueRepository.rank(
+                    speakingQueue.getRoomId(),
+                    speakingQueue.getUserId()
+            );
+            if (redisRank.isPresent()) {
+                return redisRank.get();
+            }
+
+            log.warn(
+                    "Speaking waiting rank is missing in Redis. fallback to DB. "
+                            + "roomId={}, userId={}, queueOrder={}",
+                    speakingQueue.getRoomId(),
+                    speakingQueue.getUserId(),
+                    speakingQueue.getQueueOrder()
+            );
+        } catch (RuntimeException redisReadException) {
+            log.warn(
+                    "Failed to read speaking waiting rank from Redis. fallback to DB. "
+                            + "roomId={}, userId={}, queueOrder={}",
+                    speakingQueue.getRoomId(),
+                    speakingQueue.getUserId(),
+                    speakingQueue.getQueueOrder(),
+                    redisReadException
+            );
+        }
+
+        return currentWaitingRankFromDb(speakingQueue);
+    }
+
+    private StageQueueRes getWaitingQueueFromRedis(
+            Long roomId,
+            int resolvedOffset,
+            int resolvedSize
+    ) {
+        long totalWaitingCount = redisSpeakingQueueRepository.count(roomId);
+        long start = resolvedOffset;
+        long end = resolvedOffset + (long) resolvedSize - 1;
+        List<Long> userIds =
+                redisSpeakingQueueRepository.findWaitingUserIds(roomId, start, end);
+        Map<Long, String> nicknames =
+                speakingQueuePersistenceService.findNicknamesByUserIds(userIds);
+        List<StageQueueRes.WaitingSpeaker> items =
+                IntStream.range(0, userIds.size())
+                        .mapToObj(index -> waitingSpeaker(
+                                resolvedOffset,
+                                index,
+                                userIds.get(index),
+                                nicknames
+                        ))
+                        .toList();
+
+        return StageQueueRes.of(
+                totalWaitingCount,
+                resolvedOffset,
+                resolvedSize,
+                items
+        );
+    }
+
+    private StageQueueRes getWaitingQueueFromDb(
+            Long roomId,
+            int resolvedOffset,
+            int resolvedSize
+    ) {
+        long totalWaitingCount =
+                speakingQueuePersistenceService.countWaitingRequests(roomId);
+        List<SpeakingQueue> waitingQueues =
+                speakingQueuePersistenceService.findWaitingRequestsForRedisReadFallback(
+                        roomId,
+                        resolvedOffset,
+                        resolvedSize
+                );
+        List<Long> userIds = waitingQueues.stream()
+                .map(SpeakingQueue::getUserId)
+                .toList();
+        Map<Long, String> nicknames =
+                speakingQueuePersistenceService.findNicknamesByUserIds(userIds);
+        List<StageQueueRes.WaitingSpeaker> items =
+                IntStream.range(0, waitingQueues.size())
+                        .mapToObj(index -> waitingSpeaker(
+                                resolvedOffset,
+                                index,
+                                waitingQueues.get(index).getUserId(),
+                                nicknames
+                        ))
+                        .toList();
+
+        return StageQueueRes.of(
+                totalWaitingCount,
+                resolvedOffset,
+                resolvedSize,
+                items
+        );
+    }
+
+    private Integer currentWaitingRankFromDb(SpeakingQueue speakingQueue) {
+        Integer queueOrder = speakingQueue.getQueueOrder();
+        if (queueOrder == null) {
+            log.warn(
+                    "Cannot calculate speaking waiting rank from DB because queueOrder is null. "
+                            + "roomId={}, userId={}",
+                    speakingQueue.getRoomId(),
+                    speakingQueue.getUserId()
+            );
+            return null;
+        }
+
+        long previousWaitingCount =
+                speakingQueuePersistenceService.countWaitingRequestsBefore(
+                        speakingQueue.getRoomId(),
+                        queueOrder
+                );
+        return Math.toIntExact(previousWaitingCount + 1);
     }
 
     private int resolveOffset(Integer offset) {

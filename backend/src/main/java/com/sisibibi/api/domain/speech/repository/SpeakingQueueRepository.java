@@ -36,6 +36,33 @@ public interface SpeakingQueueRepository extends JpaRepository<SpeakingQueue, Lo
             SpeakingQueueStatus status
     );
 
+    @Query(value = """
+            select *
+            from speaking_queue
+            where room_id = :roomId
+              and status = :status
+            order by queue_order asc
+            limit :size
+            offset :offset
+            """, nativeQuery = true)
+    List<SpeakingQueue> findWaitingPageForRedisReadFallback(
+            @Param("roomId") Long roomId,
+            @Param("status") String status,
+            @Param("offset") int offset,
+            @Param("size") int size
+    );
+
+    long countByRoomIdAndStatus(
+            Long roomId,
+            SpeakingQueueStatus status
+    );
+
+    long countByRoomIdAndStatusAndQueueOrderLessThan(
+            Long roomId,
+            SpeakingQueueStatus status,
+            Integer queueOrder
+    );
+
     List<SpeakingQueue> findByRoomIdAndStatusInOrderByQueueOrderAsc(
             Long roomId,
             Collection<SpeakingQueueStatus> statuses
@@ -78,13 +105,6 @@ public interface SpeakingQueueRepository extends JpaRepository<SpeakingQueue, Lo
             Long roomId,
             SpeakingQueueStatus status
     );
-
-    @Query("""
-            select coalesce(max(queue.queueOrder), 0)
-            from SpeakingQueue queue
-            where queue.roomId = :roomId
-            """)
-    int findMaxQueueOrderByRoomId(@Param("roomId") Long roomId);
 
     default List<Long> findRoomIdsRequiringAssignment() {
         return findRoomIdsRequiringAssignment(

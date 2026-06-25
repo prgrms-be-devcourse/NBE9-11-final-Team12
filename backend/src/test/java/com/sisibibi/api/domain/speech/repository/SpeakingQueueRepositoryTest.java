@@ -43,44 +43,6 @@ class SpeakingQueueRepositoryTest {
     }
 
     @Test
-    void findMaxQueueOrderByRoomId_returnsRoomScopedMaxOrder() {
-        speakingQueueRepository.saveAllAndFlush(List.of(
-                SpeakingQueue.waiting(
-                        1L,
-                        10L,
-                        1,
-                        SpeechStance.PRO,
-                LocalDateTime.of(2026, 6, 12, 11, 30)
-                ),
-                SpeakingQueue.waiting(
-                        1L,
-                        20L,
-                        3,
-                        SpeechStance.PRO,
-                LocalDateTime.of(2026, 6, 12, 11, 31)
-                ),
-                SpeakingQueue.waiting(
-                        2L,
-                        30L,
-                        9,
-                        SpeechStance.PRO,
-                LocalDateTime.of(2026, 6, 12, 11, 32)
-                )
-        ));
-
-        int maxQueueOrder = speakingQueueRepository.findMaxQueueOrderByRoomId(1L);
-
-        assertThat(maxQueueOrder).isEqualTo(3);
-    }
-
-    @Test
-    void findMaxQueueOrderByRoomId_returnsZeroWhenRoomHasNoRequest() {
-        int maxQueueOrder = speakingQueueRepository.findMaxQueueOrderByRoomId(1L);
-
-        assertThat(maxQueueOrder).isZero();
-    }
-
-    @Test
     void findByRoomIdAndUserIdAndStatusIn_returnsActiveRequest() {
         SpeakingQueue saved = speakingQueueRepository.saveAndFlush(
                 SpeakingQueue.waiting(
@@ -158,6 +120,97 @@ class SpeakingQueueRepositoryTest {
 
         assertThat(found.getId()).isEqualTo(first.getId());
         assertThat(found.getQueueOrder()).isEqualTo(15);
+    }
+
+    @Test
+    void findWaitingPageForRedisReadFallback_returnsRequestedOffsetAndLimit() {
+        speakingQueueRepository.saveAllAndFlush(List.of(
+                SpeakingQueue.waiting(
+                        1L,
+                        10L,
+                        10,
+                        SpeechStance.PRO,
+                        LocalDateTime.of(2026, 6, 12, 11, 30)
+                ),
+                SpeakingQueue.waiting(
+                        1L,
+                        20L,
+                        20,
+                        SpeechStance.PRO,
+                        LocalDateTime.of(2026, 6, 12, 11, 31)
+                ),
+                SpeakingQueue.waiting(
+                        1L,
+                        30L,
+                        30,
+                        SpeechStance.PRO,
+                        LocalDateTime.of(2026, 6, 12, 11, 32)
+                ),
+                SpeakingQueue.waiting(
+                        1L,
+                        40L,
+                        40,
+                        SpeechStance.PRO,
+                        LocalDateTime.of(2026, 6, 12, 11, 33)
+                )
+        ));
+
+        List<SpeakingQueue> waitingQueues =
+                speakingQueueRepository.findWaitingPageForRedisReadFallback(
+                        1L,
+                        SpeakingQueueStatus.WAITING.name(),
+                        1,
+                        2
+                );
+
+        assertThat(waitingQueues)
+                .extracting(SpeakingQueue::getQueueOrder)
+                .containsExactly(20, 30);
+    }
+
+    @Test
+    void countByRoomIdAndStatusAndQueueOrderLessThan_countsPreviousWaitingRequests() {
+        SpeakingQueue assigned = SpeakingQueue.waiting(
+                1L,
+                40L,
+                5,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 29)
+        );
+        assign(assigned);
+        speakingQueueRepository.saveAllAndFlush(List.of(
+                assigned,
+                SpeakingQueue.waiting(
+                        1L,
+                        10L,
+                        10,
+                        SpeechStance.PRO,
+                        LocalDateTime.of(2026, 6, 12, 11, 30)
+                ),
+                SpeakingQueue.waiting(
+                        1L,
+                        20L,
+                        20,
+                        SpeechStance.PRO,
+                        LocalDateTime.of(2026, 6, 12, 11, 31)
+                ),
+                SpeakingQueue.waiting(
+                        1L,
+                        30L,
+                        30,
+                        SpeechStance.PRO,
+                        LocalDateTime.of(2026, 6, 12, 11, 32)
+                )
+        ));
+
+        long previousWaitingCount =
+                speakingQueueRepository.countByRoomIdAndStatusAndQueueOrderLessThan(
+                        1L,
+                        SpeakingQueueStatus.WAITING,
+                        30
+                );
+
+        assertThat(previousWaitingCount).isEqualTo(2L);
     }
 
     @Test

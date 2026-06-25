@@ -8,6 +8,7 @@ import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipant;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.repository.RedisSpeakingQueueRepository;
+import com.sisibibi.api.domain.speech.repository.RoomQueueSequenceRepository;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speechreport.repository.SpeechReportRepository;
@@ -48,6 +49,7 @@ class LocalDataInitializerTest {
     @Mock SpeechRepository speechRepository;
     @Mock ChatMessageRepository chatMessageRepository;
     @Mock SpeakingQueueRepository speakingQueueRepository;
+    @Mock RoomQueueSequenceRepository roomQueueSequenceRepository;
     @Mock RedisSpeakingQueueRepository redisSpeakingQueueRepository;
     @Mock SpeechReportRepository speechReportRepository;
     @Mock PasswordEncoder passwordEncoder;
