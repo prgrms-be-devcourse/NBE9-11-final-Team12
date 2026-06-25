@@ -48,6 +48,13 @@ public class AiCounterIssuePersistenceService {
     }
 
     @Transactional
+    public AiCounterIssue markAttemptStarted(Long issueId) {
+        AiCounterIssue issue = findIssue(issueId);
+        issue.markAttemptStarted(LocalDateTime.now());
+        return issue;
+    }
+
+    @Transactional
     public void fail(Long issueId, String errorMessage) {
         AiCounterIssue issue = findIssue(issueId);
         issue.fail(errorMessage == null ? "AI counter issue generation failed." : errorMessage);

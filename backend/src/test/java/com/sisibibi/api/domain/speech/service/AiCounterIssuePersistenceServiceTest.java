@@ -52,6 +52,8 @@ class AiCounterIssuePersistenceServiceTest {
         assertThat(saved.getTriggerQueueId()).isEqualTo(30L);
         assertThat(saved.getTargetStance()).isEqualTo(SpeechStance.CON);
         assertThat(saved.getStatus()).isEqualTo(AiCounterIssueStatus.PENDING);
+        assertThat(saved.getRetryCount()).isZero();
+        assertThat(saved.getLastAttemptedAt()).isNull();
     }
 
     @Test
@@ -101,6 +103,19 @@ class AiCounterIssuePersistenceServiceTest {
         assertThat(failed.getStatus()).isEqualTo(AiCounterIssueStatus.FAILED);
         assertThat(failed.getErrorMessage())
                 .isEqualTo("AI counter issue generation failed.");
+    }
+
+    @Test
+    void markAttemptStarted_increasesRetryCountAndRecordsAttemptTime() {
+        AiCounterIssue pending = aiCounterIssueRepository.saveAndFlush(
+                AiCounterIssue.pending(1L, 30L, SpeechStance.CON)
+        );
+
+        AiCounterIssue attempted =
+                aiCounterIssuePersistenceService.markAttemptStarted(pending.getId());
+
+        assertThat(attempted.getRetryCount()).isEqualTo(1);
+        assertThat(attempted.getLastAttemptedAt()).isNotNull();
     }
 
     @Test

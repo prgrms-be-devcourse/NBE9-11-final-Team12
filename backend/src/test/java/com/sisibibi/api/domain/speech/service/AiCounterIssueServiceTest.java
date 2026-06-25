@@ -3,6 +3,7 @@ package com.sisibibi.api.domain.speech.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.sisibibi.api.domain.room.entity.Room;
@@ -98,6 +99,8 @@ class AiCounterIssueServiceTest {
                 30L,
                 SpeechStance.CON
         )).willReturn(Optional.of(pending));
+        given(aiCounterIssuePersistenceService.markAttemptStarted(11L))
+                .willReturn(pending);
         given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
         given(aiCounterIssueGenerator.generate(room, SpeechStance.CON))
                 .willReturn("Counter issue for the opposing side.");
@@ -139,7 +142,7 @@ class AiCounterIssueServiceTest {
     }
 
     @Test
-    void suggestIfNeeded_marksIssueAsFailed_whenAiGenerationTimesOut() {
+    void suggestIfNeeded_retriesTwiceAndFails_whenAiGenerationTimesOut() {
         Long roomId = 1L;
         SpeakingQueue first = completedQueue(30L, SpeechStance.PRO);
         SpeakingQueue second = completedQueue(29L, SpeechStance.PRO);
@@ -168,6 +171,8 @@ class AiCounterIssueServiceTest {
                 30L,
                 SpeechStance.CON
         )).willReturn(Optional.of(pending));
+        given(aiCounterIssuePersistenceService.markAttemptStarted(11L))
+                .willReturn(pending);
         given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
         ArgumentCaptor<String> failureMessageCaptor = ArgumentCaptor.forClass(String.class);
 
@@ -177,12 +182,71 @@ class AiCounterIssueServiceTest {
                 .fail(org.mockito.ArgumentMatchers.eq(11L), failureMessageCaptor.capture());
         assertThat(failureMessageCaptor.getValue())
                 .contains("AI counter issue generation timed out");
+        verify(aiCounterIssuePersistenceService, times(3)).markAttemptStarted(11L);
         verify(aiCounterIssuePersistenceService, never())
                 .complete(
                         org.mockito.ArgumentMatchers.anyLong(),
                         org.mockito.ArgumentMatchers.anyString()
                 );
         verify(eventPublisher, never()).publishEvent(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void suggestIfNeeded_succeedsOnThirdAttempt_whenFirstTwoAttemptsFail() {
+        Long roomId = 1L;
+        SpeakingQueue first = completedQueue(30L, SpeechStance.PRO);
+        SpeakingQueue second = completedQueue(29L, SpeechStance.PRO);
+        SpeakingQueue third = completedQueue(28L, SpeechStance.PRO);
+        AiCounterIssue pending = AiCounterIssue.pending(roomId, 30L, SpeechStance.CON);
+        ReflectionTestUtils.setField(pending, "id", 11L);
+        AiCounterIssue completed = AiCounterIssue.pending(roomId, 30L, SpeechStance.CON);
+        ReflectionTestUtils.setField(completed, "id", 11L);
+        ReflectionTestUtils.setField(completed, "createdAt",
+                LocalDateTime.of(2026, 6, 25, 14, 0));
+        completed.complete(
+                "Recovered counter issue.",
+                LocalDateTime.of(2026, 6, 25, 14, 1)
+        );
+        Room room = Room.open(
+                1L,
+                "AI debate topic",
+                LocalDateTime.of(2026, 6, 25, 13, 0),
+                LocalDateTime.of(2026, 6, 25, 15, 0),
+                100
+        );
+
+        given(speakingQueueRepository
+                .findTop3ByRoomIdAndStatusInAndStanceIsNotNullOrderByAssignedAtDesc(
+                        roomId,
+                        List.of(SpeakingQueueStatus.COMPLETED)
+                ))
+                .willReturn(List.of(first, second, third));
+        given(aiCounterIssuePersistenceService.createPendingIfAbsent(
+                roomId,
+                30L,
+                SpeechStance.CON
+        )).willReturn(Optional.of(pending));
+        given(aiCounterIssuePersistenceService.markAttemptStarted(11L))
+                .willReturn(pending);
+        given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
+        given(aiCounterIssueGenerator.generate(room, SpeechStance.CON))
+                .willThrow(new IllegalStateException("temporary api failure"))
+                .willThrow(new IllegalStateException("temporary api failure"))
+                .willReturn("Recovered counter issue.");
+        given(aiCounterIssuePersistenceService.complete(11L, "Recovered counter issue."))
+                .willReturn(completed);
+        ArgumentCaptor<AiCounterIssueChangedEvent> eventCaptor =
+                ArgumentCaptor.forClass(AiCounterIssueChangedEvent.class);
+
+        aiCounterIssueService.suggestIfNeeded(roomId);
+
+        verify(aiCounterIssuePersistenceService, times(3)).markAttemptStarted(11L);
+        verify(aiCounterIssueGenerator, times(3)).generate(room, SpeechStance.CON);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().payload().content())
+                .isEqualTo("Recovered counter issue.");
+        verify(aiCounterIssuePersistenceService, never())
+                .fail(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyString());
     }
 
     private AiCounterIssueService createService(Executor executor) {

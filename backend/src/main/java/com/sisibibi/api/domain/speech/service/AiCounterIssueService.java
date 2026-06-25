@@ -97,19 +97,51 @@ public class AiCounterIssueService {
             Room room = roomRepository.findById(issue.getRoomId())
                     .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
 
-            String content = generateWithTimeout(room, issue.getTargetStance());
-            AiCounterIssue completedIssue =
-                    aiCounterIssuePersistenceService.complete(issue.getId(), content);
-            publishAiCounterIssueChangedEvent(completedIssue);
+            generateAndCompleteWithRetries(issue, room);
         } catch (RuntimeException exception) {
-            log.warn(
-                    "Failed to generate AI counter issue. roomId={}, triggerQueueId={}",
-                    issue.getRoomId(),
-                    issue.getTriggerQueueId(),
-                    exception
-            );
-            aiCounterIssuePersistenceService.fail(issue.getId(), exception.getMessage());
+            failIssue(issue, exception);
         }
+    }
+
+    private void generateAndCompleteWithRetries(AiCounterIssue issue, Room room) {
+        int maxAttempts = Math.max(1, aiCounterIssueProperties.getMaxGenerationAttempts());
+        RuntimeException lastException = null;
+
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            AiCounterIssue attemptedIssue =
+                    aiCounterIssuePersistenceService.markAttemptStarted(issue.getId());
+
+            try {
+                String content = generateWithTimeout(room, attemptedIssue.getTargetStance());
+                AiCounterIssue completedIssue =
+                        aiCounterIssuePersistenceService.complete(attemptedIssue.getId(), content);
+                publishAiCounterIssueChangedEvent(completedIssue);
+                return;
+            } catch (RuntimeException exception) {
+                lastException = exception;
+                log.warn(
+                        "AI counter issue generation attempt failed. "
+                                + "roomId={}, triggerQueueId={}, attempt={}, maxAttempts={}",
+                        attemptedIssue.getRoomId(),
+                        attemptedIssue.getTriggerQueueId(),
+                        attempt,
+                        maxAttempts,
+                        exception
+                );
+            }
+        }
+
+        failIssue(issue, lastException);
+    }
+
+    private void failIssue(AiCounterIssue issue, RuntimeException exception) {
+        log.warn(
+                "Failed to generate AI counter issue. roomId={}, triggerQueueId={}",
+                issue.getRoomId(),
+                issue.getTriggerQueueId(),
+                exception
+        );
+        aiCounterIssuePersistenceService.fail(issue.getId(), exception.getMessage());
     }
 
     private String generateWithTimeout(Room room, SpeechStance targetStance) {

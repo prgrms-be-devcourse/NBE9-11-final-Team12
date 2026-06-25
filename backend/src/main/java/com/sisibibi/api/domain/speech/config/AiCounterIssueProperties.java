@@ -13,4 +13,5 @@ import org.springframework.stereotype.Component;
 public class AiCounterIssueProperties {
 
     private Duration generateTimeout = Duration.ofSeconds(10);
+    private int maxGenerationAttempts = 3;
 }

@@ -49,6 +49,12 @@ public class AiCounterIssue {
     @Column(name = "error_message", length = 500)
     private String errorMessage;
 
+    @Column(name = "retry_count", nullable = false)
+    private int retryCount;
+
+    @Column(name = "last_attempted_at")
+    private LocalDateTime lastAttemptedAt;
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -67,6 +73,11 @@ public class AiCounterIssue {
         issue.targetStance = targetStance;
         issue.status = AiCounterIssueStatus.PENDING;
         return issue;
+    }
+
+    public void markAttemptStarted(LocalDateTime attemptedAt) {
+        this.retryCount++;
+        this.lastAttemptedAt = attemptedAt;
     }
 
     public void complete(String content, LocalDateTime completedAt) {
