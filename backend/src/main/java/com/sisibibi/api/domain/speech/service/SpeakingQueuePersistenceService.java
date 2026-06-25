@@ -146,6 +146,37 @@ public class SpeakingQueuePersistenceService {
     }
 
     @Transactional(readOnly = true)
+    public long countWaitingRequests(Long roomId) {
+        return speakingQueueRepository.countByRoomIdAndStatus(
+                roomId,
+                SpeakingQueueStatus.WAITING
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public long countWaitingRequestsBefore(Long roomId, Integer queueOrder) {
+        return speakingQueueRepository.countByRoomIdAndStatusAndQueueOrderLessThan(
+                roomId,
+                SpeakingQueueStatus.WAITING,
+                queueOrder
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public List<SpeakingQueue> findWaitingRequestsForRedisReadFallback(
+            Long roomId,
+            int offset,
+            int size
+    ) {
+        return speakingQueueRepository.findWaitingPageForRedisReadFallback(
+                roomId,
+                SpeakingQueueStatus.WAITING.name(),
+                offset,
+                size
+        );
+    }
+
+    @Transactional(readOnly = true)
     public Optional<SpeakingQueue> findCurrentSpeakerForRedisProjection(Long roomId) {
         return speakingQueueRepository.findByRoomIdAndStatus(
                 roomId,
