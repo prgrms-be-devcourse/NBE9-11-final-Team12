@@ -98,7 +98,7 @@ class SpeakingQueueServiceTest {
     }
 
     @Test
-    void requestSpeakingTurn_doesNotWriteRedisWhenRdbPersistenceFails() {
+    void requestSpeakingTurn_doesNotWriteRedisWhenDbPersistenceFails() {
         given(speakingQueuePersistenceService.createWaitingRequest(1L, 7L, SpeechStance.PRO))
                 .willThrow(new IllegalStateException("database unavailable"));
 
@@ -261,7 +261,7 @@ class SpeakingQueueServiceTest {
     }
 
     @Test
-    void requestSpeakingTurn_reloadsRdbSnapshotWhenProjectionVersionChangesBeforeRebuild() {
+    void requestSpeakingTurn_reloadsDbSnapshotWhenProjectionVersionChangesBeforeRebuild() {
         SpeakingQueue saved = persistedWaitingRequest(1L, 7L, 15);
         SpeakingQueue laterWaiting = persistedWaitingRequest(1L, 8L, 16);
         given(speakingQueuePersistenceService.createWaitingRequest(1L, 7L, SpeechStance.PRO))
@@ -508,7 +508,7 @@ class SpeakingQueueServiceTest {
     }
 
     @Test
-    void cancelSpeakingRequest_keepsCanceledRdbStateWhenRedisRemovalFails() {
+    void cancelSpeakingRequest_keepsCanceledDbStateWhenRedisRemovalFails() {
         SpeakingQueue canceled = persistedWaitingRequest(1L, 7L, 15);
         canceled.cancel(LocalDateTime.of(2026, 6, 12, 11, 35));
         given(speakingQueuePersistenceService.cancelWaitingRequest(1L, 7L))
@@ -596,19 +596,39 @@ class SpeakingQueueServiceTest {
     }
 
     @Test
-    void getMySpeakingRequestStatus_returnsNullRankWhenWaitingRequestIsMissingInRedis() {
+    void getMySpeakingRequestStatus_returnsDbRankWhenWaitingRequestIsMissingInRedis() {
         SpeakingQueue waiting = persistedWaitingRequest(1L, 7L, 15);
         given(speakingQueuePersistenceService.findMyActiveRequest(1L, 7L))
                 .willReturn(Optional.of(waiting));
         given(redisSpeakingQueueRepository.rank(1L, 7L))
                 .willReturn(Optional.empty());
+        given(speakingQueuePersistenceService.countWaitingRequestsBefore(1L, 15))
+                .willReturn(4L);
 
         StageRequestStatusRes response =
                 speakingQueueService.getMySpeakingRequestStatus(1L, 7L);
 
         assertThat(response.hasRequest()).isTrue();
         assertThat(response.status()).isEqualTo(SpeakingQueueStatus.WAITING);
-        assertThat(response.currentRank()).isNull();
+        assertThat(response.currentRank()).isEqualTo(5);
+    }
+
+    @Test
+    void getMySpeakingRequestStatus_returnsDbRankWhenRedisRankReadFails() {
+        SpeakingQueue waiting = persistedWaitingRequest(1L, 7L, 15);
+        given(speakingQueuePersistenceService.findMyActiveRequest(1L, 7L))
+                .willReturn(Optional.of(waiting));
+        given(redisSpeakingQueueRepository.rank(1L, 7L))
+                .willThrow(new IllegalStateException("redis unavailable"));
+        given(speakingQueuePersistenceService.countWaitingRequestsBefore(1L, 15))
+                .willReturn(2L);
+
+        StageRequestStatusRes response =
+                speakingQueueService.getMySpeakingRequestStatus(1L, 7L);
+
+        assertThat(response.hasRequest()).isTrue();
+        assertThat(response.status()).isEqualTo(SpeakingQueueStatus.WAITING);
+        assertThat(response.currentRank()).isEqualTo(3);
     }
 
     @Test
@@ -664,7 +684,7 @@ class SpeakingQueueServiceTest {
     }
 
     @Test
-    void completeSpeakingTurn_keepsCompletedRdbStateWhenRedisRemovalFails() {
+    void completeSpeakingTurn_keepsCompletedDbStateWhenRedisRemovalFails() {
         SpeakingQueue completed = completedRequest(1L, 7L, 15);
         given(speakingQueuePersistenceService.completeCurrentSpeaker(1L, 7L))
                 .willReturn(completed);
@@ -947,6 +967,41 @@ class SpeakingQueueServiceTest {
         assertThat(response.totalWaitingCount()).isZero();
         assertThat(response.hasNext()).isFalse();
         assertThat(response.items()).isEmpty();
+    }
+
+    @Test
+    void getWaitingQueue_returnsDbQueueWhenRedisReadFails() {
+        SpeakingQueue third = persistedWaitingRequest(1L, 30L, 3);
+        SpeakingQueue fourth = persistedWaitingRequest(1L, 40L, 4);
+        givenQueueProperties(5, 20, 100);
+        given(redisSpeakingQueueRepository.count(1L))
+                .willThrow(new IllegalStateException("redis unavailable"));
+        given(speakingQueuePersistenceService.countWaitingRequests(1L))
+                .willReturn(4L);
+        given(speakingQueuePersistenceService.findWaitingRequestsForRedisReadFallback(
+                1L,
+                2,
+                2
+        )).willReturn(List.of(third, fourth));
+        given(speakingQueuePersistenceService.findNicknamesByUserIds(List.of(30L, 40L)))
+                .willReturn(Map.of(
+                        30L, "neon_wave",
+                        40L, "open_mind"
+                ));
+
+        StageQueueRes response = speakingQueueService.getWaitingQueue(1L, 2, 2);
+
+        assertThat(response.totalWaitingCount()).isEqualTo(4L);
+        assertThat(response.offset()).isEqualTo(2);
+        assertThat(response.size()).isEqualTo(2);
+        assertThat(response.hasNext()).isFalse();
+        assertThat(response.items()).hasSize(2);
+        assertThat(response.items().get(0).rank()).isEqualTo(3);
+        assertThat(response.items().get(0).userId()).isEqualTo(30L);
+        assertThat(response.items().get(0).nickname()).isEqualTo("neon_wave");
+        assertThat(response.items().get(1).rank()).isEqualTo(4);
+        assertThat(response.items().get(1).userId()).isEqualTo(40L);
+        assertThat(response.items().get(1).nickname()).isEqualTo("open_mind");
     }
 
     @Test
