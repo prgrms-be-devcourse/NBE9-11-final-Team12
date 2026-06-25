@@ -98,7 +98,6 @@ public class SpeakingQueueService {
         ));
         assigned.ifPresent(speakingQueue ->
                 publishStageChanged(StageEventType.SPEAKER_ASSIGNED, speakingQueue));
-        assigned.ifPresent(this::suggestAiCounterIssue);
         return assigned;
     }
 
@@ -143,6 +142,7 @@ public class SpeakingQueueService {
                 completed,
                 StageTurnEndReason.COMPLETED
         );
+        suggestAiCounterIssue(roomId);
         tryAssignNextSpeaker(roomId);
     }
 
@@ -239,7 +239,10 @@ public class SpeakingQueueService {
                 speakingQueue,
                 StageTurnEndReason.EXPIRED
         ));
-        expired.ifPresent(speakingQueue -> tryAssignNextSpeaker(roomId));
+        expired.ifPresent(speakingQueue -> {
+            suggestAiCounterIssue(roomId);
+            tryAssignNextSpeaker(roomId);
+        });
         return expired;
     }
 
@@ -298,6 +301,7 @@ public class SpeakingQueueService {
 
     private void synchronizeParticipantLeftTurnCompletion(SpeakingQueue completed) {
         synchronizeCompletedRedisProjection(completed);
+        suggestAiCounterIssue(completed.getRoomId());
         tryAssignNextSpeaker(completed.getRoomId());
     }
 
@@ -626,14 +630,13 @@ public class SpeakingQueueService {
     ) {
     }
 
-    private void suggestAiCounterIssue(SpeakingQueue speakingQueue) {
+    private void suggestAiCounterIssue(Long roomId) {
         try {
-            aiCounterIssueService.suggestIfNeeded(speakingQueue.getRoomId());
+            aiCounterIssueService.suggestIfNeeded(roomId);
         } catch (RuntimeException exception) {
             log.warn(
-                    "Failed to suggest AI counter issue. roomId={}, queueId={}",
-                    speakingQueue.getRoomId(),
-                    speakingQueue.getId(),
+                    "Failed to suggest AI counter issue. roomId={}",
+                    roomId,
                     exception
             );
         }

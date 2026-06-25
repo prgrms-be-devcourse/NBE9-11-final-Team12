@@ -110,6 +110,8 @@ app:
     base-url: ${AI_REPORT_BASE_URL:http://localhost:8000}
     generate-path: ${AI_REPORT_GENERATE_PATH:/report}
     timeout: ${AI_REPORT_TIMEOUT:5m}
+  ai-counter-issue:
+    generate-timeout: ${AI_COUNTER_ISSUE_GENERATE_TIMEOUT:10s}
   prompt-guard:
     base-url: ${PROMPT_GUARD_BASE_URL:}
     scan-path: ${PROMPT_GUARD_SCAN_PATH:/scan}
