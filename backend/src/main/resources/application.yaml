@@ -127,6 +127,13 @@ app:
       secure: false
       same-site: Lax
       domain:
+  storage:
+    s3:
+      region: ${AWS_REGION:ap-northeast-2}
+      bucket: ${S3_BUCKET_NAME:}
+      public-base-url: ${S3_PUBLIC_BASE_URL:}
+      presigned-url-expiration: ${S3_PRESIGNED_URL_EXPIRATION:10m}
+      max-image-size: ${SPEECH_IMAGE_MAX_SIZE:5242880}
 
 naver:
   search:

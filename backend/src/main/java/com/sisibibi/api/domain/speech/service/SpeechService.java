@@ -9,10 +9,7 @@ import com.sisibibi.api.domain.speech.dto.command.SpeechUpdateCommand;
 import com.sisibibi.api.domain.speech.dto.event.SpeechChangedEvent;
 import com.sisibibi.api.domain.speech.dto.event.SpeechEventPayload;
 import com.sisibibi.api.domain.speech.dto.event.SpeechEventType;
-import com.sisibibi.api.domain.speech.dto.response.SpeechCreateRes;
-import com.sisibibi.api.domain.speech.dto.response.SpeechCursorPageRes;
-import com.sisibibi.api.domain.speech.dto.response.SpeechDetailRes;
-import com.sisibibi.api.domain.speech.dto.response.SpeechListRes;
+import com.sisibibi.api.domain.speech.dto.response.*;
 import com.sisibibi.api.domain.speech.entity.Speech;
 import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
@@ -22,6 +19,7 @@ import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.moderation.ProfanityDetector;
+import com.sisibibi.api.global.storage.S3ImageStorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -47,6 +45,7 @@ public class SpeechService {
     private final SpeechReactionRepository speechReactionRepository;
     private final ProfanityDetector profanityDetector;
     private final UserSanctionPolicyService userSanctionPolicyService;
+    private final S3ImageStorageService s3ImageStorageService;
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
@@ -155,6 +154,32 @@ public class SpeechService {
                 speech.getRoomId(),
                 userId
         );
+    }
+
+    @Transactional(readOnly = true)
+    public SpeechImageUploadUrlRes createSpeechImageUploadUrl(
+        Long speechId,
+        Long userId,
+        String contentType,
+        long fileSize
+    ) {
+        Speech speech = findEditableOwnedSpeech(speechId, userId);
+
+        return s3ImageStorageService.createSpeechImageUploadUrl(
+            speech.getId(),
+            userId,
+            contentType,
+            fileSize
+        );
+    }
+
+    @Transactional
+    public SpeechDetailRes confirmSpeechImage(Long speechId, Long userId, String imageKey) {
+        Speech speech = findEditableOwnedSpeech(speechId, userId);
+        String imageUrl = s3ImageStorageService.resolveUploadedImageUrl(imageKey);
+
+        speech.updateImage(imageUrl);
+        return toDetailResponse(speech, userId);
     }
 
     @Transactional
