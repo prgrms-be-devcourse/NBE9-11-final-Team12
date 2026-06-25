@@ -54,6 +54,9 @@ class SpeakingQueueServiceTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
+    @Mock
+    private AiCounterIssueService aiCounterIssueService;
+
     @InjectMocks
     private SpeakingQueueService speakingQueueService;
 
