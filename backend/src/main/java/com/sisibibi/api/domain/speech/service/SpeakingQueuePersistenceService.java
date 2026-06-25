@@ -15,6 +15,7 @@ import com.sisibibi.api.domain.user.repository.UserRepository;
 import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -182,6 +183,69 @@ public class SpeakingQueuePersistenceService {
                 roomId,
                 SpeakingQueueStatus.ASSIGNED
         );
+    }
+
+    @Transactional
+    public void recordCurrentSpeakerActivityIfMatches(
+            Long roomId,
+            Long userId,
+            LocalDateTime activityAt
+    ) {
+        Optional<SpeakingQueue> activeRequest =
+                speakingQueueRepository.findByRoomIdAndUserIdAndStatusIn(
+                        roomId,
+                        userId,
+                        List.of(SpeakingQueueStatus.ASSIGNED)
+                );
+        if (activeRequest.isEmpty()) {
+            return;
+        }
+
+        roomRepository.findByIdForUpdate(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+        Optional<SpeakingQueue> currentSpeaker =
+                speakingQueueRepository.findByRoomIdAndStatus(
+                        roomId,
+                        SpeakingQueueStatus.ASSIGNED
+                );
+        if (currentSpeaker.isEmpty()
+                || !currentSpeaker.get().getUserId().equals(userId)) {
+            return;
+        }
+
+        currentSpeaker.get().recordActivity(activityAt);
+    }
+
+    @Transactional
+    public Optional<SpeakingQueue> warnCurrentSpeakerIfIdle(
+            Long roomId,
+            LocalDateTime now,
+            Duration warningDelay,
+            Duration warningSuppressionBeforeExpiration
+    ) {
+        roomRepository.findByIdForUpdate(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+        Optional<SpeakingQueue> currentSpeaker =
+                speakingQueueRepository.findByRoomIdAndStatus(
+                        roomId,
+                        SpeakingQueueStatus.ASSIGNED
+                );
+        if (currentSpeaker.isEmpty()) {
+            return Optional.empty();
+        }
+
+        SpeakingQueue assigned = currentSpeaker.get();
+        if (!assigned.markIdleWarningIfDue(
+                now,
+                warningDelay,
+                warningSuppressionBeforeExpiration
+        )) {
+            return Optional.empty();
+        }
+
+        return Optional.of(assigned);
     }
 
     @Transactional
@@ -407,6 +471,33 @@ public class SpeakingQueuePersistenceService {
 
         SpeakingQueue assigned = currentSpeaker.get();
         if (assigned.getExpiresAt() == null || assigned.getExpiresAt().isAfter(now)) {
+            return Optional.empty();
+        }
+
+        assigned.complete();
+        return Optional.of(assigned);
+    }
+
+    @Transactional
+    public Optional<SpeakingQueue> completeCurrentSpeakerIfIdleTimedOut(
+            Long roomId,
+            LocalDateTime now,
+            Duration timeoutDelayAfterWarning
+    ) {
+        roomRepository.findByIdForUpdate(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+        Optional<SpeakingQueue> currentSpeaker =
+                speakingQueueRepository.findByRoomIdAndStatus(
+                        roomId,
+                        SpeakingQueueStatus.ASSIGNED
+                );
+        if (currentSpeaker.isEmpty()) {
+            return Optional.empty();
+        }
+
+        SpeakingQueue assigned = currentSpeaker.get();
+        if (!assigned.isIdleTimedOut(now, timeoutDelayAfterWarning)) {
             return Optional.empty();
         }
 

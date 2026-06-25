@@ -231,6 +231,59 @@ public class SpeakingQueueService {
         return expired;
     }
 
+    public Optional<SpeakingQueue> warnIdleCurrentSpeaker(
+            Long roomId,
+            LocalDateTime now
+    ) {
+        SpeakingQueueProperties.Idle idleProperties = speakingQueueProperties.getIdle();
+        Optional<SpeakingQueue> warned =
+                speakingQueuePersistenceService.warnCurrentSpeakerIfIdle(
+                        roomId,
+                        now,
+                        idleProperties.getWarningDelay(),
+                        idleProperties.getWarningSuppressionBeforeExpiration()
+                );
+        warned.ifPresent(speakingQueue -> log.info(
+                "Speaking idle warning sent. roomId={}, userId={}, queueOrder={}, lastActivityAt={}",
+                speakingQueue.getRoomId(),
+                speakingQueue.getUserId(),
+                speakingQueue.getQueueOrder(),
+                speakingQueue.getLastActivityAt()
+        ));
+        warned.ifPresent(speakingQueue ->
+                publishStageChanged(StageEventType.SPEAKER_IDLE_WARNED, speakingQueue));
+        return warned;
+    }
+
+    public Optional<SpeakingQueue> completeIdleCurrentSpeaker(
+            Long roomId,
+            LocalDateTime now
+    ) {
+        SpeakingQueueProperties.Idle idleProperties = speakingQueueProperties.getIdle();
+        Optional<SpeakingQueue> completed =
+                speakingQueuePersistenceService.completeCurrentSpeakerIfIdleTimedOut(
+                        roomId,
+                        now,
+                        idleProperties.getTimeoutDelayAfterWarning()
+                );
+        completed.ifPresent(this::synchronizeCompletedRedisProjection);
+        completed.ifPresent(speakingQueue -> log.info(
+                "Speaking request completed because speaker was idle. "
+                        + "roomId={}, userId={}, queueOrder={}, idleWarnedAt={}",
+                speakingQueue.getRoomId(),
+                speakingQueue.getUserId(),
+                speakingQueue.getQueueOrder(),
+                speakingQueue.getIdleWarnedAt()
+        ));
+        completed.ifPresent(speakingQueue -> publishStageChanged(
+                StageEventType.SPEAKER_COMPLETED,
+                speakingQueue,
+                StageTurnEndReason.IDLE_TIMEOUT
+        ));
+        completed.ifPresent(speakingQueue -> tryAssignNextSpeaker(roomId));
+        return completed;
+    }
+
     private void publishStageChanged(
             StageEventType type,
             SpeakingQueue speakingQueue

@@ -861,6 +861,77 @@ class SpeakingQueueServiceTest {
     }
 
     @Test
+    void warnIdleCurrentSpeaker_publishesIdleWarningEvent() {
+        LocalDateTime now = LocalDateTime.of(2026, 6, 12, 11, 31, 20);
+        SpeakingQueue warned = assignedRequest(1L, 7L, 15);
+        warned.markIdleWarningIfDue(
+                now,
+                Duration.ofSeconds(20),
+                Duration.ofSeconds(40)
+        );
+        givenIdleProperties();
+        given(speakingQueuePersistenceService.warnCurrentSpeakerIfIdle(
+                1L,
+                now,
+                Duration.ofSeconds(20),
+                Duration.ofSeconds(40)
+        )).willReturn(Optional.of(warned));
+
+        Optional<SpeakingQueue> response =
+                speakingQueueService.warnIdleCurrentSpeaker(1L, now);
+
+        assertThat(response).contains(warned);
+        verify(redisSpeakingQueueRepository, never())
+                .removeCurrentSpeaker(anyLong(), anyLong());
+        ArgumentCaptor<StageChangedEvent> eventCaptor =
+                ArgumentCaptor.forClass(StageChangedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().type())
+                .isEqualTo(StageEventType.SPEAKER_IDLE_WARNED);
+        assertThat(eventCaptor.getValue().payload().status())
+                .isEqualTo(SpeakingQueueStatus.ASSIGNED);
+    }
+
+    @Test
+    void completeIdleCurrentSpeaker_removesRedisAndAssignsNextSpeaker() {
+        LocalDateTime now = LocalDateTime.of(2026, 6, 12, 11, 31, 40);
+        SpeakingQueue completed = idleTimedOutCompletedRequest(1L, 7L, 15);
+        givenIdleProperties();
+        given(speakingQueuePersistenceService.completeCurrentSpeakerIfIdleTimedOut(
+                1L,
+                now,
+                Duration.ofSeconds(20)
+        )).willReturn(Optional.of(completed));
+        given(speakingQueueProperties.getTurnDuration())
+                .willReturn(Duration.ofMinutes(2));
+        given(speakingQueuePersistenceService.assignNextSpeaker(
+                eq(1L),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        )).willReturn(SpeakingQueueAssignmentResult.empty());
+
+        Optional<SpeakingQueue> response =
+                speakingQueueService.completeIdleCurrentSpeaker(1L, now);
+
+        assertThat(response).contains(completed);
+        verify(redisSpeakingQueueRepository).removeCurrentSpeaker(1L, 7L);
+        verify(speakingQueuePersistenceService).assignNextSpeaker(
+                eq(1L),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        );
+        ArgumentCaptor<StageChangedEvent> eventCaptor =
+                ArgumentCaptor.forClass(StageChangedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().type())
+                .isEqualTo(StageEventType.SPEAKER_COMPLETED);
+        assertThat(eventCaptor.getValue().payload().status())
+                .isEqualTo(SpeakingQueueStatus.COMPLETED);
+        assertThat(eventCaptor.getValue().payload().endReason())
+                .isEqualTo(StageTurnEndReason.IDLE_TIMEOUT);
+    }
+
+    @Test
     void getCurrentSpeaker_returnsEmptyResponseWhenCurrentSpeakerDoesNotExist() {
         given(speakingQueuePersistenceService.findCurrentSpeaker(1L))
                 .willReturn(Optional.empty());
@@ -1042,6 +1113,14 @@ class SpeakingQueueServiceTest {
         given(speakingQueueProperties.getQueue()).willReturn(queue);
     }
 
+    private void givenIdleProperties() {
+        SpeakingQueueProperties.Idle idle = new SpeakingQueueProperties.Idle();
+        idle.setWarningDelay(Duration.ofSeconds(20));
+        idle.setTimeoutDelayAfterWarning(Duration.ofSeconds(20));
+        idle.setWarningSuppressionBeforeExpiration(Duration.ofSeconds(40));
+        given(speakingQueueProperties.getIdle()).willReturn(idle);
+    }
+
     private CurrentSpeakerProjection currentSpeakerProjection(
             Long userId,
             String nickname,
@@ -1095,6 +1174,21 @@ class SpeakingQueueServiceTest {
 
     private SpeakingQueue completedRequest(Long roomId, Long userId, int queueOrder) {
         SpeakingQueue speakingQueue = assignedRequest(roomId, userId, queueOrder);
+        speakingQueue.complete();
+        return speakingQueue;
+    }
+
+    private SpeakingQueue idleTimedOutCompletedRequest(
+            Long roomId,
+            Long userId,
+            int queueOrder
+    ) {
+        SpeakingQueue speakingQueue = assignedRequest(roomId, userId, queueOrder);
+        speakingQueue.markIdleWarningIfDue(
+                LocalDateTime.of(2026, 6, 12, 11, 31, 20),
+                Duration.ofSeconds(20),
+                Duration.ofSeconds(40)
+        );
         speakingQueue.complete();
         return speakingQueue;
     }
