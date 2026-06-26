@@ -18,6 +18,7 @@ import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.domain.speech.util.SpeakingStreakPolicy;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -30,9 +31,11 @@ import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.http.HttpHeaders;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClientResponseException;
 
 @ExtendWith(MockitoExtension.class)
 class AiCounterIssueServiceTest {
@@ -262,6 +265,26 @@ class AiCounterIssueServiceTest {
                 .isEqualTo("Recovered counter issue.");
         verify(aiCounterIssuePersistenceService, never())
                 .fail(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void generationFailureDetails_includesHttpStatusAndResponseBody() {
+        RestClientResponseException responseException = new RestClientResponseException(
+                "OpenAI request failed",
+                429,
+                "Too Many Requests",
+                HttpHeaders.EMPTY,
+                "{\"error\":\"rate limit\"}".getBytes(StandardCharsets.UTF_8),
+                StandardCharsets.UTF_8
+        );
+        IllegalStateException wrappedException =
+                new IllegalStateException("Spring AI call failed", responseException);
+
+        String details = AiCounterIssueService.generationFailureDetails(wrappedException);
+
+        assertThat(details).contains("status=429");
+        assertThat(details).contains("statusText=Too Many Requests");
+        assertThat(details).contains("responseBody={\"error\":\"rate limit\"}");
     }
 
     private AiCounterIssueService createService() {

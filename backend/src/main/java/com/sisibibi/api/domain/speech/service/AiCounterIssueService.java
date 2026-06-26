@@ -22,6 +22,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 @Slf4j
 @Service
@@ -68,7 +70,7 @@ public class AiCounterIssueService {
         Optional<SpeechStance> targetStance =
                 speakingStreakPolicy.counterStanceFor(recentAssignments);
 
-        if (targetStance.isEmpty()) {
+        if (targetStance.isEmpty() || recentAssignments.isEmpty()) {
             return;
         }
 
@@ -114,11 +116,13 @@ public class AiCounterIssueService {
                 lastException = exception;
                 log.warn(
                         "AI counter issue generation attempt failed. "
-                                + "roomId={}, triggerQueueId={}, attempt={}, maxAttempts={}",
+                                + "roomId={}, triggerQueueId={}, attempt={}, maxAttempts={}, "
+                                + "failureDetails={}",
                         attemptedIssue.getRoomId(),
                         attemptedIssue.getTriggerQueueId(),
                         attempt,
                         maxAttempts,
+                        generationFailureDetails(exception),
                         exception
                 );
             }
@@ -134,12 +138,58 @@ public class AiCounterIssueService {
                 ? exception
                 : new IllegalStateException("Unknown AI counter issue generation failure.");
         log.warn(
-                "Failed to generate AI counter issue. roomId={}, triggerQueueId={}",
+                "Failed to generate AI counter issue. "
+                        + "roomId={}, triggerQueueId={}, failureDetails={}",
                 issue.getRoomId(),
                 issue.getTriggerQueueId(),
+                generationFailureDetails(failure),
                 failure
         );
         aiCounterIssuePersistenceService.fail(issue.getId(), failure.getMessage());
+    }
+
+    static String generationFailureDetails(RuntimeException exception) {
+        RestClientResponseException responseException =
+                findCause(exception, RestClientResponseException.class);
+        if (responseException != null) {
+            return "status=" + responseException.getStatusCode().value()
+                    + ", statusText=" + responseException.getStatusText()
+                    + ", responseBody=" + abbreviate(responseException.getResponseBodyAsString());
+        }
+
+        RestClientException restClientException =
+                findCause(exception, RestClientException.class);
+        if (restClientException != null) {
+            return "restClientMessage=" + abbreviate(restClientException.getMessage());
+        }
+
+        return "message=" + abbreviate(exception.getMessage());
+    }
+
+    private static <T extends Throwable> T findCause(
+            Throwable exception,
+            Class<T> targetType
+    ) {
+        Throwable current = exception;
+        while (current != null) {
+            if (targetType.isInstance(current)) {
+                return targetType.cast(current);
+            }
+            current = current.getCause();
+        }
+        return null;
+    }
+
+    private static String abbreviate(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+
+        int maxLength = 500;
+        if (value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength) + "...";
     }
 
     private void publishAiCounterIssueChangedEvent(AiCounterIssue issue) {
