@@ -18,6 +18,7 @@ import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.RoomQueueSequenceRepository;
+import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import com.sisibibi.api.domain.speech.util.SpeakingStreakPolicy;
@@ -64,6 +65,9 @@ class SpeakingQueuePersistenceServiceTest {
 
     @Mock
     private UserSanctionPolicyService userSanctionPolicyService;
+
+    @Mock
+    private SpeechRepository speechRepository;
 
     @Spy
     private SpeakingStreakPolicy speakingStreakPolicy;

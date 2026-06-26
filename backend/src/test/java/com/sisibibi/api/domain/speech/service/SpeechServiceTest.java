@@ -12,6 +12,7 @@ import com.sisibibi.api.domain.speech.dto.response.SpeechCreateRes;
 import com.sisibibi.api.domain.speech.dto.response.SpeechCursorPageRes;
 import com.sisibibi.api.domain.speech.dto.response.SpeechDetailRes;
 import com.sisibibi.api.domain.speech.dto.response.SpeechListRes;
+import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.Speech;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.entity.SpeechStatus;
@@ -92,9 +93,18 @@ class SpeechServiceTest {
     }
 
     @Test
-    void createMainOpinion_savesReadySpeech_whenRoomIsOpenAndUserIsParticipating() {
+    void createMainOpinion_savesSpeakingSpeech_whenUserIsCurrentSpeaker() {
         Long roomId = 1L;
         Long userId = 2L;
+        LocalDateTime assignedAt = LocalDateTime.of(2026, 6, 12, 12, 0);
+        SpeakingQueue currentSpeaker = SpeakingQueue.waiting(
+                roomId,
+                userId,
+                1,
+                SpeechStance.PRO,
+                assignedAt.minusMinutes(1)
+        );
+        currentSpeaker.assign(assignedAt, assignedAt.plusMinutes(3));
         Room room = org.mockito.Mockito.mock(Room.class);
         given(room.isActiveAt(org.mockito.ArgumentMatchers.any(LocalDateTime.class)))
                 .willReturn(true);
@@ -104,6 +114,8 @@ class SpeechServiceTest {
                 userId,
                 RoomParticipantStatus.JOINED
         )).willReturn(true);
+        given(speakingQueuePersistenceService.validateCurrentSpeaker(roomId, userId))
+                .willReturn(currentSpeaker);
         given(speechRepository.save(org.mockito.ArgumentMatchers.any(Speech.class)))
                 .willAnswer(invocation -> {
                     Speech speech = invocation.getArgument(0);
@@ -125,14 +137,82 @@ class SpeechServiceTest {
         assertThat(savedSpeech.getUserId()).isEqualTo(userId);
         assertThat(savedSpeech.getContent()).isEqualTo("근거가 있는 찬성 의견입니다.");
         assertThat(savedSpeech.getStance()).isEqualTo(SpeechStance.PRO);
-        assertThat(savedSpeech.getStatus()).isEqualTo(SpeechStatus.READY);
-        assertThat(response.status()).isEqualTo(SpeechStatus.READY);
+        assertThat(savedSpeech.getStatus()).isEqualTo(SpeechStatus.SPEAKING);
+        assertThat(savedSpeech.getStartedAt()).isEqualTo(assignedAt);
+        assertThat(response.status()).isEqualTo(SpeechStatus.SPEAKING);
+        verify(speakingQueuePersistenceService).validateCurrentSpeaker(roomId, userId);
         verify(speakingQueuePersistenceService).recordCurrentSpeakerActivityIfMatches(
                 org.mockito.ArgumentMatchers.eq(roomId),
                 org.mockito.ArgumentMatchers.eq(userId),
                 org.mockito.ArgumentMatchers.any(LocalDateTime.class)
         );
         verifySpeechEventPublished(SpeechEventType.SPEECH_CREATED, roomId, userId);
+    }
+
+    @Test
+    void createMainOpinion_throwsCurrentSpeakerNotFound_whenCurrentSpeakerDoesNotExist() {
+        Long roomId = 1L;
+        Long userId = 2L;
+        Room room = org.mockito.Mockito.mock(Room.class);
+        given(room.isActiveAt(org.mockito.ArgumentMatchers.any(LocalDateTime.class)))
+                .willReturn(true);
+        given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
+        given(roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
+                roomId,
+                userId,
+                RoomParticipantStatus.JOINED
+        )).willReturn(true);
+        given(speakingQueuePersistenceService.validateCurrentSpeaker(roomId, userId))
+                .willThrow(new CustomException(ErrorCode.CURRENT_SPEAKER_NOT_FOUND));
+
+        assertThatThrownBy(() -> speechService.createMainOpinion(
+                roomId,
+                userId,
+                new SpeechCreateCommand("근거가 있는 찬성 의견입니다.", SpeechStance.PRO)
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CURRENT_SPEAKER_NOT_FOUND);
+
+        verify(speechRepository, never()).save(org.mockito.ArgumentMatchers.any(Speech.class));
+        verify(speakingQueuePersistenceService, never()).recordCurrentSpeakerActivityIfMatches(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any()
+        );
+    }
+
+    @Test
+    void createMainOpinion_throwsForbidden_whenUserIsNotCurrentSpeaker() {
+        Long roomId = 1L;
+        Long userId = 2L;
+        Room room = org.mockito.Mockito.mock(Room.class);
+        given(room.isActiveAt(org.mockito.ArgumentMatchers.any(LocalDateTime.class)))
+                .willReturn(true);
+        given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
+        given(roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
+                roomId,
+                userId,
+                RoomParticipantStatus.JOINED
+        )).willReturn(true);
+        given(speakingQueuePersistenceService.validateCurrentSpeaker(roomId, userId))
+                .willThrow(new CustomException(ErrorCode.FORBIDDEN));
+
+        assertThatThrownBy(() -> speechService.createMainOpinion(
+                roomId,
+                userId,
+                new SpeechCreateCommand("근거가 있는 찬성 의견입니다.", SpeechStance.PRO)
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FORBIDDEN);
+
+        verify(speechRepository, never()).save(org.mockito.ArgumentMatchers.any(Speech.class));
+        verify(speakingQueuePersistenceService, never()).recordCurrentSpeakerActivityIfMatches(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any()
+        );
     }
 
     @Test
@@ -240,7 +320,7 @@ class SpeechServiceTest {
         Long roomId = 1L;
         Long userId = 30L;
         Speech first = mockSpeech(2L, roomId, 10L, "최신 의견", SpeechStance.PRO,
-                SpeechStatus.READY, LocalDateTime.of(2026, 6, 12, 12, 0));
+                SpeechStatus.SPEAKING, LocalDateTime.of(2026, 6, 12, 12, 0));
         Speech second = mockSpeech(1L, roomId, 20L, "이전 의견", SpeechStance.CON,
                 SpeechStatus.COMPLETED, LocalDateTime.of(2026, 6, 12, 11, 0));
         Speech next = org.mockito.Mockito.mock(Speech.class);

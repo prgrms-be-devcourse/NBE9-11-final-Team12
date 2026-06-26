@@ -68,7 +68,7 @@ class SpeechControllerTest {
                         2L,
                         "근거가 있는 찬성 의견입니다.",
                         SpeechStance.PRO,
-                        SpeechStatus.READY
+                        SpeechStatus.SPEAKING
                 ));
 
         mockMvc.perform(post("/api/v1/rooms/{roomId}/speeches", 1L)
@@ -84,7 +84,7 @@ class SpeechControllerTest {
                 .andExpect(jsonPath("$.status").value(201))
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.speechId").value(10))
-                .andExpect(jsonPath("$.data.status").value("READY"));
+                .andExpect(jsonPath("$.data.status").value("SPEAKING"));
 
         verify(speechService).createMainOpinion(any(), any(), any());
     }
@@ -166,7 +166,7 @@ class SpeechControllerTest {
                     2L,
                     "찬성 의견",
                     SpeechStance.PRO,
-                    SpeechStatus.READY,
+                    SpeechStatus.SPEAKING,
                     "https://example.com/image.png",
                     LocalDateTime.of(2026, 6, 12, 12, 0),
                     3L,
@@ -239,7 +239,7 @@ class SpeechControllerTest {
                 SpeechStance.PRO,
                 null,
                 null,
-                SpeechStatus.READY,
+                SpeechStatus.SPEAKING,
                 null,
                 null,
                 LocalDateTime.of(2026, 6, 12, 10, 0),
@@ -330,7 +330,7 @@ class SpeechControllerTest {
                         SpeechStance.PRO,
                         "https://example.com/evidence",
                         null,
-                        SpeechStatus.READY,
+                        SpeechStatus.SPEAKING,
                         null,
                         null,
                         LocalDateTime.of(2026, 6, 12, 10, 0),

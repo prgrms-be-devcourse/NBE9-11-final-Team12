@@ -8,7 +8,9 @@ import com.sisibibi.api.domain.speech.entity.RoomQueueSequence;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
+import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.repository.RoomQueueSequenceRepository;
+import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.domain.speech.util.SpeakingStreakPolicy;
@@ -45,6 +47,7 @@ public class SpeakingQueuePersistenceService {
     private final UserRepository userRepository;
     private final UserSanctionPolicyService userSanctionPolicyService;
     private final SpeakingStreakPolicy speakingStreakPolicy;
+    private final SpeechRepository speechRepository;
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public SpeakingQueue createWaitingRequest(
@@ -187,6 +190,23 @@ public class SpeakingQueuePersistenceService {
     }
 
     @Transactional
+    public SpeakingQueue validateCurrentSpeaker(Long roomId, Long userId) {
+        roomRepository.findByIdForUpdate(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+        SpeakingQueue currentSpeaker = speakingQueueRepository
+                .findByRoomIdAndStatus(roomId, SpeakingQueueStatus.ASSIGNED)
+                .orElseThrow(() ->
+                        new CustomException(ErrorCode.CURRENT_SPEAKER_NOT_FOUND));
+
+        if (!currentSpeaker.getUserId().equals(userId)) {
+            throw new CustomException(ErrorCode.FORBIDDEN);
+        }
+
+        return currentSpeaker;
+    }
+
+    @Transactional
     public void recordCurrentSpeakerActivityIfMatches(
             Long roomId,
             Long userId,
@@ -272,6 +292,7 @@ public class SpeakingQueuePersistenceService {
 
             if (speakingQueue.getStatus() == SpeakingQueueStatus.ASSIGNED) {
                 speakingQueue.complete();
+                completeSpeakingSpeeches(speakingQueue, closedAt);
                 completedRequests.add(speakingQueue);
             }
         }
@@ -403,7 +424,9 @@ public class SpeakingQueuePersistenceService {
             throw new CustomException(ErrorCode.FORBIDDEN);
         }
 
+        LocalDateTime completedAt = LocalDateTime.now();
         currentSpeaker.complete();
+        completeSpeakingSpeeches(currentSpeaker, completedAt);
         return currentSpeaker;
     }
 
@@ -424,7 +447,9 @@ public class SpeakingQueuePersistenceService {
         }
 
         SpeakingQueue assigned = currentSpeaker.get();
+        LocalDateTime completedAt = LocalDateTime.now();
         assigned.complete();
+        completeSpeakingSpeeches(assigned, completedAt);
         return Optional.of(assigned);
     }
 
@@ -464,6 +489,7 @@ public class SpeakingQueuePersistenceService {
         }
 
         assigned.complete();
+        completeSpeakingSpeeches(assigned, now);
         return Optional.of(assigned);
     }
 
@@ -491,6 +517,17 @@ public class SpeakingQueuePersistenceService {
         }
 
         assigned.complete();
+        completeSpeakingSpeeches(assigned, now);
         return Optional.of(assigned);
+    }
+
+    private void completeSpeakingSpeeches(SpeakingQueue speakingQueue, LocalDateTime endedAt) {
+        speechRepository.completeSpeakingSpeeches(
+                speakingQueue.getRoomId(),
+                speakingQueue.getUserId(),
+                SpeechStatus.SPEAKING,
+                SpeechStatus.COMPLETED,
+                endedAt
+        );
     }
 }
