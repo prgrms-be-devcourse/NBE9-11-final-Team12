@@ -42,8 +42,8 @@ public class SpeakingQueueService {
     private final SpeakingQueuePersistenceService speakingQueuePersistenceService;
     private final SpeakingQueueProperties speakingQueueProperties;
     private final ApplicationEventPublisher eventPublisher;
-    private final AiCounterIssueService aiCounterIssueService;
     private final StageSummaryService stageSummaryService;
+    private final AiCounterIssueService aiCounterIssueService;
 
     public StageRequestRes requestSpeakingTurn(
             Long roomId,
@@ -813,5 +813,4 @@ public class SpeakingQueueService {
             );
         }
     }
-
 }

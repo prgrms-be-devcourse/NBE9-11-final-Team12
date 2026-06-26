@@ -18,11 +18,11 @@ import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.domain.speech.util.SpeakingStreakPolicy;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.Executor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,7 +31,11 @@ import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.http.HttpHeaders;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClientResponseException;
 
 @ExtendWith(MockitoExtension.class)
 class AiCounterIssueServiceTest {
@@ -61,7 +65,7 @@ class AiCounterIssueServiceTest {
     void setUp() {
         aiCounterIssueProperties = new AiCounterIssueProperties();
         aiCounterIssueProperties.setGenerateTimeout(Duration.ofSeconds(10));
-        aiCounterIssueService = createService(Runnable::run);
+        aiCounterIssueService = createService();
     }
 
     @Test
@@ -119,7 +123,6 @@ class AiCounterIssueServiceTest {
         assertThat(event.roomId()).isEqualTo(roomId);
         assertThat(event.payload().issueId()).isEqualTo(11L);
         assertThat(event.payload().targetStance()).isEqualTo(SpeechStance.CON);
-        assertThat(event.payload().content()).isEqualTo("Counter issue for the opposing side.");
     }
 
     @Test
@@ -142,7 +145,19 @@ class AiCounterIssueServiceTest {
     }
 
     @Test
-    void suggestIfNeeded_retriesTwiceAndFails_whenAiGenerationTimesOut() {
+    void suggestIfNeeded_suspendsCallerTransactionDuringAiGeneration()
+            throws NoSuchMethodException {
+        Transactional transactional =
+                AiCounterIssueService.class
+                        .getMethod("suggestIfNeeded", Long.class)
+                        .getAnnotation(Transactional.class);
+
+        assertThat(transactional).isNotNull();
+        assertThat(transactional.propagation()).isEqualTo(Propagation.NOT_SUPPORTED);
+    }
+
+    @Test
+    void suggestIfNeeded_retriesTwiceAndFails_whenAiGenerationFails() {
         Long roomId = 1L;
         SpeakingQueue first = completedQueue(30L, SpeechStance.PRO);
         SpeakingQueue second = completedQueue(29L, SpeechStance.PRO);
@@ -156,9 +171,6 @@ class AiCounterIssueServiceTest {
                 LocalDateTime.of(2026, 6, 25, 15, 0),
                 100
         );
-        aiCounterIssueProperties.setGenerateTimeout(Duration.ofMillis(1));
-        aiCounterIssueService = createService(command -> {
-        });
 
         given(speakingQueueRepository
                 .findTop3ByRoomIdAndStatusInAndStanceIsNotNullOrderByAssignedAtDesc(
@@ -174,6 +186,10 @@ class AiCounterIssueServiceTest {
         given(aiCounterIssuePersistenceService.markAttemptStarted(11L))
                 .willReturn(pending);
         given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
+        given(aiCounterIssueGenerator.generate(room, SpeechStance.CON))
+                .willThrow(new IllegalStateException(
+                        "AI counter issue generation timed out after 10000ms."
+                ));
         ArgumentCaptor<String> failureMessageCaptor = ArgumentCaptor.forClass(String.class);
 
         aiCounterIssueService.suggestIfNeeded(roomId);
@@ -183,6 +199,7 @@ class AiCounterIssueServiceTest {
         assertThat(failureMessageCaptor.getValue())
                 .contains("AI counter issue generation timed out");
         verify(aiCounterIssuePersistenceService, times(3)).markAttemptStarted(11L);
+        verify(aiCounterIssueGenerator, times(3)).generate(room, SpeechStance.CON);
         verify(aiCounterIssuePersistenceService, never())
                 .complete(
                         org.mockito.ArgumentMatchers.anyLong(),
@@ -243,13 +260,32 @@ class AiCounterIssueServiceTest {
         verify(aiCounterIssuePersistenceService, times(3)).markAttemptStarted(11L);
         verify(aiCounterIssueGenerator, times(3)).generate(room, SpeechStance.CON);
         verify(eventPublisher).publishEvent(eventCaptor.capture());
-        assertThat(eventCaptor.getValue().payload().content())
-                .isEqualTo("Recovered counter issue.");
+        assertThat(eventCaptor.getValue().payload().issueId()).isEqualTo(11L);
         verify(aiCounterIssuePersistenceService, never())
                 .fail(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyString());
     }
 
-    private AiCounterIssueService createService(Executor executor) {
+    @Test
+    void generationFailureDetails_includesHttpStatusAndResponseBody() {
+        RestClientResponseException responseException = new RestClientResponseException(
+                "OpenAI request failed",
+                429,
+                "Too Many Requests",
+                HttpHeaders.EMPTY,
+                "{\"error\":\"rate limit\"}".getBytes(StandardCharsets.UTF_8),
+                StandardCharsets.UTF_8
+        );
+        IllegalStateException wrappedException =
+                new IllegalStateException("Spring AI call failed", responseException);
+
+        String details = AiCounterIssueService.generationFailureDetails(wrappedException);
+
+        assertThat(details).contains("status=429");
+        assertThat(details).contains("statusText=Too Many Requests");
+        assertThat(details).contains("responseBody={\"error\":\"rate limit\"}");
+    }
+
+    private AiCounterIssueService createService() {
         return new AiCounterIssueService(
                 speakingQueueRepository,
                 aiCounterIssuePersistenceService,
@@ -257,7 +293,6 @@ class AiCounterIssueServiceTest {
                 speakingStreakPolicy,
                 aiCounterIssueGenerator,
                 eventPublisher,
-                executor,
                 aiCounterIssueProperties
         );
     }

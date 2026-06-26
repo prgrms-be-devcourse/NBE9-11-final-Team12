@@ -41,12 +41,12 @@ public final class RoomWebSocketDestinations {
         return "/topic/rooms/" + roomId + "/speeches/events";
     }
 
-    public static String aiCounterIssueEvents(Long roomId) {
-        return "/topic/rooms/" + roomId + "/ai-counter-issues/events";
-    }
-
     public static String stageSummaryEvents(Long roomId) {
         return "/topic/rooms/" + roomId + "/stage-summary/events";
+    }
+
+    public static String aiCounterIssueEvents(Long roomId) {
+        return "/topic/rooms/" + roomId + "/ai-counter-issues/events";
     }
 
     public static Optional<Long> findAllowedRoomTopicId(String destination) {

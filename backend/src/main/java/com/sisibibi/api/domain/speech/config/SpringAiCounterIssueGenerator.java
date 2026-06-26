@@ -3,15 +3,19 @@ package com.sisibibi.api.domain.speech.config;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 @Component
-public class SpringAiCounterIssueGenerator implements SpeechAiGenerator{
+public class SpringAiCounterIssueGenerator implements SpeechAiGenerator {
 
     private final ChatClient chatClient;
 
-    public SpringAiCounterIssueGenerator(ChatClient.Builder chatClientBuilder) {
-        this.chatClient = chatClientBuilder.build();
+    public SpringAiCounterIssueGenerator(
+            @Qualifier(AiCounterIssueGeneratorConfig.AI_COUNTER_ISSUE_CHAT_CLIENT)
+            ChatClient chatClient
+    ) {
+        this.chatClient = chatClient;
     }
 
     @Override

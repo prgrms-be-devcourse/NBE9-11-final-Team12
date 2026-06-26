@@ -33,6 +33,27 @@ export type TopicCreateResponse = {
   status: "PENDING" | "APPROVED" | "REJECTED"
 }
 
+export type IssueNews = {
+  title: string
+  originallink: string
+  link: string
+  description: string
+  pubDate: string
+}
+
+export type ClassifiedIssueNews = {
+  news: IssueNews
+  category: string
+  keywords: string[]
+}
+
+export type ClassifiedIssueCandidate = {
+  keyword: string
+  searchVolume: number | null
+  increasePercentage: number | null
+  news: ClassifiedIssueNews[]
+}
+
 export type RoomCreateResponse = {
   roomId: number
   topicId: number

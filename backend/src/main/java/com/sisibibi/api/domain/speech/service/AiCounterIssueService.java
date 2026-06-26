@@ -13,21 +13,17 @@ import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.domain.speech.util.SpeakingStreakPolicy;
-import com.sisibibi.api.global.config.AsyncConfig;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
-import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 @Slf4j
 @Service
@@ -42,7 +38,6 @@ public class AiCounterIssueService {
     private final SpeakingStreakPolicy speakingStreakPolicy;
     private final SpeechAiGenerator aiCounterIssueGenerator;
     private final ApplicationEventPublisher eventPublisher;
-    private final Executor aiCounterIssueExecutor;
     private final AiCounterIssueProperties aiCounterIssueProperties;
 
     public AiCounterIssueService(
@@ -52,7 +47,6 @@ public class AiCounterIssueService {
             SpeakingStreakPolicy speakingStreakPolicy,
             SpeechAiGenerator aiCounterIssueGenerator,
             ApplicationEventPublisher eventPublisher,
-            @Qualifier(AsyncConfig.AI_COUNTER_ISSUE_TASK_EXECUTOR) Executor aiCounterIssueExecutor,
             AiCounterIssueProperties aiCounterIssueProperties
     ) {
         this.speakingQueueRepository = speakingQueueRepository;
@@ -61,10 +55,10 @@ public class AiCounterIssueService {
         this.speakingStreakPolicy = speakingStreakPolicy;
         this.aiCounterIssueGenerator = aiCounterIssueGenerator;
         this.eventPublisher = eventPublisher;
-        this.aiCounterIssueExecutor = aiCounterIssueExecutor;
         this.aiCounterIssueProperties = aiCounterIssueProperties;
     }
 
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void suggestIfNeeded(Long roomId) {
         List<SpeakingQueue> recentAssignments =
                 speakingQueueRepository
@@ -76,7 +70,7 @@ public class AiCounterIssueService {
         Optional<SpeechStance> targetStance =
                 speakingStreakPolicy.counterStanceFor(recentAssignments);
 
-        if (targetStance.isEmpty()) {
+        if (targetStance.isEmpty() || recentAssignments.isEmpty()) {
             return;
         }
 
@@ -112,7 +106,8 @@ public class AiCounterIssueService {
                     aiCounterIssuePersistenceService.markAttemptStarted(issue.getId());
 
             try {
-                String content = generateWithTimeout(room, attemptedIssue.getTargetStance());
+                String content =
+                        aiCounterIssueGenerator.generate(room, attemptedIssue.getTargetStance());
                 AiCounterIssue completedIssue =
                         aiCounterIssuePersistenceService.complete(attemptedIssue.getId(), content);
                 publishAiCounterIssueChangedEvent(completedIssue);
@@ -121,60 +116,80 @@ public class AiCounterIssueService {
                 lastException = exception;
                 log.warn(
                         "AI counter issue generation attempt failed. "
-                                + "roomId={}, triggerQueueId={}, attempt={}, maxAttempts={}",
+                                + "roomId={}, triggerQueueId={}, attempt={}, maxAttempts={}, "
+                                + "failureDetails={}",
                         attemptedIssue.getRoomId(),
                         attemptedIssue.getTriggerQueueId(),
                         attempt,
                         maxAttempts,
+                        generationFailureDetails(exception),
                         exception
                 );
             }
         }
 
-        failIssue(issue, lastException);
+        failIssue(issue, lastException != null
+                ? lastException
+                : new IllegalStateException("Unknown AI counter issue generation failure."));
     }
 
     private void failIssue(AiCounterIssue issue, RuntimeException exception) {
+        RuntimeException failure = exception != null
+                ? exception
+                : new IllegalStateException("Unknown AI counter issue generation failure.");
         log.warn(
-                "Failed to generate AI counter issue. roomId={}, triggerQueueId={}",
+                "Failed to generate AI counter issue. "
+                        + "roomId={}, triggerQueueId={}, failureDetails={}",
                 issue.getRoomId(),
                 issue.getTriggerQueueId(),
-                exception
+                generationFailureDetails(failure),
+                failure
         );
-        aiCounterIssuePersistenceService.fail(issue.getId(), exception.getMessage());
+        aiCounterIssuePersistenceService.fail(issue.getId(), failure.getMessage());
     }
 
-    private String generateWithTimeout(Room room, SpeechStance targetStance) {
-        Duration timeout = aiCounterIssueProperties.getGenerateTimeout();
-        long timeoutMillis = Math.max(1L, timeout.toMillis());
-
-        CompletableFuture<String> generation =
-                CompletableFuture.supplyAsync(
-                        () -> aiCounterIssueGenerator.generate(room, targetStance),
-                        aiCounterIssueExecutor
-                );
-
-        try {
-            return generation.get(timeoutMillis, TimeUnit.MILLISECONDS);
-        } catch (TimeoutException exception) {
-            generation.cancel(true);
-            throw new IllegalStateException(
-                    "AI counter issue generation timed out after " + timeoutMillis + "ms.",
-                    exception
-            );
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException(
-                    "AI counter issue generation was interrupted.",
-                    exception
-            );
-        } catch (ExecutionException exception) {
-            Throwable cause = exception.getCause();
-            if (cause instanceof RuntimeException runtimeException) {
-                throw runtimeException;
-            }
-            throw new IllegalStateException("AI counter issue generation failed.", cause);
+    static String generationFailureDetails(RuntimeException exception) {
+        RestClientResponseException responseException =
+                findCause(exception, RestClientResponseException.class);
+        if (responseException != null) {
+            return "status=" + responseException.getStatusCode().value()
+                    + ", statusText=" + responseException.getStatusText()
+                    + ", responseBody=" + abbreviate(responseException.getResponseBodyAsString());
         }
+
+        RestClientException restClientException =
+                findCause(exception, RestClientException.class);
+        if (restClientException != null) {
+            return "restClientMessage=" + abbreviate(restClientException.getMessage());
+        }
+
+        return "message=" + abbreviate(exception.getMessage());
+    }
+
+    private static <T extends Throwable> T findCause(
+            Throwable exception,
+            Class<T> targetType
+    ) {
+        Throwable current = exception;
+        while (current != null) {
+            if (targetType.isInstance(current)) {
+                return targetType.cast(current);
+            }
+            current = current.getCause();
+        }
+        return null;
+    }
+
+    private static String abbreviate(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+
+        int maxLength = 500;
+        if (value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength) + "...";
     }
 
     private void publishAiCounterIssueChangedEvent(AiCounterIssue issue) {

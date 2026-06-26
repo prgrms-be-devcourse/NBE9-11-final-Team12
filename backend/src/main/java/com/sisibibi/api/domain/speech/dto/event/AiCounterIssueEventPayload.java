@@ -9,7 +9,6 @@ public record AiCounterIssueEventPayload(
         Long roomId,
         Long triggerQueueId,
         SpeechStance targetStance,
-        String content,
         LocalDateTime createdAt,
         LocalDateTime completedAt,
         LocalDateTime occurredAt
@@ -21,7 +20,6 @@ public record AiCounterIssueEventPayload(
                 issue.getRoomId(),
                 issue.getTriggerQueueId(),
                 issue.getTargetStance(),
-                issue.getContent(),
                 issue.getCreatedAt(),
                 issue.getCompletedAt(),
                 LocalDateTime.now()
