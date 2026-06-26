@@ -1,10 +1,21 @@
 package com.sisibibi.api.domain.room.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+
 import com.sisibibi.api.domain.room.config.RoomTopicGenerator;
 import com.sisibibi.api.domain.room.dto.event.RoomClosedEvent;
 import com.sisibibi.api.domain.room.dto.request.CreateRoomReq;
+import com.sisibibi.api.domain.room.dto.request.PreviewRoomTitleReq;
 import com.sisibibi.api.domain.room.dto.request.UpdateRoomReq;
 import com.sisibibi.api.domain.room.dto.response.CreateRoomRes;
+import com.sisibibi.api.domain.room.dto.response.PreviewRoomTitleRes;
 import com.sisibibi.api.domain.room.dto.response.RoomDetailRes;
 import com.sisibibi.api.domain.room.dto.response.RoomSummaryRes;
 import com.sisibibi.api.domain.room.entity.Room;
@@ -16,25 +27,18 @@ import com.sisibibi.api.domain.topic.entity.TopicStatus;
 import com.sisibibi.api.domain.topic.repository.TopicRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
-import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.context.ApplicationEventPublisher;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
-
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Optional;
-
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class RoomServiceTest {
@@ -64,14 +68,12 @@ class RoomServiceTest {
   private SpeakingQueueService speakingQueueService;
 
   @Test
-  void createRoom_createsRoomWithAiGeneratedTitle_whenTopicIsApproved() {
-    Topic topic = Topic.approved("토론 주제", "설명", "IT", "https://example.com");
-    ReflectionTestUtils.setField(topic, "id", 1L);
-
+  void createRoom_createsRoomWithConfirmedTitle_whenTopicIsApproved() {
+    Topic topic = approvedTopic(1L);
     CreateRoomRes response = new CreateRoomRes(
         10L,
         1L,
-        "AI가 만든 토론방 제목",
+        "confirmed debate title",
         RoomStatus.OPEN,
         LocalDateTime.of(2026, 6, 21, 12, 0),
         null
@@ -80,21 +82,40 @@ class RoomServiceTest {
     given(topicRepository.findByIdAndStatus(1L, TopicStatus.APPROVED))
         .willReturn(Optional.of(topic));
     given(roomRepository.existsByTopicId(1L)).willReturn(false);
-    given(roomTopicGenerator.generate(topic)).willReturn("AI가 만든 토론방 제목");
-    given(roomCreateCommandService.createRoom(1L, "AI가 만든 토론방 제목", null))
+    given(roomCreateCommandService.createRoom(1L, "confirmed debate title", null))
         .willReturn(response);
 
-    CreateRoomRes result = roomService.createRoom(new CreateRoomReq(1L, null));
+    CreateRoomRes result = roomService.createRoom(
+        new CreateRoomReq(1L, "confirmed debate title", null)
+    );
 
     assertThat(result.topicId()).isEqualTo(1L);
-    assertThat(result.title()).isEqualTo("AI가 만든 토론방 제목");
+    assertThat(result.title()).isEqualTo("confirmed debate title");
     assertThat(result.status()).isEqualTo(RoomStatus.OPEN);
 
     verify(topicRepository).findByIdAndStatus(1L, TopicStatus.APPROVED);
     verify(roomRepository).existsByTopicId(1L);
-    verify(roomTopicGenerator).generate(topic);
-    verify(roomCreateCommandService).createRoom(1L, "AI가 만든 토론방 제목", null);
+    verify(roomTopicGenerator, never()).generate(any());
+    verify(roomCreateCommandService).createRoom(1L, "confirmed debate title", null);
     verify(roomRepository, never()).save(any());
+  }
+
+  @Test
+  void previewRoomTitle_generatesTitleWithoutCreatingRoom_whenTopicIsApproved() {
+    Topic topic = approvedTopic(1L);
+
+    given(topicRepository.findByIdAndStatus(1L, TopicStatus.APPROVED))
+        .willReturn(Optional.of(topic));
+    given(roomRepository.existsByTopicId(1L)).willReturn(false);
+    given(roomTopicGenerator.generate(topic)).willReturn("ai preview title");
+
+    PreviewRoomTitleRes result = roomService.previewRoomTitle(new PreviewRoomTitleReq(1L));
+
+    assertThat(result.topicId()).isEqualTo(1L);
+    assertThat(result.title()).isEqualTo("ai preview title");
+
+    verify(roomTopicGenerator).generate(topic);
+    verify(roomCreateCommandService, never()).createRoom(any(), any(), any());
   }
 
   @Test
@@ -102,7 +123,7 @@ class RoomServiceTest {
     given(topicRepository.findByIdAndStatus(999L, TopicStatus.APPROVED))
         .willReturn(Optional.empty());
 
-    assertThatThrownBy(() -> roomService.createRoom(new CreateRoomReq(999L, null)))
+    assertThatThrownBy(() -> roomService.createRoom(new CreateRoomReq(999L, "title", null)))
         .isInstanceOf(CustomException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.TOPIC_NOT_FOUND);
@@ -114,14 +135,13 @@ class RoomServiceTest {
 
   @Test
   void createRoom_throwsRoomAlreadyExists_whenTopicAlreadyHasRoom() {
-    Topic topic = Topic.approved("토론 주제", "설명", "IT", "https://example.com");
-    ReflectionTestUtils.setField(topic, "id", 1L);
+    Topic topic = approvedTopic(1L);
 
     given(topicRepository.findByIdAndStatus(1L, TopicStatus.APPROVED))
         .willReturn(Optional.of(topic));
     given(roomRepository.existsByTopicId(1L)).willReturn(true);
 
-    assertThatThrownBy(() -> roomService.createRoom(new CreateRoomReq(1L, null)))
+    assertThatThrownBy(() -> roomService.createRoom(new CreateRoomReq(1L, "title", null)))
         .isInstanceOf(CustomException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.ROOM_ALREADY_EXISTS);
@@ -136,7 +156,7 @@ class RoomServiceTest {
     given(topicRepository.findByIdAndStatus(1L, TopicStatus.APPROVED))
         .willReturn(Optional.empty());
 
-    assertThatThrownBy(() -> roomService.createRoom(new CreateRoomReq(1L, null)))
+    assertThatThrownBy(() -> roomService.createRoom(new CreateRoomReq(1L, "title", null)))
         .isInstanceOf(CustomException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.TOPIC_NOT_FOUND);
@@ -152,9 +172,8 @@ class RoomServiceTest {
     LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
     LocalDateTime secondStartedAt = LocalDateTime.of(2026, 6, 15, 13, 0);
     LocalDateTime secondEndedAt = LocalDateTime.of(2026, 6, 15, 15, 0);
-
-    Room firstRoom = Room.open(1L, "첫 번째 토론방", firstStartedAt, firstEndedAt, 100);
-    Room secondRoom = Room.open(2L, "두 번째 토론방", secondStartedAt, secondEndedAt, 100);
+    Room firstRoom = Room.open(1L, "first room", firstStartedAt, firstEndedAt, 100);
+    Room secondRoom = Room.open(2L, "second room", secondStartedAt, secondEndedAt, 100);
 
     given(roomRepository.findByStatusOrderByCreatedAtDesc(RoomStatus.OPEN))
         .willReturn(List.of(secondRoom, firstRoom));
@@ -162,8 +181,8 @@ class RoomServiceTest {
     List<RoomSummaryRes> result = roomService.getOpenRooms();
 
     assertThat(result).hasSize(2);
-    assertThat(result.get(0).title()).isEqualTo("두 번째 토론방");
-    assertThat(result.get(1).title()).isEqualTo("첫 번째 토론방");
+    assertThat(result.get(0).title()).isEqualTo("second room");
+    assertThat(result.get(1).title()).isEqualTo("first room");
 
     verify(roomRepository).findByStatusOrderByCreatedAtDesc(RoomStatus.OPEN);
   }
@@ -177,7 +196,6 @@ class RoomServiceTest {
         eq(now),
         any(Pageable.class)
     )).willReturn(List.of(10L, 20L));
-
     given(roomCloseCommandService.closeExpiredRoom(10L, now)).willReturn(true);
     given(roomCloseCommandService.closeExpiredRoom(20L, now)).willReturn(true);
 
@@ -215,15 +233,15 @@ class RoomServiceTest {
     );
     verify(roomCloseCommandService, never()).closeExpiredRoom(anyLong(), any());
   }
+
   @Test
   void getRooms_returnsRoomsOrderedByCreatedAtDesc() {
     LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
     LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
     LocalDateTime secondStartedAt = LocalDateTime.of(2026, 6, 15, 13, 0);
     LocalDateTime secondEndedAt = LocalDateTime.of(2026, 6, 15, 15, 0);
-
-    Room firstRoom = Room.open(1L, "첫 번째 토론방", firstStartedAt, firstEndedAt, 100);
-    Room secondRoom = Room.open(2L, "두 번째 토론방", secondStartedAt, secondEndedAt, 100);
+    Room firstRoom = Room.open(1L, "first room", firstStartedAt, firstEndedAt, 100);
+    Room secondRoom = Room.open(2L, "second room", secondStartedAt, secondEndedAt, 100);
 
     given(roomRepository.findAllByOrderByCreatedAtDesc())
         .willReturn(List.of(secondRoom, firstRoom));
@@ -231,24 +249,24 @@ class RoomServiceTest {
     List<RoomSummaryRes> result = roomService.getRooms();
 
     assertThat(result).hasSize(2);
-    assertThat(result.get(0).title()).isEqualTo("두 번째 토론방");
-    assertThat(result.get(1).title()).isEqualTo("첫 번째 토론방");
+    assertThat(result.get(0).title()).isEqualTo("second room");
+    assertThat(result.get(1).title()).isEqualTo("first room");
 
     verify(roomRepository).findAllByOrderByCreatedAtDesc();
   }
 
   @Test
   void getRoom_returnsRoomDetail_whenRoomExists() {
-    LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
-    LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
-    Room room = Room.open(1L, "상세 조회 토론방", firstStartedAt, firstEndedAt, 100);
+    LocalDateTime startedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
+    LocalDateTime endedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
+    Room room = Room.open(1L, "detail room", startedAt, endedAt, 100);
 
     given(roomRepository.findById(10L)).willReturn(Optional.of(room));
 
     RoomDetailRes result = roomService.getRoom(10L);
 
     assertThat(result.topicId()).isEqualTo(1L);
-    assertThat(result.title()).isEqualTo("상세 조회 토론방");
+    assertThat(result.title()).isEqualTo("detail room");
     assertThat(result.status()).isEqualTo(RoomStatus.OPEN);
 
     verify(roomRepository).findById(10L);
@@ -266,20 +284,20 @@ class RoomServiceTest {
 
   @Test
   void updateRoom_updatesRoom_whenRoomExists() {
-    LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
-    LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
-    Room room = Room.open(1L, "수정 전 제목", firstStartedAt, firstEndedAt, 100);
+    LocalDateTime startedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
+    LocalDateTime endedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
+    Room room = Room.open(1L, "before title", startedAt, endedAt, 100);
 
     given(roomRepository.findById(10L)).willReturn(Optional.of(room));
 
     RoomDetailRes result = roomService.updateRoom(
         10L,
-        new UpdateRoomReq("수정 후 제목", firstStartedAt, firstEndedAt, null)
+        new UpdateRoomReq("after title", startedAt, endedAt, null)
     );
 
-    assertThat(result.title()).isEqualTo("수정 후 제목");
-    assertThat(result.startedAt()).isEqualTo(firstStartedAt);
-    assertThat(result.endedAt()).isEqualTo(firstEndedAt);
+    assertThat(result.title()).isEqualTo("after title");
+    assertThat(result.startedAt()).isEqualTo(startedAt);
+    assertThat(result.endedAt()).isEqualTo(endedAt);
 
     verify(roomRepository).findById(10L);
   }
@@ -290,7 +308,7 @@ class RoomServiceTest {
 
     assertThatThrownBy(() -> roomService.updateRoom(
         999L,
-        new UpdateRoomReq("수정 후 제목", null, null, null)
+        new UpdateRoomReq("after title", null, null, null)
     ))
         .isInstanceOf(CustomException.class)
         .extracting("errorCode")
@@ -299,9 +317,9 @@ class RoomServiceTest {
 
   @Test
   void updateRoom_throwsInvalidInput_whenTitleIsBlank() {
-    LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
-    LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
-    Room room = Room.open(1L, "수정 전 제목", firstStartedAt, firstEndedAt, 100);
+    LocalDateTime startedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
+    LocalDateTime endedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
+    Room room = Room.open(1L, "before title", startedAt, endedAt, 100);
 
     given(roomRepository.findById(10L)).willReturn(Optional.of(room));
 
@@ -316,16 +334,16 @@ class RoomServiceTest {
 
   @Test
   void updateRoom_throwsInvalidInput_whenEndedAtIsBeforeStartedAt() {
-    LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
-    LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
-    Room room = Room.open(1L, "수정 후 제목", firstStartedAt, firstEndedAt, 100);
+    LocalDateTime startedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
+    LocalDateTime endedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
+    Room room = Room.open(1L, "before title", startedAt, endedAt, 100);
 
     given(roomRepository.findById(10L)).willReturn(Optional.of(room));
 
     assertThatThrownBy(() -> roomService.updateRoom(
         10L,
         new UpdateRoomReq(
-            "수정 후 제목",
+            "after title",
             LocalDateTime.of(2026, 6, 15, 12, 0),
             LocalDateTime.of(2026, 6, 15, 10, 0),
             null
@@ -340,7 +358,7 @@ class RoomServiceTest {
   void updateRoom_preservesExistingValues_whenOptionalFieldsAreNull() {
     LocalDateTime startedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
     LocalDateTime endedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
-    Room room = Room.open(1L, "기존 제목", startedAt, endedAt, 100);
+    Room room = Room.open(1L, "existing title", startedAt, endedAt, 100);
 
     given(roomRepository.findById(10L)).willReturn(Optional.of(room));
 
@@ -349,7 +367,7 @@ class RoomServiceTest {
         new UpdateRoomReq(null, null, null, null)
     );
 
-    assertThat(result.title()).isEqualTo("기존 제목");
+    assertThat(result.title()).isEqualTo("existing title");
     assertThat(result.startedAt()).isEqualTo(startedAt);
     assertThat(result.endedAt()).isEqualTo(endedAt);
   }
@@ -357,7 +375,7 @@ class RoomServiceTest {
   @Test
   void updateRoom_acceptsMissingStartedAt_whenEndedAtIsProvided() {
     LocalDateTime endedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
-    Room room = Room.open(1L, "기존 제목", null, null, 100);
+    Room room = Room.open(1L, "existing title", null, null, 100);
 
     given(roomRepository.findById(10L)).willReturn(Optional.of(room));
 
@@ -372,9 +390,9 @@ class RoomServiceTest {
 
   @Test
   void deleteRoom_closesRoom_whenRoomExists() {
-    LocalDateTime firstStartedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
-    LocalDateTime firstEndedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
-    Room room = Room.open(1L, "삭제 대상 토론방", firstStartedAt, firstEndedAt, 100);
+    LocalDateTime startedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
+    LocalDateTime endedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
+    Room room = Room.open(1L, "room to delete", startedAt, endedAt, 100);
     ReflectionTestUtils.setField(room, "id", 10L);
 
     given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
@@ -398,7 +416,7 @@ class RoomServiceTest {
     LocalDateTime closedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
     Room room = Room.open(
         1L,
-        "이미 닫힌 토론방",
+        "already closed room",
         LocalDateTime.of(2026, 6, 15, 10, 0),
         closedAt,
         100
@@ -423,5 +441,11 @@ class RoomServiceTest {
         .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
 
     verify(roomRepository).findByIdForUpdate(999L);
+  }
+
+  private Topic approvedTopic(Long topicId) {
+    Topic topic = Topic.approved("topic title", "description", "IT", "https://example.com");
+    ReflectionTestUtils.setField(topic, "id", topicId);
+    return topic;
   }
 }

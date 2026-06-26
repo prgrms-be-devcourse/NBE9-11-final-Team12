@@ -8,6 +8,7 @@ import type {
   RoomParticipantCount,
   RoomCreateResponse,
   RoomSummary,
+  RoomTitlePreview,
   SpeechCursorPage,
   SpeechCreateResponse,
   SpeechDetail,
@@ -64,7 +65,10 @@ export const adminApi = {
     body: { title: string; description?: string; category: string; sourceUrl?: string },
   ) => api.patch<TopicDetail>(`/api/v1/admin/topics/${topicId}`, body),
   deleteTopic: (topicId: number) => api.delete<void>(`/api/v1/admin/topics/${topicId}`),
-  createRoom: (topicId: number) => api.post<RoomCreateResponse>("/api/v1/admin/rooms", { topicId }),
+  previewRoomTitle: (topicId: number) =>
+    api.post<RoomTitlePreview>("/api/v1/admin/rooms/title-preview", { topicId }),
+  createRoom: (body: { topicId: number; title: string; maxParticipants?: number }) =>
+    api.post<RoomCreateResponse>("/api/v1/admin/rooms", body),
   updateRoom: (roomId: number, body: { title?: string; startedAt?: string; endedAt?: string }) =>
     api.patch<RoomDetail>(`/api/v1/admin/rooms/${roomId}`, body),
   deleteRoom: (roomId: number) => api.delete<void>(`/api/v1/admin/rooms/${roomId}`),

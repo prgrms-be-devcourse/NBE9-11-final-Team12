@@ -1,8 +1,10 @@
 package com.sisibibi.api.domain.room.controller;
 
 import com.sisibibi.api.domain.room.dto.request.CreateRoomReq;
+import com.sisibibi.api.domain.room.dto.request.PreviewRoomTitleReq;
 import com.sisibibi.api.domain.room.dto.request.UpdateRoomReq;
 import com.sisibibi.api.domain.room.dto.response.CreateRoomRes;
+import com.sisibibi.api.domain.room.dto.response.PreviewRoomTitleRes;
 import com.sisibibi.api.domain.room.dto.response.RoomDetailRes;
 import com.sisibibi.api.domain.room.service.RoomService;
 import com.sisibibi.api.global.response.ApiResponse;
@@ -21,6 +23,15 @@ import org.springframework.web.bind.annotation.*;
 public class AdminRoomController {
 
   private final RoomService roomService;
+
+  @PostMapping("/title-preview")
+  public ResponseEntity<ApiResponse<PreviewRoomTitleRes>> previewRoomTitle(
+      @Valid @RequestBody PreviewRoomTitleReq request
+  ) {
+    PreviewRoomTitleRes result = roomService.previewRoomTitle(request);
+
+    return ResponseEntity.ok(ApiResponse.ok("토론방 제목 미리보기가 완료되었습니다.", result));
+  }
 
   @PostMapping
   public ResponseEntity<ApiResponse<CreateRoomRes>> createRoom(
