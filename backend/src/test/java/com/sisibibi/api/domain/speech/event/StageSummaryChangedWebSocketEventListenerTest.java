@@ -6,8 +6,6 @@ import com.sisibibi.api.domain.speech.dto.event.StageSummaryEventType;
 import com.sisibibi.api.global.realtime.RealtimeEventPublisher;
 import com.sisibibi.api.global.websocket.RoomWebSocketDestinations;
 import com.sisibibi.api.global.websocket.WebSocketEventEnvelope;
-import java.time.LocalDateTime;
-import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -26,13 +24,7 @@ class StageSummaryChangedWebSocketEventListenerTest {
     void handle_publishesStageSummaryEnvelopeToStageSummaryTopic() {
         StageSummaryEventPayload payload = new StageSummaryEventPayload(
                 77L,
-                1L,
-                "지금까지는 양측의 핵심 쟁점이 정리되고 있습니다.",
-                List.of("접근성", "안전성", "책임 소재"),
-                12,
-                10,
-                LocalDateTime.of(2026, 6, 26, 11, 0),
-                LocalDateTime.of(2026, 6, 26, 11, 1)
+                1L
         );
         StageSummaryChangedEvent event = new StageSummaryChangedEvent(
                 StageSummaryEventType.STAGE_SUMMARY_COMPLETED,
@@ -59,13 +51,7 @@ class StageSummaryChangedWebSocketEventListenerTest {
     void handle_doesNotThrow_whenWebSocketPublishFails() {
         StageSummaryEventPayload payload = new StageSummaryEventPayload(
                 77L,
-                1L,
-                "지금까지는 양측의 핵심 쟁점이 정리되고 있습니다.",
-                List.of("접근성", "안전성", "책임 소재"),
-                12,
-                10,
-                LocalDateTime.of(2026, 6, 26, 11, 0),
-                LocalDateTime.of(2026, 6, 26, 11, 1)
+                1L
         );
         StageSummaryChangedEvent event = new StageSummaryChangedEvent(
                 StageSummaryEventType.STAGE_SUMMARY_COMPLETED,

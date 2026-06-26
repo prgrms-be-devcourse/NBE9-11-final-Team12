@@ -102,8 +102,7 @@ class StageSummaryServiceTest {
         assertThat(event.type()).isEqualTo(StageSummaryEventType.STAGE_SUMMARY_COMPLETED);
         assertThat(event.roomId()).isEqualTo(1L);
         assertThat(event.payload().summaryId()).isEqualTo(77L);
-        assertThat(event.payload().moderatorSummary()).isEqualTo(result.moderatorSummary());
-        assertThat(event.payload().keyPoints()).containsExactlyElementsOf(result.keyPoints());
+        assertThat(event.payload().roomId()).isEqualTo(1L);
         verify(stageSummaryPersistenceService, never()).fail(any(), any());
     }
 
