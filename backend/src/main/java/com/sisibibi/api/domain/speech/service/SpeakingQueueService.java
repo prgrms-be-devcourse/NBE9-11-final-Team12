@@ -42,6 +42,7 @@ public class SpeakingQueueService {
     private final SpeakingQueuePersistenceService speakingQueuePersistenceService;
     private final SpeakingQueueProperties speakingQueueProperties;
     private final ApplicationEventPublisher eventPublisher;
+    private final StageSummaryService stageSummaryService;
     private final AiCounterIssueService aiCounterIssueService;
 
     public StageRequestRes requestSpeakingTurn(
@@ -143,6 +144,7 @@ public class SpeakingQueueService {
                 StageTurnEndReason.COMPLETED
         );
         suggestAiCounterIssue(roomId);
+        generateStageSummaryIfNeeded(roomId);
         tryAssignNextSpeaker(roomId);
     }
 
@@ -231,6 +233,7 @@ public class SpeakingQueueService {
         ));
         expired.ifPresent(speakingQueue -> {
             suggestAiCounterIssue(roomId);
+            generateStageSummaryIfNeeded(roomId);
             tryAssignNextSpeaker(roomId);
         });
         return expired;
@@ -285,7 +288,10 @@ public class SpeakingQueueService {
                 speakingQueue,
                 StageTurnEndReason.IDLE_TIMEOUT
         ));
-        completed.ifPresent(speakingQueue -> tryAssignNextSpeaker(roomId));
+        completed.ifPresent(speakingQueue -> {
+            generateStageSummaryIfNeeded(roomId);
+            tryAssignNextSpeaker(roomId);
+        });
         return completed;
     }
 
@@ -345,6 +351,7 @@ public class SpeakingQueueService {
     private void synchronizeParticipantLeftTurnCompletion(SpeakingQueue completed) {
         synchronizeCompletedRedisProjection(completed);
         suggestAiCounterIssue(completed.getRoomId());
+        generateStageSummaryIfNeeded(completed.getRoomId());
         tryAssignNextSpeaker(completed.getRoomId());
     }
 
@@ -795,4 +802,15 @@ public class SpeakingQueueService {
         }
     }
 
+    private void generateStageSummaryIfNeeded(Long roomId) {
+        try {
+            stageSummaryService.generateIfNeeded(roomId);
+        } catch (RuntimeException exception) {
+            log.warn(
+                    "Failed to generate stage summary after speaking completion. roomId={}",
+                    roomId,
+                    exception
+            );
+        }
+    }
 }

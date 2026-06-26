@@ -336,6 +336,57 @@ class SpeakingQueueRepositoryTest {
     }
 
     @Test
+    void countDistinctCompletedSpeakersByRoomId_countsCompletedUsersOnce() {
+        SpeakingQueue firstUserFirstTurn = completedQueue(
+                1L,
+                10L,
+                10,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 10)
+        );
+        SpeakingQueue firstUserSecondTurn = completedQueue(
+                1L,
+                10L,
+                20,
+                SpeechStance.CON,
+                LocalDateTime.of(2026, 6, 12, 11, 20)
+        );
+        SpeakingQueue secondUser = completedQueue(
+                1L,
+                20L,
+                30,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        SpeakingQueue otherRoom = completedQueue(
+                2L,
+                30L,
+                10,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 40)
+        );
+        SpeakingQueue waiting = SpeakingQueue.waiting(
+                1L,
+                40L,
+                40,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 50)
+        );
+        speakingQueueRepository.saveAllAndFlush(List.of(
+                firstUserFirstTurn,
+                firstUserSecondTurn,
+                secondUser,
+                otherRoom,
+                waiting
+        ));
+
+        long completedSpeakerCount =
+                speakingQueueRepository.countDistinctCompletedSpeakersByRoomId(1L);
+
+        assertThat(completedSpeakerCount).isEqualTo(2L);
+    }
+
+    @Test
     void findByRoomIdAndStatus_returnsCurrentAssignedSpeaker() {
         SpeakingQueue assigned = SpeakingQueue.waiting(
                 1L,

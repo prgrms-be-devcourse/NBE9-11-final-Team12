@@ -69,6 +69,7 @@ class SpeakingQueueConsistencyRiskTest {
                 failingPersistenceService,
                 mock(SpeakingQueueProperties.class),
                 mock(ApplicationEventPublisher.class),
+                mock(StageSummaryService.class),
                 mock(AiCounterIssueService.class)
         );
 
@@ -103,6 +104,7 @@ class SpeakingQueueConsistencyRiskTest {
                 persistenceService,
                 mock(SpeakingQueueProperties.class),
                 mock(ApplicationEventPublisher.class),
+                mock(StageSummaryService.class),
                 mock(AiCounterIssueService.class)
         );
 
