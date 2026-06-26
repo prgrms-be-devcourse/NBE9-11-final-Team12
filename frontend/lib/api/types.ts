@@ -109,7 +109,10 @@ export type SpeechSummary = {
   content: string
   stance: SpeechStance | null
   status: SpeechStatus
+  imageUrl: string | null
   createdAt: string
+  reactionCount?: number
+  reactedByMe?: boolean
 }
 
 export type SpeechDetail = SpeechSummary & {
@@ -120,7 +123,17 @@ export type SpeechDetail = SpeechSummary & {
   updatedAt: string
 }
 
-export type SpeechCreateResponse = Omit<SpeechSummary, "createdAt">
+export type SpeechCreateResponse = Omit<
+  SpeechSummary,
+  "createdAt" | "imageUrl" | "reactionCount" | "reactedByMe"
+>
+
+export type SpeechImageUploadUrl = {
+  uploadUrl: string
+  imageUrl: string
+  imageKey: string
+  expiresAt: string
+}
 
 export type SpeechCursorPage = {
   items: SpeechSummary[]

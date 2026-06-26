@@ -12,6 +12,7 @@ import type {
   SpeechCursorPage,
   SpeechCreateResponse,
   SpeechDetail,
+  SpeechImageUploadUrl,
   SpeechReportCreateResponse,
   SpeechReportReason,
   SpeechStance,
@@ -82,6 +83,10 @@ export const speechApi = {
   detail: (speechId: number) => api.get<SpeechDetail>(`/api/v1/speeches/${speechId}`),
   create: (roomId: number, body: { content: string; stance: SpeechStance }) =>
     api.post<SpeechCreateResponse>(`/api/v1/rooms/${roomId}/speeches`, body),
+  createImageUploadUrl: (speechId: number, body: { contentType: string; fileSize: number }) =>
+    api.post<SpeechImageUploadUrl>(`/api/v1/speeches/${speechId}/image-upload-url`, body),
+  confirmImage: (speechId: number, imageKey: string) =>
+    api.patch<SpeechDetail>(`/api/v1/speeches/${speechId}/image`, { imageKey }),
   update: (speechId: number, body: { content: string; stance: SpeechStance }) =>
     api.patch<SpeechDetail>(`/api/v1/speeches/${speechId}`, body),
   remove: (speechId: number) => api.delete<void>(`/api/v1/speeches/${speechId}`),
