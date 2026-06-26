@@ -59,6 +59,9 @@ class SpeakingQueueServiceTest {
     @Mock
     private AiCounterIssueService aiCounterIssueService;
 
+    @Mock
+    private StageSummaryService stageSummaryService;
+
     @InjectMocks
     private SpeakingQueueService speakingQueueService;
 
@@ -683,6 +686,7 @@ class SpeakingQueueServiceTest {
                 any(LocalDateTime.class)
         );
         verify(aiCounterIssueService).suggestIfNeeded(1L);
+        verify(stageSummaryService).generateIfNeeded(1L);
         ArgumentCaptor<StageChangedEvent> eventCaptor =
                 ArgumentCaptor.forClass(StageChangedEvent.class);
         verify(eventPublisher).publishEvent(eventCaptor.capture());
@@ -707,9 +711,14 @@ class SpeakingQueueServiceTest {
 
         speakingQueueService.completeSpeakingTurn(1L, 7L);
 
-        InOrder order = inOrder(speakingQueuePersistenceService, aiCounterIssueService);
+        InOrder order = inOrder(
+                speakingQueuePersistenceService,
+                aiCounterIssueService,
+                stageSummaryService
+        );
         order.verify(speakingQueuePersistenceService).completeCurrentSpeaker(1L, 7L);
         order.verify(aiCounterIssueService).suggestIfNeeded(1L);
+        order.verify(stageSummaryService).generateIfNeeded(1L);
         order.verify(speakingQueuePersistenceService).assignNextSpeaker(
                 eq(1L),
                 any(LocalDateTime.class),
@@ -760,6 +769,7 @@ class SpeakingQueueServiceTest {
                 any(LocalDateTime.class)
         );
         verify(aiCounterIssueService).suggestIfNeeded(1L);
+        verify(stageSummaryService).generateIfNeeded(1L);
         ArgumentCaptor<StageChangedEvent> eventCaptor =
                 ArgumentCaptor.forClass(StageChangedEvent.class);
         verify(eventPublisher).publishEvent(eventCaptor.capture());
@@ -792,6 +802,7 @@ class SpeakingQueueServiceTest {
                 any(LocalDateTime.class)
         );
         verify(aiCounterIssueService).suggestIfNeeded(1L);
+        verify(stageSummaryService).generateIfNeeded(1L);
         ArgumentCaptor<StageChangedEvent> eventCaptor =
                 ArgumentCaptor.forClass(StageChangedEvent.class);
         verify(eventPublisher).publishEvent(eventCaptor.capture());
@@ -868,6 +879,7 @@ class SpeakingQueueServiceTest {
                 any(LocalDateTime.class)
         );
         verify(aiCounterIssueService).suggestIfNeeded(1L);
+        verify(stageSummaryService).generateIfNeeded(1L);
         ArgumentCaptor<StageChangedEvent> eventCaptor =
                 ArgumentCaptor.forClass(StageChangedEvent.class);
         verify(eventPublisher).publishEvent(eventCaptor.capture());
@@ -957,6 +969,7 @@ class SpeakingQueueServiceTest {
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
         );
+        verify(stageSummaryService).generateIfNeeded(1L);
         ArgumentCaptor<StageChangedEvent> eventCaptor =
                 ArgumentCaptor.forClass(StageChangedEvent.class);
         verify(eventPublisher).publishEvent(eventCaptor.capture());

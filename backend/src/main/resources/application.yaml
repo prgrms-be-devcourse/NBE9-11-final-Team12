@@ -113,6 +113,13 @@ app:
   ai-counter-issue:
     generate-timeout: ${AI_COUNTER_ISSUE_GENERATE_TIMEOUT:10s}
     max-generation-attempts: ${AI_COUNTER_ISSUE_MAX_GENERATION_ATTEMPTS:3}
+  stage-summary:
+    enabled: ${STAGE_SUMMARY_ENABLED:true}
+    generate-timeout: ${STAGE_SUMMARY_GENERATE_TIMEOUT:10s}
+    max-generation-attempts: ${STAGE_SUMMARY_MAX_GENERATION_ATTEMPTS:3}
+    min-completed-speaker-count: ${STAGE_SUMMARY_MIN_COMPLETED_SPEAKER_COUNT:10}
+    recovery-batch-size: ${STAGE_SUMMARY_RECOVERY_BATCH_SIZE:20}
+    recovery-fixed-delay-ms: ${STAGE_SUMMARY_RECOVERY_FIXED_DELAY_MS:60000}
   prompt-guard:
     base-url: ${PROMPT_GUARD_BASE_URL:}
     scan-path: ${PROMPT_GUARD_SCAN_PATH:/scan}
