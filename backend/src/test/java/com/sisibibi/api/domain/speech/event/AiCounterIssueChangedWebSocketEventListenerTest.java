@@ -1,5 +1,9 @@
 package com.sisibibi.api.domain.speech.event;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+
 import com.sisibibi.api.domain.speech.dto.event.AiCounterIssueChangedEvent;
 import com.sisibibi.api.domain.speech.dto.event.AiCounterIssueEventPayload;
 import com.sisibibi.api.domain.speech.dto.event.AiCounterIssueEventType;
@@ -10,10 +14,6 @@ import com.sisibibi.api.global.websocket.WebSocketEventEnvelope;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 
 class AiCounterIssueChangedWebSocketEventListenerTest {
 
@@ -29,7 +29,6 @@ class AiCounterIssueChangedWebSocketEventListenerTest {
                 1L,
                 30L,
                 SpeechStance.CON,
-                "반대 측에서 검토할 핵심 쟁점입니다.",
                 LocalDateTime.of(2026, 6, 25, 14, 0),
                 LocalDateTime.of(2026, 6, 25, 14, 1),
                 LocalDateTime.of(2026, 6, 25, 14, 1)
@@ -64,7 +63,6 @@ class AiCounterIssueChangedWebSocketEventListenerTest {
                 1L,
                 30L,
                 SpeechStance.CON,
-                "반대 측에서 검토할 핵심 쟁점입니다.",
                 LocalDateTime.of(2026, 6, 25, 14, 0),
                 LocalDateTime.of(2026, 6, 25, 14, 1),
                 LocalDateTime.of(2026, 6, 25, 14, 1)

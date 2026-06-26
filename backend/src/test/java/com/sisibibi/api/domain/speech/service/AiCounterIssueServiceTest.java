@@ -123,7 +123,6 @@ class AiCounterIssueServiceTest {
         assertThat(event.roomId()).isEqualTo(roomId);
         assertThat(event.payload().issueId()).isEqualTo(11L);
         assertThat(event.payload().targetStance()).isEqualTo(SpeechStance.CON);
-        assertThat(event.payload().content()).isEqualTo("Counter issue for the opposing side.");
     }
 
     @Test
@@ -261,8 +260,7 @@ class AiCounterIssueServiceTest {
         verify(aiCounterIssuePersistenceService, times(3)).markAttemptStarted(11L);
         verify(aiCounterIssueGenerator, times(3)).generate(room, SpeechStance.CON);
         verify(eventPublisher).publishEvent(eventCaptor.capture());
-        assertThat(eventCaptor.getValue().payload().content())
-                .isEqualTo("Recovered counter issue.");
+        assertThat(eventCaptor.getValue().payload().issueId()).isEqualTo(11L);
         verify(aiCounterIssuePersistenceService, never())
                 .fail(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyString());
     }
