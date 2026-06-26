@@ -12,6 +12,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -41,6 +42,9 @@ public class OffTopicAiReview {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Version
+    private Long version;
 
     @Column(name = "speech_id", nullable = false)
     private Long speechId;
@@ -123,6 +127,7 @@ public class OffTopicAiReview {
     }
 
     public void complete(OffTopicAiReviewResult result, LocalDateTime completedAt) {
+        validatePending();
         this.status = OffTopicAiReviewStatus.COMPLETED;
         this.offTopic = result.offTopic();
         this.reason = normalize(result.reason());
@@ -132,6 +137,7 @@ public class OffTopicAiReview {
     }
 
     public void fail(String errorMessage) {
+        validatePending();
         this.status = OffTopicAiReviewStatus.FAILED;
         this.errorMessage = normalize(errorMessage);
     }
@@ -149,5 +155,11 @@ public class OffTopicAiReview {
             return trimmed;
         }
         return trimmed.substring(0, 500);
+    }
+
+    private void validatePending() {
+        if (this.status != OffTopicAiReviewStatus.PENDING) {
+            throw new IllegalStateException("이미 처리된 AI 리뷰입니다.");
+        }
     }
 }
