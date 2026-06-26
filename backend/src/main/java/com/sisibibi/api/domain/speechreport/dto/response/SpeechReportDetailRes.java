@@ -5,6 +5,7 @@ import com.sisibibi.api.domain.speechreport.entity.OffTopicAiReview;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportReason;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportStatus;
 import com.sisibibi.api.domain.speechreport.entity.ViolationSeverity;
+import org.springframework.lang.Nullable;
 
 import java.time.LocalDateTime;
 
@@ -67,6 +68,7 @@ public record SpeechReportDetailRes(
 
     public static SpeechReportDetailRes from(
             SpeechReport report,
+            @Nullable
             OffTopicAiReview offTopicAiReview
     ) {
         return new SpeechReportDetailRes(

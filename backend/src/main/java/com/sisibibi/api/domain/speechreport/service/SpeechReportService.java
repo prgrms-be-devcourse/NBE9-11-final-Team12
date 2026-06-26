@@ -79,8 +79,9 @@ public class SpeechReportService {
         SpeechReport report = speechReportRepository.findByIdForUpdate(reportId)
                 .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_REPORT_NOT_FOUND));
 
+        SpeechReportStatus previousStatus = report.getStatus();
         report.review(action, reviewerUserId, resolutionNote, severity, LocalDateTime.now());
-        softDeleteSpeechIfOffTopicResolved(report, action);
+        softDeleteSpeechIfOffTopicResolved(report, previousStatus);
         log.info(
                 "Speech report reviewed. reportId={}, reviewerUserId={}, action={}, status={}, severity={}",
                 reportId,
@@ -180,9 +181,10 @@ public class SpeechReportService {
 
     private void softDeleteSpeechIfOffTopicResolved(
             SpeechReport report,
-            SpeechReportReviewAction action
+            SpeechReportStatus previousStatus
     ) {
-        if (action != SpeechReportReviewAction.RESOLVE
+        if (previousStatus == SpeechReportStatus.RESOLVED
+                || report.getStatus() != SpeechReportStatus.RESOLVED
                 || report.getReason() != SpeechReportReason.OFF_TOPIC) {
             return;
         }
