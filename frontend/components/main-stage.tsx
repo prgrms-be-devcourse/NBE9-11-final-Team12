@@ -1,15 +1,28 @@
 "use client"
 
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react"
-import { Flag, History, ImageIcon, Loader2, MessageSquarePlus, Mic, MicOff, Users, X } from "lucide-react"
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {
+  Crown,
+  Flag,
+  History,
+  ImageIcon,
+  Loader2,
+  MessageSquarePlus,
+  Mic,
+  MicOff,
+  ThumbsUp,
+  Users,
+  X,
+} from "lucide-react"
 import { ApiError } from "@/lib/api/client"
 import { speechApi, stageApi } from "@/lib/api/services"
 import type { RoomStompConnection } from "@/lib/api/stomp"
 import { useAuth } from "@/components/auth-provider"
 import type {
-  SpeechReportReason,
+  BestSpeech,
   SpeechEvent,
   SpeechReactionEvent,
+  SpeechReportReason,
   SpeechStance,
   SpeechSummary,
   StageCurrentSpeaker,
@@ -37,8 +50,25 @@ const REPORT_REASONS: { value: SpeechReportReason; label: string }[] = [
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"]
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024
 
+type SpeechGroup = {
+  key: string
+  userId: number
+  stance: SpeechStance | null
+  status: string
+  createdAt: string
+  speeches: SpeechSummary[]
+}
+
 function messageOf(error: unknown) {
   return error instanceof ApiError ? error.message : "요청 처리 중 오류가 발생했습니다."
+}
+
+function formatRemainingTime(totalSeconds: number | null) {
+  if (totalSeconds === null) return null
+  const safeSeconds = Math.max(0, totalSeconds)
+  const minutes = Math.floor(safeSeconds / 60)
+  const seconds = safeSeconds % 60
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`
 }
 
 export function MainStage({
@@ -56,6 +86,7 @@ export function MainStage({
 }) {
   const { user } = useAuth()
   const [speeches, setSpeeches] = useState<SpeechSummary[]>([])
+  const [bestSpeech, setBestSpeech] = useState<BestSpeech | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [stageLoading, setStageLoading] = useState(true)
@@ -75,12 +106,47 @@ export function MainStage({
   const [reportDescription, setReportDescription] = useState("")
   const [reportSubmitted, setReportSubmitted] = useState(false)
   const [reportError, setReportError] = useState("")
+  const [nowTimestamp, setNowTimestamp] = useState(() => Date.now())
   const speechesRequestSeqRef = useRef(0)
   const stageRequestSeqRef = useRef(0)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
   const handledEventIdsRef = useRef<string[]>([])
   const speechesRecoveryTimerRef = useRef<number | null>(null)
   const stageRecoveryTimerRef = useRef<number | null>(null)
+
+  const isCurrentUserSpeaking =
+    Boolean(user && currentSpeaker?.currentSpeaker?.userId === user.userId)
+
+  const remainingSeconds = useMemo(() => {
+    const expiresAt = currentSpeaker?.currentSpeaker?.expiresAt
+    if (!expiresAt) return null
+    return Math.ceil((new Date(expiresAt).getTime() - nowTimestamp) / 1000)
+  }, [currentSpeaker, nowTimestamp])
+
+  const speechGroups = useMemo(() => {
+    return speeches.reduce<SpeechGroup[]>((groups, speech) => {
+      const previous = groups[groups.length - 1]
+      if (
+        previous
+        && previous.userId === speech.userId
+        && previous.stance === speech.stance
+        && previous.status === speech.status
+      ) {
+        previous.speeches.push(speech)
+        return groups
+      }
+
+      groups.push({
+        key: String(speech.speechId),
+        userId: speech.userId,
+        stance: speech.stance,
+        status: speech.status,
+        createdAt: speech.createdAt,
+        speeches: [speech],
+      })
+      return groups
+    }, [])
+  }, [speeches])
 
   const rememberEvent = useCallback((eventId: string) => {
     if (handledEventIdsRef.current.includes(eventId)) return false
@@ -92,6 +158,7 @@ export function MainStage({
     const requestSeq = ++speechesRequestSeqRef.current
     if (!liveEnabled) {
       setSpeeches([])
+      setBestSpeech(null)
       setLoading(false)
       setError("")
       return
@@ -103,6 +170,9 @@ export function MainStage({
       const response = await speechApi.list(roomId)
       if (requestSeq !== speechesRequestSeqRef.current) return
       setSpeeches(response.items)
+      void speechApi.best(roomId)
+        .then(setBestSpeech)
+        .catch(() => setBestSpeech(null))
     } catch (requestError) {
       if (requestSeq !== speechesRequestSeqRef.current) return
       setError(messageOf(requestError))
@@ -141,6 +211,10 @@ export function MainStage({
     }
     if (requestSeq === stageRequestSeqRef.current) setStageLoading(false)
   }, [liveEnabled, roomId])
+
+  const refreshSpeeches = useCallback(async () => {
+    await loadSpeeches()
+  }, [loadSpeeches])
 
   const scheduleSpeechesRecovery = useCallback(() => {
     if (speechesRecoveryTimerRef.current !== null) {
@@ -199,6 +273,13 @@ export function MainStage({
 
     return () => URL.revokeObjectURL(previewUrl)
   }, [selectedImage])
+
+  useEffect(() => {
+    if (!currentSpeaker?.currentSpeaker?.expiresAt) return
+    setNowTimestamp(Date.now())
+    const intervalId = window.setInterval(() => setNowTimestamp(Date.now()), 1000)
+    return () => window.clearInterval(intervalId)
+  }, [currentSpeaker?.currentSpeaker?.expiresAt])
 
   useEffect(() => {
     if (!liveEnabled || stompConnected) return
@@ -260,47 +341,6 @@ export function MainStage({
     return unsubscribe
   }, [liveEnabled, rememberEvent, roomId, scheduleSpeechesRecovery, stompConnection])
 
-  const createSpeech = async (event: FormEvent) => {
-    event.preventDefault()
-    if (!content.trim()) return
-    setSubmitting(true)
-    setError("")
-    setImageError("")
-    try {
-      const speech = await speechApi.create(roomId, { content: content.trim(), stance })
-
-      if (selectedImage) {
-        const upload = await speechApi.createImageUploadUrl(speech.speechId, {
-          contentType: selectedImage.type,
-          fileSize: selectedImage.size,
-        })
-        const uploadResponse = await fetch(upload.uploadUrl, {
-          method: "PUT",
-          headers: {
-            "Content-Type": selectedImage.type,
-          },
-          body: selectedImage,
-        })
-
-        if (!uploadResponse.ok) {
-          throw new Error("이미지 업로드에 실패했습니다.")
-        }
-
-        await speechApi.confirmImage(speech.speechId, upload.imageKey)
-      }
-
-      setContent("")
-      setSelectedImage(null)
-      if (imageInputRef.current) imageInputRef.current.value = ""
-      await loadSpeeches()
-      setCreateOpen(false)
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : messageOf(requestError))
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
   const selectImage = (file: File | null) => {
     setImageError("")
 
@@ -338,6 +378,71 @@ export function MainStage({
     setImageError("")
     setSelectedImage(null)
     if (imageInputRef.current) imageInputRef.current.value = ""
+  }
+
+  const createSpeech = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!content.trim()) return
+    if (!isCurrentUserSpeaking) {
+      setError("발언권을 받은 사용자만 의견을 작성할 수 있습니다.")
+      setCreateOpen(false)
+      return
+    }
+
+    setSubmitting(true)
+    setError("")
+    setImageError("")
+    try {
+      const speech = await speechApi.create(roomId, { content: content.trim(), stance })
+
+      if (selectedImage) {
+        const upload = await speechApi.createImageUploadUrl(speech.speechId, {
+          contentType: selectedImage.type,
+          fileSize: selectedImage.size,
+        })
+        const uploadResponse = await fetch(upload.uploadUrl, {
+          method: "PUT",
+          headers: {
+            "Content-Type": selectedImage.type,
+          },
+          body: selectedImage,
+        })
+
+        if (!uploadResponse.ok) {
+          throw new Error("이미지 업로드에 실패했습니다.")
+        }
+
+        await speechApi.confirmImage(speech.speechId, upload.imageKey)
+      }
+
+      setContent("")
+      setSelectedImage(null)
+      if (imageInputRef.current) imageInputRef.current.value = ""
+      await refreshSpeeches()
+      setCreateOpen(false)
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : messageOf(requestError))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const toggleReaction = async (speech: SpeechSummary) => {
+    if (speech.userId === user?.userId) return
+    setSubmitting(true)
+    setError("")
+    try {
+      if (speech.reactedByMe) {
+        await speechApi.deleteReaction(speech.speechId)
+      } else {
+        await speechApi.createReaction(speech.speechId)
+      }
+      await refreshSpeeches()
+    } catch (requestError) {
+      setError(messageOf(requestError))
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const submitReport = async () => {
@@ -407,8 +512,13 @@ export function MainStage({
     }
   }
 
-  const isCurrentUserSpeaking =
-    Boolean(user && currentSpeaker?.currentSpeaker?.userId === user.userId)
+  const openCreateDialog = () => {
+    if (!isCurrentUserSpeaking) {
+      setStageError("발언권을 받은 사용자만 의견을 작성할 수 있습니다.")
+      return
+    }
+    setCreateOpen(true)
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -420,8 +530,8 @@ export function MainStage({
         <Button
           size="sm"
           className="gap-1.5 text-xs"
-          disabled={!liveEnabled}
-          onClick={() => setCreateOpen(true)}
+          disabled={!liveEnabled || !isCurrentUserSpeaking}
+          onClick={openCreateDialog}
         >
           <MessageSquarePlus className="size-3.5" /> 의견 작성
         </Button>
@@ -437,11 +547,16 @@ export function MainStage({
                 {!liveEnabled
                   ? "입장 완료 후 발언권을 신청할 수 있습니다"
                   : stageLoading
-                  ? "발언권 상태 확인 중..."
-                  : currentSpeaker?.hasCurrentSpeaker && currentSpeaker.currentSpeaker
-                    ? `${currentSpeaker.currentSpeaker.nickname}님 발언 중`
-                    : "현재 발언자가 없습니다"}
+                    ? "발언권 상태 확인 중..."
+                    : currentSpeaker?.hasCurrentSpeaker && currentSpeaker.currentSpeaker
+                      ? `${currentSpeaker.currentSpeaker.nickname}님 발언 중`
+                      : "현재 발언자가 없습니다"}
               </span>
+              {currentSpeaker?.hasCurrentSpeaker && (
+                <Badge variant="outline" className="text-[10px]">
+                  남은 시간 {formatRemainingTime(remainingSeconds)}
+                </Badge>
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
               <span className="flex items-center gap-1">
@@ -489,40 +604,72 @@ export function MainStage({
           <div className="flex h-40 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
             <History className="size-6" />
             <p className="text-sm">아직 등록된 의견이 없습니다.</p>
-            <p className="text-xs">첫 의견을 작성해 토론을 시작해보세요.</p>
+            <p className="text-xs">발언권을 받은 사용자가 첫 의견을 작성할 수 있습니다.</p>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {speeches.map((speech) => (
-              <article key={speech.speechId} className="rounded-xl border border-border/50 bg-card p-4">
+            {bestSpeech && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-amber-950">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-xs font-semibold">
+                    <Crown className="size-4 text-amber-600" />
+                    베스트 의견
+                  </div>
+                  <Badge variant="outline" className="border-amber-300 bg-white/70 text-[10px] text-amber-700">
+                    공감 {bestSpeech.reactionCount.toLocaleString()}
+                  </Badge>
+                </div>
+                <p className="line-clamp-3 whitespace-pre-wrap text-sm leading-relaxed">{bestSpeech.content}</p>
+              </div>
+            )}
+            {speechGroups.map((group) => (
+              <article key={group.key} className="rounded-xl border border-border/50 bg-card p-4">
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <Avatar className="size-7"><AvatarFallback className="text-[10px]">U{speech.userId}</AvatarFallback></Avatar>
+                    <Avatar className="size-7"><AvatarFallback className="text-[10px]">U{group.userId}</AvatarFallback></Avatar>
                     <div>
-                      <p className="text-xs font-semibold">사용자 #{speech.userId}</p>
-                      <p className="text-[10px] text-muted-foreground">{new Date(speech.createdAt).toLocaleString("ko-KR")}</p>
+                      <p className="text-xs font-semibold">사용자 #{group.userId}</p>
+                      <p className="text-[10px] text-muted-foreground">{new Date(group.createdAt).toLocaleString("ko-KR")}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {speech.stance && <Badge variant="outline" className="text-[10px]">{speech.stance === "PRO" ? "찬성" : "반대"}</Badge>}
-                    <Badge variant="secondary" className="text-[10px]">{speech.status}</Badge>
+                    {group.speeches.length > 1 && <Badge variant="outline" className="text-[10px]">{group.speeches.length}개 묶음</Badge>}
+                    {group.stance && <Badge variant="outline" className="text-[10px]">{group.stance === "PRO" ? "찬성" : "반대"}</Badge>}
+                    <Badge variant="secondary" className="text-[10px]">{group.status}</Badge>
                   </div>
                 </div>
-                <p className="whitespace-pre-wrap text-sm leading-relaxed">{speech.content}</p>
-                {speech.imageUrl && (
-                  <a
-                    href={speech.imageUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-3 block overflow-hidden rounded-lg border border-border/60"
-                  >
-                    <img src={speech.imageUrl} alt="첨부 이미지" className="max-h-80 w-full object-cover" />
-                  </a>
-                )}
-                <div className="mt-3 flex justify-end">
-                  <Button variant="ghost" size="sm" className="gap-1 text-xs text-muted-foreground hover:text-destructive" onClick={() => openReport(speech)}>
-                    <Flag className="size-3" /> 신고
-                  </Button>
+                <div className="flex flex-col gap-3">
+                  {group.speeches.map((speech, index) => (
+                    <div key={speech.speechId} className={index > 0 ? "border-t border-border/50 pt-3" : ""}>
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed">{speech.content}</p>
+                      {speech.imageUrl && (
+                        <a
+                          href={speech.imageUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-3 block overflow-hidden rounded-lg border border-border/60"
+                        >
+                          <img src={speech.imageUrl} alt="첨부 이미지" className="max-h-80 w-full object-cover" />
+                        </a>
+                      )}
+                      <div className="mt-3 flex items-center justify-between gap-2">
+                        <Button
+                          variant={speech.reactedByMe ? "default" : "outline"}
+                          size="sm"
+                          className="gap-1.5 text-xs"
+                          disabled={submitting || speech.userId === user?.userId}
+                          onClick={() => toggleReaction(speech)}
+                        >
+                          <ThumbsUp className="size-3.5" />
+                          {speech.reactionCount.toLocaleString()}
+                          <span className="hidden sm:inline">{speech.reactedByMe ? "공감 취소" : "공감"}</span>
+                        </Button>
+                        <Button variant="ghost" size="sm" className="gap-1 text-xs text-muted-foreground hover:text-destructive" onClick={() => openReport(speech)}>
+                          <Flag className="size-3" /> 신고
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </article>
             ))}
@@ -532,7 +679,7 @@ export function MainStage({
 
       <Dialog open={createOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>메인 의견 작성</DialogTitle><DialogDescription>찬반 입장과 의견을 입력해주세요.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>메인 의견 작성</DialogTitle><DialogDescription>발언권 시간 내에 찬반 입장과 의견을 입력해주세요.</DialogDescription></DialogHeader>
           <form className="flex flex-col gap-4" onSubmit={createSpeech}>
             {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
             {imageError && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{imageError}</p>}
@@ -573,7 +720,7 @@ export function MainStage({
               <p className="text-[11px] text-muted-foreground">jpg, png, webp 형식의 5MB 이하 이미지를 첨부할 수 있습니다.</p>
             </div>
             <div className="flex items-center justify-between text-xs text-muted-foreground"><span>욕설이 포함된 의견은 등록되지 않습니다.</span><span>{content.length}/2000</span></div>
-            <Button type="submit" disabled={submitting || !content.trim()}>{submitting && <Loader2 className="mr-2 size-4 animate-spin" />}등록</Button>
+            <Button type="submit" disabled={submitting || !content.trim() || !isCurrentUserSpeaking}>{submitting && <Loader2 className="mr-2 size-4 animate-spin" />}등록</Button>
           </form>
         </DialogContent>
       </Dialog>

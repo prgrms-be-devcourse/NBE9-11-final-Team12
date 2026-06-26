@@ -110,9 +110,9 @@ export type SpeechSummary = {
   stance: SpeechStance | null
   status: SpeechStatus
   imageUrl: string | null
+  reactionCount: number
+  reactedByMe: boolean
   createdAt: string
-  reactionCount?: number
-  reactedByMe?: boolean
 }
 
 export type SpeechDetail = SpeechSummary & {
@@ -123,16 +123,37 @@ export type SpeechDetail = SpeechSummary & {
   updatedAt: string
 }
 
-export type SpeechCreateResponse = Omit<
-  SpeechSummary,
-  "createdAt" | "imageUrl" | "reactionCount" | "reactedByMe"
->
+export type SpeechCreateResponse = {
+  speechId: number
+  roomId: number
+  userId: number
+  content: string
+  stance: SpeechStance | null
+  status: SpeechStatus
+}
 
 export type SpeechImageUploadUrl = {
   uploadUrl: string
   imageUrl: string
   imageKey: string
   expiresAt: string
+}
+
+export type SpeechReactionCreateResponse = {
+  speechId: number
+  reactionCount: number
+  reactedByMe: boolean
+}
+
+export type BestSpeech = {
+  speechId: number
+  roomId: number
+  userId: number
+  content: string
+  stance: SpeechStance | null
+  status: SpeechStatus
+  createdAt: string
+  reactionCount: number
 }
 
 export type SpeechCursorPage = {
@@ -219,6 +240,7 @@ export type StageRequest = {
   status: SpeakingQueueStatus
   roomId: number
   userId: number
+  stance: SpeechStance | null
   queueOrder: number
   requestedAt: string
 }
@@ -228,6 +250,7 @@ export type StageRequestStatus = {
   status: SpeakingQueueStatus | null
   roomId: number | null
   userId: number | null
+  stance: SpeechStance | null
   queueOrder: number | null
   currentRank: number | null
   cancelable: boolean
@@ -318,3 +341,41 @@ export type UserSanctionEvent = WebSocketEventEnvelope<
   },
   "SANCTION_CREATED" | "SANCTION_EXTENDED" | "SANCTION_REVOKED"
 >
+
+export type UserTrustLevel = "CAUTION" | "NORMAL" | "RELIABLE" | "TRUSTED"
+
+export type UserActivityLevel = "NEW" | "ACTIVE" | "CONTRIBUTOR" | "LEADER"
+
+export type UserTrustDetail = {
+  userId: number
+  nickname: string
+  score: number
+  trustLevel: UserTrustLevel
+  activityLevel: UserActivityLevel
+  receivedReactionCount: number
+  completedSpeechCount: number
+  participatedRoomCount: number
+  resolvedViolationCount: number
+  positiveScore: number
+  penaltyScore: number
+  policyVersion: string
+  calculatedAt: string
+}
+
+export type UserTrustSummary = {
+  userId: number
+  nickname: string
+  score: number
+  trustLevel: UserTrustLevel
+  activityLevel: UserActivityLevel
+  policyVersion: string
+  calculatedAt: string
+}
+
+export type ActiveUserSanction = {
+  sanctionId: number
+  type: UserSanctionType
+  reason: string
+  startsAt: string
+  endsAt: string | null
+}

@@ -1,6 +1,8 @@
 import { api } from "@/lib/api/client"
 import type {
+  ActiveUserSanction,
   AuthUser,
+  BestSpeech,
   ChatMessageCursorPage,
   ClassifiedIssueCandidate,
   RoomDetail,
@@ -13,6 +15,7 @@ import type {
   SpeechCreateResponse,
   SpeechDetail,
   SpeechImageUploadUrl,
+  SpeechReactionCreateResponse,
   SpeechReportCreateResponse,
   SpeechReportReason,
   SpeechStance,
@@ -24,6 +27,8 @@ import type {
   TopicDetail,
   TopicCreateResponse,
   TopicSummary,
+  UserTrustDetail,
+  UserTrustSummary,
 } from "@/lib/api/types"
 
 export const authApi = {
@@ -81,19 +86,33 @@ export const speechApi = {
       `/api/v1/rooms/${roomId}/speeches?size=${size}${cursor ? `&cursor=${cursor}` : ""}`,
     ),
   detail: (speechId: number) => api.get<SpeechDetail>(`/api/v1/speeches/${speechId}`),
-  create: (roomId: number, body: { content: string; stance: SpeechStance }) =>
+  create: (roomId: number, body: { content: string; stance: SpeechStance | null }) =>
     api.post<SpeechCreateResponse>(`/api/v1/rooms/${roomId}/speeches`, body),
   createImageUploadUrl: (speechId: number, body: { contentType: string; fileSize: number }) =>
     api.post<SpeechImageUploadUrl>(`/api/v1/speeches/${speechId}/image-upload-url`, body),
   confirmImage: (speechId: number, imageKey: string) =>
     api.patch<SpeechDetail>(`/api/v1/speeches/${speechId}/image`, { imageKey }),
-  update: (speechId: number, body: { content: string; stance: SpeechStance }) =>
+  update: (speechId: number, body: { content: string; stance: SpeechStance | null }) =>
     api.patch<SpeechDetail>(`/api/v1/speeches/${speechId}`, body),
   remove: (speechId: number) => api.delete<void>(`/api/v1/speeches/${speechId}`),
   updateLink: (speechId: number, linkUrl: string) =>
     api.patch<SpeechDetail>(`/api/v1/speeches/${speechId}/link`, { linkUrl }),
+  createReaction: (speechId: number) =>
+    api.post<SpeechReactionCreateResponse>(`/api/v1/speeches/${speechId}/reactions`),
+  deleteReaction: (speechId: number) =>
+    api.delete<void>(`/api/v1/speeches/${speechId}/reactions`),
+  best: (roomId: number) => api.get<BestSpeech>(`/api/v1/rooms/${roomId}/best-speech`),
   report: (speechId: number, reason: SpeechReportReason, description?: string) =>
     api.post<SpeechReportCreateResponse>(`/api/v1/speeches/${speechId}/reports`, { reason, description: description || null }),
+}
+
+export const trustApi = {
+  me: () => api.get<UserTrustDetail>("/api/v1/users/me/trust"),
+  user: (userId: number) => api.get<UserTrustSummary>(`/api/v1/users/${userId}/trust`),
+}
+
+export const sanctionApi = {
+  active: () => api.get<ActiveUserSanction[]>("/api/v1/users/me/sanctions/active"),
 }
 
 export const chatApi = {
@@ -113,8 +132,8 @@ export const stageApi = {
     api.get<StageQueue>(`/api/v1/rooms/${roomId}/stage/queue?offset=${offset}&size=${size}`),
   myRequestStatus: (roomId: number) =>
     api.get<StageRequestStatus>(`/api/v1/rooms/${roomId}/stage/requests/me`),
-  requestTurn: (roomId: number) =>
-    api.post<StageRequest>(`/api/v1/rooms/${roomId}/stage/requests`),
+  requestTurn: (roomId: number, stance: SpeechStance | null = null) =>
+    api.post<StageRequest>(`/api/v1/rooms/${roomId}/stage/requests`, { stance }),
   cancelMyRequest: (roomId: number) =>
     api.delete<void>(`/api/v1/rooms/${roomId}/stage/requests/me`),
   completeTurn: (roomId: number) => api.post<void>(`/api/v1/rooms/${roomId}/stage/complete`),
