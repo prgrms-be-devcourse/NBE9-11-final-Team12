@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.speechreport.dto.response;
 
 import com.sisibibi.api.domain.speechreport.entity.SpeechReport;
+import com.sisibibi.api.domain.speechreport.entity.OffTopicAiReview;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportReason;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportStatus;
 import com.sisibibi.api.domain.speechreport.entity.ViolationSeverity;
@@ -21,10 +22,53 @@ public record SpeechReportDetailRes(
         String resolutionNote,
         ViolationSeverity severity,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        OffTopicAiReviewRes offTopicAiReview
 ) {
 
+    public SpeechReportDetailRes(
+            Long reportId,
+            Long speechId,
+            Long reportedUserId,
+            Long reporterUserId,
+            String contentSnapshot,
+            SpeechReportReason reason,
+            String description,
+            SpeechReportStatus status,
+            Long reviewedBy,
+            LocalDateTime reviewedAt,
+            String resolutionNote,
+            ViolationSeverity severity,
+            LocalDateTime createdAt,
+            LocalDateTime updatedAt
+    ) {
+        this(
+                reportId,
+                speechId,
+                reportedUserId,
+                reporterUserId,
+                contentSnapshot,
+                reason,
+                description,
+                status,
+                reviewedBy,
+                reviewedAt,
+                resolutionNote,
+                severity,
+                createdAt,
+                updatedAt,
+                null
+        );
+    }
+
     public static SpeechReportDetailRes from(SpeechReport report) {
+        return from(report, null);
+    }
+
+    public static SpeechReportDetailRes from(
+            SpeechReport report,
+            OffTopicAiReview offTopicAiReview
+    ) {
         return new SpeechReportDetailRes(
                 report.getId(),
                 report.getSpeechId(),
@@ -39,7 +83,8 @@ public record SpeechReportDetailRes(
                 report.getResolutionNote(),
                 report.getSeverity(),
                 report.getCreatedAt(),
-                report.getUpdatedAt()
+                report.getUpdatedAt(),
+                OffTopicAiReviewRes.from(offTopicAiReview)
         );
     }
 }

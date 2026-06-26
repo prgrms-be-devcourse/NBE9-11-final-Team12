@@ -36,6 +36,19 @@ public interface SpeechRepository extends JpaRepository<Speech, Long> {
             select speech
             from Speech speech
             where speech.roomId = :roomId
+              and (:cursor is null or speech.id < :cursor)
+            order by speech.id desc
+            """)
+    List<Speech> findByRoomIdBeforeCursorIncludingDeleted(
+            @Param("roomId") Long roomId,
+            @Param("cursor") Long cursor,
+            Pageable pageable
+    );
+
+    @Query("""
+            select speech
+            from Speech speech
+            where speech.roomId = :roomId
               and speech.deleted = false
               and speech.status = com.sisibibi.api.domain.speech.entity.SpeechStatus.COMPLETED
               and speech.stance is not null

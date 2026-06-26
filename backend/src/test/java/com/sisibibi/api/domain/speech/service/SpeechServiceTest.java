@@ -13,6 +13,7 @@ import com.sisibibi.api.domain.speech.dto.response.SpeechCursorPageRes;
 import com.sisibibi.api.domain.speech.dto.response.SpeechDetailRes;
 import com.sisibibi.api.domain.speech.dto.response.SpeechListRes;
 import com.sisibibi.api.domain.speech.entity.Speech;
+import com.sisibibi.api.domain.speech.entity.SpeechDeleteReason;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
@@ -246,7 +247,7 @@ class SpeechServiceTest {
         Speech next = org.mockito.Mockito.mock(Speech.class);
         SpeechReactionSummaryProjection firstSummary = reactionSummary(2L, 3L, 1L);
         given(roomRepository.existsById(roomId)).willReturn(true);
-        given(speechRepository.findByRoomIdBeforeCursor(
+        given(speechRepository.findByRoomIdBeforeCursorIncludingDeleted(
                 roomId,
                 null,
                 PageRequest.of(0, 3)
@@ -267,6 +268,31 @@ class SpeechServiceTest {
                 .containsExactly(true, false);
         assertThat(response.nextCursor()).isEqualTo(1L);
         assertThat(response.hasNext()).isTrue();
+    }
+
+    @Test
+    void getSpeeches_masksOffTopicDeletedSpeech() {
+        Long roomId = 1L;
+        Long userId = 30L;
+        Speech speech = speechWithId(3L, roomId, 20L, "삭제 전 의견", SpeechStance.PRO);
+        speech.softDeleteByModerator(SpeechDeleteReason.OFF_TOPIC, LocalDateTime.now());
+        given(roomRepository.existsById(roomId)).willReturn(true);
+        given(speechRepository.findByRoomIdBeforeCursorIncludingDeleted(
+                roomId,
+                null,
+                PageRequest.of(0, 2)
+        )).willReturn(List.of(speech));
+        given(speechReactionRepository.findReactionSummaries(List.of(3L), userId))
+                .willReturn(List.of());
+
+        SpeechCursorPageRes response = speechService.getSpeeches(roomId, userId, null, 1);
+
+        SpeechListRes item = response.items().getFirst();
+        assertThat(item.speechId()).isEqualTo(3L);
+        assertThat(item.deleted()).isTrue();
+        assertThat(item.deleteReason()).isEqualTo(SpeechDeleteReason.OFF_TOPIC);
+        assertThat(item.content()).isEqualTo("논점 이탈로 삭제된 의견입니다.");
+        assertThat(response.hasNext()).isFalse();
     }
 
     @Test
@@ -426,6 +452,7 @@ class SpeechServiceTest {
         speechService.deleteSpeech(3L, 2L);
 
         assertThat(speech.isDeleted()).isTrue();
+        assertThat(speech.getDeleteReason()).isEqualTo(SpeechDeleteReason.USER_DELETED);
         assertThat(speech.getDeletedAt()).isNotNull();
         verifySpeechEventPublished(SpeechEventType.SPEECH_DELETED, 1L, 2L);
     }

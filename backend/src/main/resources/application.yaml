@@ -120,6 +120,10 @@ app:
     min-completed-speaker-count: ${STAGE_SUMMARY_MIN_COMPLETED_SPEAKER_COUNT:10}
     recovery-batch-size: ${STAGE_SUMMARY_RECOVERY_BATCH_SIZE:20}
     recovery-fixed-delay-ms: ${STAGE_SUMMARY_RECOVERY_FIXED_DELAY_MS:60000}
+  off-topic-ai-review:
+    enabled: ${OFF_TOPIC_AI_REVIEW_ENABLED:true}
+    min-report-threshold: ${OFF_TOPIC_AI_REVIEW_MIN_REPORT_THRESHOLD:5}
+    generate-timeout: ${OFF_TOPIC_AI_REVIEW_GENERATE_TIMEOUT:10s}
   prompt-guard:
     base-url: ${PROMPT_GUARD_BASE_URL:}
     scan-path: ${PROMPT_GUARD_SCAN_PATH:/scan}

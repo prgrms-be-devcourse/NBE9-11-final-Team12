@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.speechreport.service;
 
 import com.sisibibi.api.domain.speech.entity.Speech;
+import com.sisibibi.api.domain.speech.entity.SpeechDeleteReason;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speechreport.dto.command.SpeechReportCreateCommand;
 import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportCreateRes;
@@ -12,6 +13,8 @@ import com.sisibibi.api.domain.speechreport.entity.SpeechReportReason;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportReviewAction;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportStatus;
 import com.sisibibi.api.domain.speechreport.entity.ViolationSeverity;
+import com.sisibibi.api.domain.speechreport.entity.OffTopicAiReview;
+import com.sisibibi.api.domain.speechreport.repository.OffTopicAiReviewRepository;
 import com.sisibibi.api.domain.speechreport.repository.SpeechReportRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
@@ -23,6 +26,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -31,6 +37,8 @@ public class SpeechReportService {
 
     private final SpeechRepository speechRepository;
     private final SpeechReportRepository speechReportRepository;
+    private final OffTopicAiReviewRepository offTopicAiReviewRepository;
+    private final OffTopicAiReviewService offTopicAiReviewService;
 
     @Transactional(readOnly = true)
     public Page<SpeechReportSummaryRes> getReports(
@@ -38,8 +46,15 @@ public class SpeechReportService {
             SpeechReportReason reason,
             Pageable pageable
     ) {
-        return speechReportRepository.findAllByFilters(status, reason, pageable)
-                .map(SpeechReportSummaryRes::from);
+        Page<SpeechReport> reports =
+                speechReportRepository.findAllByFilters(status, reason, pageable);
+        Map<Long, OffTopicAiReview> reviewsBySpeechId =
+                findOffTopicAiReviewsBySpeechId(reports.getContent());
+
+        return reports.map(report -> SpeechReportSummaryRes.from(
+                report,
+                reviewsBySpeechId.get(report.getSpeechId())
+        ));
     }
 
     @Transactional(readOnly = true)
@@ -47,7 +62,10 @@ public class SpeechReportService {
         SpeechReport report = speechReportRepository.findById(reportId)
                 .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_REPORT_NOT_FOUND));
 
-        return SpeechReportDetailRes.from(report);
+        OffTopicAiReview review = offTopicAiReviewRepository.findBySpeechId(report.getSpeechId())
+                .orElse(null);
+
+        return SpeechReportDetailRes.from(report, review);
     }
 
     @Transactional
@@ -62,6 +80,7 @@ public class SpeechReportService {
                 .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_REPORT_NOT_FOUND));
 
         report.review(action, reviewerUserId, resolutionNote, severity, LocalDateTime.now());
+        softDeleteSpeechIfOffTopicResolved(report, action);
         log.info(
                 "Speech report reviewed. reportId={}, reviewerUserId={}, action={}, status={}, severity={}",
                 reportId,
@@ -119,6 +138,9 @@ public class SpeechReportService {
         );
 
         SpeechReport savedReport = speechReportRepository.save(report);
+        if (command.reason() == SpeechReportReason.OFF_TOPIC) {
+            offTopicAiReviewService.triggerIfNeeded(speech, command.reason());
+        }
         log.info(
                 "Speech report created. reportId={}, speechId={}, reporterUserId={}, reportedUserId={}, reason={}",
                 savedReport.getId(),
@@ -129,5 +151,46 @@ public class SpeechReportService {
         );
 
         return SpeechReportCreateRes.from(savedReport);
+    }
+
+    private Map<Long, OffTopicAiReview> findOffTopicAiReviewsBySpeechId(
+            java.util.List<SpeechReport> reports
+    ) {
+        if (reports.isEmpty()) {
+            return Map.of();
+        }
+
+        java.util.List<Long> speechIds = reports.stream()
+                .map(SpeechReport::getSpeechId)
+                .distinct()
+                .toList();
+
+        java.util.List<OffTopicAiReview> reviews =
+                offTopicAiReviewRepository.findBySpeechIdIn(speechIds);
+        if (reviews == null || reviews.isEmpty()) {
+            return Map.of();
+        }
+
+        return reviews.stream()
+                .collect(Collectors.toMap(
+                        OffTopicAiReview::getSpeechId,
+                        Function.identity()
+                ));
+    }
+
+    private void softDeleteSpeechIfOffTopicResolved(
+            SpeechReport report,
+            SpeechReportReviewAction action
+    ) {
+        if (action != SpeechReportReviewAction.RESOLVE
+                || report.getReason() != SpeechReportReason.OFF_TOPIC) {
+            return;
+        }
+
+        speechRepository.findByIdAndDeletedFalse(report.getSpeechId())
+                .ifPresent(speech -> speech.softDeleteByModerator(
+                        SpeechDeleteReason.OFF_TOPIC,
+                        LocalDateTime.now()
+                ));
     }
 }
