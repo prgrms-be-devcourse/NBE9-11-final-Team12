@@ -68,7 +68,8 @@ class SpeakingQueueConsistencyRiskTest {
                 redisSpeakingQueueRepository,
                 failingPersistenceService,
                 mock(SpeakingQueueProperties.class),
-                mock(ApplicationEventPublisher.class)
+                mock(ApplicationEventPublisher.class),
+                mock(AiCounterIssueService.class)
         );
 
         assertThatThrownBy(() ->
@@ -101,7 +102,8 @@ class SpeakingQueueConsistencyRiskTest {
                 failingRedisRepository,
                 persistenceService,
                 mock(SpeakingQueueProperties.class),
-                mock(ApplicationEventPublisher.class)
+                mock(ApplicationEventPublisher.class),
+                mock(AiCounterIssueService.class)
         );
 
         StageRequestRes response =

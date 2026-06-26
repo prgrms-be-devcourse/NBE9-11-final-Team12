@@ -11,10 +11,12 @@ import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.RoomQueueSequenceRepository;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
+import com.sisibibi.api.domain.speech.util.SpeakingStreakPolicy;
 import com.sisibibi.api.domain.user.repository.UserRepository;
 import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -35,7 +37,6 @@ public class SpeakingQueuePersistenceService {
             List.of(SpeakingQueueStatus.WAITING, SpeakingQueueStatus.ASSIGNED);
     private static final List<SpeakingQueueStatus> ASSIGNMENT_HISTORY_STATUSES =
             List.of(SpeakingQueueStatus.COMPLETED);
-    private static final int BALANCE_STREAK_THRESHOLD = 3;
 
     private final SpeakingQueueRepository speakingQueueRepository;
     private final RoomQueueSequenceRepository roomQueueSequenceRepository;
@@ -43,6 +44,7 @@ public class SpeakingQueuePersistenceService {
     private final RoomParticipantRepository roomParticipantRepository;
     private final UserRepository userRepository;
     private final UserSanctionPolicyService userSanctionPolicyService;
+    private final SpeakingStreakPolicy speakingStreakPolicy;
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public SpeakingQueue createWaitingRequest(
@@ -185,6 +187,69 @@ public class SpeakingQueuePersistenceService {
     }
 
     @Transactional
+    public void recordCurrentSpeakerActivityIfMatches(
+            Long roomId,
+            Long userId,
+            LocalDateTime activityAt
+    ) {
+        Optional<SpeakingQueue> activeRequest =
+                speakingQueueRepository.findByRoomIdAndUserIdAndStatusIn(
+                        roomId,
+                        userId,
+                        List.of(SpeakingQueueStatus.ASSIGNED)
+                );
+        if (activeRequest.isEmpty()) {
+            return;
+        }
+
+        roomRepository.findByIdForUpdate(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+        Optional<SpeakingQueue> currentSpeaker =
+                speakingQueueRepository.findByRoomIdAndStatus(
+                        roomId,
+                        SpeakingQueueStatus.ASSIGNED
+                );
+        if (currentSpeaker.isEmpty()
+                || !currentSpeaker.get().getUserId().equals(userId)) {
+            return;
+        }
+
+        currentSpeaker.get().recordActivity(activityAt);
+    }
+
+    @Transactional
+    public Optional<SpeakingQueue> warnCurrentSpeakerIfIdle(
+            Long roomId,
+            LocalDateTime now,
+            Duration warningDelay,
+            Duration warningSuppressionBeforeExpiration
+    ) {
+        roomRepository.findByIdForUpdate(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+        Optional<SpeakingQueue> currentSpeaker =
+                speakingQueueRepository.findByRoomIdAndStatus(
+                        roomId,
+                        SpeakingQueueStatus.ASSIGNED
+                );
+        if (currentSpeaker.isEmpty()) {
+            return Optional.empty();
+        }
+
+        SpeakingQueue assigned = currentSpeaker.get();
+        if (!assigned.markIdleWarningIfDue(
+                now,
+                warningDelay,
+                warningSuppressionBeforeExpiration
+        )) {
+            return Optional.empty();
+        }
+
+        return Optional.of(assigned);
+    }
+
+    @Transactional
     public SpeakingQueueRoomCloseResult closeActiveRequestsByRoomId(
             Long roomId,
             LocalDateTime closedAt
@@ -310,14 +375,9 @@ public class SpeakingQueuePersistenceService {
                                 ASSIGNMENT_HISTORY_STATUSES
                         );
 
-        if (recentAssignments.size() < BALANCE_STREAK_THRESHOLD) {
-            return Optional.empty();
-        }
-
-        SpeechStance recentStance = recentAssignments.getFirst().getStance();
-        boolean sameStanceStreak = recentAssignments.stream()
-                .allMatch(assignment -> recentStance == assignment.getStance());
-        if (!sameStanceStreak) {
+        Optional<SpeechStance> oppositeStance =
+                speakingStreakPolicy.counterStanceFor(recentAssignments);
+        if (oppositeStance.isEmpty()) {
             return Optional.empty();
         }
 
@@ -325,15 +385,8 @@ public class SpeakingQueuePersistenceService {
                 .findFirstByRoomIdAndStatusAndStanceOrderByQueueOrderAsc(
                         roomId,
                         SpeakingQueueStatus.WAITING,
-                        oppositeOf(recentStance)
+                        oppositeStance.get()
                 );
-    }
-
-    private SpeechStance oppositeOf(SpeechStance stance) {
-        if (stance == SpeechStance.PRO) {
-            return SpeechStance.CON;
-        }
-        return SpeechStance.PRO;
     }
 
     @Transactional
@@ -407,6 +460,33 @@ public class SpeakingQueuePersistenceService {
 
         SpeakingQueue assigned = currentSpeaker.get();
         if (assigned.getExpiresAt() == null || assigned.getExpiresAt().isAfter(now)) {
+            return Optional.empty();
+        }
+
+        assigned.complete();
+        return Optional.of(assigned);
+    }
+
+    @Transactional
+    public Optional<SpeakingQueue> completeCurrentSpeakerIfIdleTimedOut(
+            Long roomId,
+            LocalDateTime now,
+            Duration timeoutDelayAfterWarning
+    ) {
+        roomRepository.findByIdForUpdate(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+        Optional<SpeakingQueue> currentSpeaker =
+                speakingQueueRepository.findByRoomIdAndStatus(
+                        roomId,
+                        SpeakingQueueStatus.ASSIGNED
+                );
+        if (currentSpeaker.isEmpty()) {
+            return Optional.empty();
+        }
+
+        SpeakingQueue assigned = currentSpeaker.get();
+        if (!assigned.isIdleTimedOut(now, timeoutDelayAfterWarning)) {
             return Optional.empty();
         }
 

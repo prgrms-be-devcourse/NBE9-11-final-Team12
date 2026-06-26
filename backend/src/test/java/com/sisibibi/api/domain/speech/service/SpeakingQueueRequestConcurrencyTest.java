@@ -12,6 +12,7 @@ import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.RoomQueueSequenceRepository;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
+import com.sisibibi.api.domain.speech.util.SpeakingStreakPolicy;
 import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -33,7 +34,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 @DataJpaTest
 @ActiveProfiles("test")
-@Import(SpeakingQueuePersistenceService.class)
+@Import({
+        SpeakingQueuePersistenceService.class,
+        SpeakingStreakPolicy.class
+})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class SpeakingQueueRequestConcurrencyTest {
 

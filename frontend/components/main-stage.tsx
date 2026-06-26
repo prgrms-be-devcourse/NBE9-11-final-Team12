@@ -1,6 +1,6 @@
 "use client"
 
-import { FormEvent, useCallback, useEffect, useState } from "react"
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react"
 import { Flag, History, Loader2, MessageSquarePlus, Mic, MicOff, Users } from "lucide-react"
 import { ApiError } from "@/lib/api/client"
 import { speechApi, stageApi } from "@/lib/api/services"
@@ -43,11 +43,13 @@ export function MainStage({
   liveEnabled = true,
   stompConnection,
   stompConnected,
+  recoveryKey,
 }: {
   roomId: number
   liveEnabled?: boolean
   stompConnection: RoomStompConnection | null
   stompConnected: boolean
+  recoveryKey: number
 }) {
   const { user } = useAuth()
   const [speeches, setSpeeches] = useState<SpeechSummary[]>([])
@@ -67,8 +69,20 @@ export function MainStage({
   const [reportDescription, setReportDescription] = useState("")
   const [reportSubmitted, setReportSubmitted] = useState(false)
   const [reportError, setReportError] = useState("")
+  const speechesRequestSeqRef = useRef(0)
+  const stageRequestSeqRef = useRef(0)
+  const handledEventIdsRef = useRef<string[]>([])
+  const speechesRecoveryTimerRef = useRef<number | null>(null)
+  const stageRecoveryTimerRef = useRef<number | null>(null)
+
+  const rememberEvent = useCallback((eventId: string) => {
+    if (handledEventIdsRef.current.includes(eventId)) return false
+    handledEventIdsRef.current = [...handledEventIdsRef.current.slice(-199), eventId]
+    return true
+  }, [])
 
   const loadSpeeches = useCallback(async () => {
+    const requestSeq = ++speechesRequestSeqRef.current
     if (!liveEnabled) {
       setSpeeches([])
       setLoading(false)
@@ -80,15 +94,18 @@ export function MainStage({
     setError("")
     try {
       const response = await speechApi.list(roomId)
+      if (requestSeq !== speechesRequestSeqRef.current) return
       setSpeeches(response.items)
     } catch (requestError) {
+      if (requestSeq !== speechesRequestSeqRef.current) return
       setError(messageOf(requestError))
     } finally {
-      setLoading(false)
+      if (requestSeq === speechesRequestSeqRef.current) setLoading(false)
     }
   }, [liveEnabled, roomId])
 
   const loadStage = useCallback(async () => {
+    const requestSeq = ++stageRequestSeqRef.current
     if (!liveEnabled) {
       setStageLoading(false)
       setStageError("")
@@ -103,6 +120,8 @@ export function MainStage({
       stageApi.myRequestStatus(roomId),
     ])
 
+    if (requestSeq !== stageRequestSeqRef.current) return
+
     if (speakerResult.status === "fulfilled") setCurrentSpeaker(speakerResult.value)
     if (queueResult.status === "fulfilled") setQueueSummary(queueResult.value)
     if (statusResult.status === "fulfilled") setRequestStatus(statusResult.value)
@@ -113,8 +132,28 @@ export function MainStage({
     if (rejected?.status === "rejected") {
       setStageError(messageOf(rejected.reason))
     }
-    setStageLoading(false)
+    if (requestSeq === stageRequestSeqRef.current) setStageLoading(false)
   }, [liveEnabled, roomId])
+
+  const scheduleSpeechesRecovery = useCallback(() => {
+    if (speechesRecoveryTimerRef.current !== null) {
+      window.clearTimeout(speechesRecoveryTimerRef.current)
+    }
+    speechesRecoveryTimerRef.current = window.setTimeout(() => {
+      speechesRecoveryTimerRef.current = null
+      void loadSpeeches()
+    }, 250)
+  }, [loadSpeeches])
+
+  const scheduleStageRecovery = useCallback(() => {
+    if (stageRecoveryTimerRef.current !== null) {
+      window.clearTimeout(stageRecoveryTimerRef.current)
+    }
+    stageRecoveryTimerRef.current = window.setTimeout(() => {
+      stageRecoveryTimerRef.current = null
+      void loadStage()
+    }, 250)
+  }, [loadStage])
 
   useEffect(() => {
     void loadSpeeches()
@@ -125,46 +164,82 @@ export function MainStage({
   }, [loadStage])
 
   useEffect(() => {
-    if (!liveEnabled || !stompConnection || !stompConnected) return
+    handledEventIdsRef.current = []
+    return () => {
+      if (speechesRecoveryTimerRef.current !== null) {
+        window.clearTimeout(speechesRecoveryTimerRef.current)
+      }
+      if (stageRecoveryTimerRef.current !== null) {
+        window.clearTimeout(stageRecoveryTimerRef.current)
+      }
+    }
+  }, [roomId])
+
+  useEffect(() => {
+    if (recoveryKey === 0) return
+    void loadSpeeches()
+    void loadStage()
+  }, [loadSpeeches, loadStage, recoveryKey])
+
+  useEffect(() => {
+    if (!liveEnabled || stompConnected) return
+    if (document.visibilityState !== "visible") return
+    const hasActiveStageInterest = Boolean(
+      currentSpeaker?.hasCurrentSpeaker || requestStatus?.hasRequest || (queueSummary?.totalWaitingCount ?? 0) > 0,
+    )
+    if (!hasActiveStageInterest) return
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") void loadStage()
+    }, 5000)
+
+    return () => window.clearInterval(intervalId)
+  }, [currentSpeaker, liveEnabled, loadStage, queueSummary, requestStatus, stompConnected])
+
+  useEffect(() => {
+    if (!liveEnabled || !stompConnection) return
 
     const unsubscribe = stompConnection.subscribe<StageEvent>(
       `/topic/rooms/${roomId}/stage/events`,
-      () => {
-        void loadStage()
+      (event) => {
+        if (!rememberEvent(event.eventId)) return
+        scheduleStageRecovery()
       },
       setStageError,
     )
 
     return unsubscribe
-  }, [liveEnabled, loadStage, roomId, stompConnected, stompConnection])
+  }, [liveEnabled, rememberEvent, roomId, scheduleStageRecovery, stompConnection])
 
   useEffect(() => {
-    if (!liveEnabled || !stompConnection || !stompConnected) return
+    if (!liveEnabled || !stompConnection) return
 
     const unsubscribe = stompConnection.subscribe<SpeechEvent>(
       `/topic/rooms/${roomId}/speeches/events`,
-      () => {
-        void loadSpeeches()
+      (event) => {
+        if (!rememberEvent(event.eventId)) return
+        scheduleSpeechesRecovery()
       },
       setError,
     )
 
     return unsubscribe
-  }, [liveEnabled, loadSpeeches, roomId, stompConnected, stompConnection])
+  }, [liveEnabled, rememberEvent, roomId, scheduleSpeechesRecovery, stompConnection])
 
   useEffect(() => {
-    if (!liveEnabled || !stompConnection || !stompConnected) return
+    if (!liveEnabled || !stompConnection) return
 
     const unsubscribe = stompConnection.subscribe<SpeechReactionEvent>(
       `/topic/rooms/${roomId}/speech-reactions/events`,
-      () => {
-        void loadSpeeches()
+      (event) => {
+        if (!rememberEvent(event.eventId)) return
+        scheduleSpeechesRecovery()
       },
       setError,
     )
 
     return unsubscribe
-  }, [liveEnabled, loadSpeeches, roomId, stompConnected, stompConnection])
+  }, [liveEnabled, rememberEvent, roomId, scheduleSpeechesRecovery, stompConnection])
 
   const createSpeech = async (event: FormEvent) => {
     event.preventDefault()

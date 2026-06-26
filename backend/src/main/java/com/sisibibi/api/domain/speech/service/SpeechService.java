@@ -43,6 +43,7 @@ public class SpeechService {
     private final RoomParticipantRepository roomParticipantRepository;
     private final SpeechRepository speechRepository;
     private final SpeechReactionRepository speechReactionRepository;
+    private final SpeakingQueuePersistenceService speakingQueuePersistenceService;
     private final ProfanityDetector profanityDetector;
     private final UserSanctionPolicyService userSanctionPolicyService;
     private final S3ImageStorageService s3ImageStorageService;
@@ -81,6 +82,11 @@ public class SpeechService {
         );
 
         Speech savedSpeech = speechRepository.save(speech);
+        speakingQueuePersistenceService.recordCurrentSpeakerActivityIfMatches(
+                roomId,
+                userId,
+                LocalDateTime.now()
+        );
         publishSpeechChangedEvent(SpeechEventType.SPEECH_CREATED, savedSpeech);
         return SpeechCreateRes.from(savedSpeech);
     }
