@@ -181,6 +181,17 @@ export type SpeechReportCreateResponse = {
   createdAt: string
 }
 
+export type ChatReportReason = SpeechReportReason
+
+export type ChatReportCreateResponse = {
+  reportId: number
+  roomId: number
+  messageId: number
+  reason: ChatReportReason
+  status: "PENDING" | "REVIEWING" | "RESOLVED" | "REJECTED"
+  createdAt: string
+}
+
 export type ChatMessage = {
   messageId: number
   roomId: number
@@ -378,4 +389,76 @@ export type ActiveUserSanction = {
   reason: string
   startsAt: string
   endsAt: string | null
+}
+
+export type SpeechReportStatus = "PENDING" | "REVIEWING" | "RESOLVED" | "REJECTED"
+export type SpeechReportReviewAction = "START_REVIEW" | "RESOLVE" | "REJECT"
+export type ViolationSeverity = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
+
+export type SpeechReportSummary = {
+  reportId: number
+  speechId: number
+  reportedUserId: number
+  reporterUserId: number
+  reason: SpeechReportReason
+  status: SpeechReportStatus
+  createdAt: string
+}
+
+export type SpeechReportDetail = SpeechReportSummary & {
+  contentSnapshot: string
+  description: string | null
+  reviewedBy: number | null
+  reviewedAt: string | null
+  resolutionNote: string | null
+  severity: ViolationSeverity | null
+  updatedAt: string
+}
+
+export type SpeechReportReviewResponse = {
+  reportId: number
+  status: SpeechReportStatus
+  reviewedBy: number | null
+  reviewedAt: string | null
+  resolutionNote: string | null
+  severity: ViolationSeverity | null
+}
+
+export type UserSanction = {
+  sanctionId: number
+  userId: number
+  adminUserId: number
+  reportId: number | null
+  type: UserSanctionType
+  reason: string
+  state: UserSanctionState
+  startsAt: string
+  endsAt: string | null
+  revokedAt: string | null
+  revokedBy: number | null
+  revocationReason: string | null
+  extendedAt: string | null
+  extendedBy: number | null
+  extensionReason: string | null
+  createdAt: string
+}
+
+export type UserSanctionRecommendation = {
+  reportId: number
+  userId: number
+  currentSeverity: ViolationSeverity | null
+  lookbackDays: number
+  resolvedViolationCount: number
+  lowCount: number
+  mediumCount: number
+  highCount: number
+  criticalCount: number
+  weightedScore: number
+  recommendedType: UserSanctionType
+  recommendedDurationHours: number | null
+  accountSuspensionReviewRecommended: boolean
+  activeSameTypeSanction: boolean
+  activeSameTypeSanctionId: number | null
+  activeSameTypeEndsAt: string | null
+  recommendationReason: string
 }

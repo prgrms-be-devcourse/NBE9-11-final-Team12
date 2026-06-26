@@ -3,6 +3,8 @@ import type {
   ActiveUserSanction,
   AuthUser,
   BestSpeech,
+  ChatReportCreateResponse,
+  ChatReportReason,
   ChatMessageCursorPage,
   ClassifiedIssueCandidate,
   RoomDetail,
@@ -18,6 +20,11 @@ import type {
   SpeechReactionCreateResponse,
   SpeechReportCreateResponse,
   SpeechReportReason,
+  SpeechReportDetail,
+  SpeechReportReviewAction,
+  SpeechReportReviewResponse,
+  SpeechReportStatus,
+  SpeechReportSummary,
   SpeechStance,
   SpringPage,
   StageCurrentSpeaker,
@@ -29,6 +36,10 @@ import type {
   TopicSummary,
   UserTrustDetail,
   UserTrustSummary,
+  UserSanction,
+  UserSanctionRecommendation,
+  UserSanctionType,
+  ViolationSeverity,
 } from "@/lib/api/types"
 
 export const authApi = {
@@ -78,6 +89,27 @@ export const adminApi = {
   updateRoom: (roomId: number, body: { title?: string; startedAt?: string; endedAt?: string }) =>
     api.patch<RoomDetail>(`/api/v1/admin/rooms/${roomId}`, body),
   deleteRoom: (roomId: number) => api.delete<void>(`/api/v1/admin/rooms/${roomId}`),
+  reports: (params: { status?: SpeechReportStatus | ""; reason?: SpeechReportReason | ""; page?: number; size?: number } = {}) => {
+    const query = new URLSearchParams()
+    if (params.status) query.set("status", params.status)
+    if (params.reason) query.set("reason", params.reason)
+    query.set("page", String(params.page ?? 0))
+    query.set("size", String(params.size ?? 20))
+    return api.get<SpringPage<SpeechReportSummary>>(`/api/v1/admin/reports?${query.toString()}`)
+  },
+  reportDetail: (reportId: number) => api.get<SpeechReportDetail>(`/api/v1/admin/reports/${reportId}`),
+  reviewReport: (
+    reportId: number,
+    body: { action: SpeechReportReviewAction; resolutionNote?: string; severity?: ViolationSeverity },
+  ) => api.patch<SpeechReportReviewResponse>(`/api/v1/admin/reports/${reportId}`, body),
+  sanctions: (userId: number, page = 0, size = 20) =>
+    api.get<SpringPage<UserSanction>>(`/api/v1/admin/users/${userId}/sanctions?page=${page}&size=${size}`),
+  sanctionRecommendation: (userId: number, reportId: number) =>
+    api.get<UserSanctionRecommendation>(`/api/v1/admin/users/${userId}/sanctions/recommendation?reportId=${reportId}`),
+  createSanction: (
+    userId: number,
+    body: { type: UserSanctionType; reason: string; durationHours?: number | null; reportId?: number | null },
+  ) => api.post<UserSanction>(`/api/v1/admin/users/${userId}/sanctions`, body),
 }
 
 export const speechApi = {
@@ -122,6 +154,11 @@ export const chatApi = {
     ),
   delete: (roomId: number, messageId: number) =>
     api.delete<void>(`/api/v1/rooms/${roomId}/chat/messages/${messageId}`),
+  report: (roomId: number, messageId: number, reason: ChatReportReason, description?: string) =>
+    api.post<ChatReportCreateResponse>(
+      `/api/v1/rooms/${roomId}/chat/messages/${messageId}/reports`,
+      { reason, description: description || null },
+    ),
 }
 
 export const stageApi = {
