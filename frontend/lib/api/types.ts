@@ -236,6 +236,20 @@ export type StageRequestStatus = {
   expiresAt: string | null
 }
 
+export type StageSummaryStatus = "PENDING" | "COMPLETED" | "FAILED"
+
+export type StageSummary = {
+  summaryId: number
+  roomId: number
+  status: StageSummaryStatus
+  moderatorSummary: string | null
+  keyPoints: string[]
+  speechCount: number
+  completedSpeakerCount: number
+  triggeredAt: string
+  completedAt: string | null
+}
+
 export type WebSocketEventEnvelope<TData, TEventType extends string = string> = {
   eventId: string
   eventType: TEventType
@@ -266,6 +280,14 @@ export type StageEvent = WebSocketEventEnvelope<
     occurredAt: string
   },
   "SPEAKING_REQUESTED" | "SPEAKING_CANCELED" | "SPEAKER_ASSIGNED" | "SPEAKER_COMPLETED" | "SPEAKER_EXPIRED"
+>
+
+export type StageSummaryEvent = WebSocketEventEnvelope<
+  {
+    summaryId: number
+    roomId: number
+  },
+  "STAGE_SUMMARY_COMPLETED"
 >
 
 export type RoomEvent = WebSocketEventEnvelope<

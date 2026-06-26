@@ -1,9 +1,9 @@
 "use client"
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react"
-import { Flag, History, ImageIcon, Loader2, MessageSquarePlus, Mic, MicOff, Users, X } from "lucide-react"
+import { FileText, Flag, History, ImageIcon, Loader2, MessageSquarePlus, Mic, MicOff, RefreshCw, Users, X } from "lucide-react"
 import { ApiError } from "@/lib/api/client"
-import { speechApi, stageApi } from "@/lib/api/services"
+import { speechApi, stageApi, stageSummaryApi } from "@/lib/api/services"
 import type { RoomStompConnection } from "@/lib/api/stomp"
 import { useAuth } from "@/components/auth-provider"
 import type {
@@ -16,6 +16,8 @@ import type {
   StageEvent,
   StageQueue,
   StageRequestStatus,
+  StageSummary,
+  StageSummaryEvent,
 } from "@/lib/api/types"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -63,6 +65,9 @@ export function MainStage({
   const [currentSpeaker, setCurrentSpeaker] = useState<StageCurrentSpeaker | null>(null)
   const [queueSummary, setQueueSummary] = useState<StageQueue | null>(null)
   const [requestStatus, setRequestStatus] = useState<StageRequestStatus | null>(null)
+  const [stageSummary, setStageSummary] = useState<StageSummary | null>(null)
+  const [summaryLoading, setSummaryLoading] = useState(false)
+  const [summaryError, setSummaryError] = useState("")
   const [createOpen, setCreateOpen] = useState(false)
   const [content, setContent] = useState("")
   const [stance, setStance] = useState<SpeechStance>("PRO")
@@ -77,6 +82,9 @@ export function MainStage({
   const [reportError, setReportError] = useState("")
   const speechesRequestSeqRef = useRef(0)
   const stageRequestSeqRef = useRef(0)
+  const summaryRequestSeqRef = useRef(0)
+  const summaryInFlightRoomIdRef = useRef<number | null>(null)
+  const mountedRef = useRef(true)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
   const handledEventIdsRef = useRef<string[]>([])
   const speechesRecoveryTimerRef = useRef<number | null>(null)
@@ -142,6 +150,41 @@ export function MainStage({
     if (requestSeq === stageRequestSeqRef.current) setStageLoading(false)
   }, [liveEnabled, roomId])
 
+  const loadStageSummary = useCallback(async (showLoading = true) => {
+    if (!liveEnabled) {
+      setStageSummary(null)
+      setSummaryLoading(false)
+      setSummaryError("")
+      return
+    }
+
+    if (summaryInFlightRoomIdRef.current === roomId) return
+    summaryInFlightRoomIdRef.current = roomId
+    const requestSeq = ++summaryRequestSeqRef.current
+
+    if (showLoading) setSummaryLoading(true)
+    setSummaryError("")
+    try {
+      const response = await stageSummaryApi.get(roomId)
+      if (!mountedRef.current || requestSeq !== summaryRequestSeqRef.current) return
+      setStageSummary(response)
+    } catch (requestError) {
+      if (!mountedRef.current || requestSeq !== summaryRequestSeqRef.current) return
+      if (requestError instanceof ApiError && requestError.code === "STAGE_SUMMARY_NOT_FOUND") {
+        setStageSummary(null)
+        return
+      }
+      setSummaryError(messageOf(requestError))
+    } finally {
+      if (summaryInFlightRoomIdRef.current === roomId) {
+        summaryInFlightRoomIdRef.current = null
+      }
+      if (mountedRef.current && requestSeq === summaryRequestSeqRef.current) {
+        setSummaryLoading(false)
+      }
+    }
+  }, [liveEnabled, roomId])
+
   const scheduleSpeechesRecovery = useCallback(() => {
     if (speechesRecoveryTimerRef.current !== null) {
       window.clearTimeout(speechesRecoveryTimerRef.current)
@@ -163,12 +206,25 @@ export function MainStage({
   }, [loadStage])
 
   useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      summaryRequestSeqRef.current += 1
+      summaryInFlightRoomIdRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
     void loadSpeeches()
   }, [loadSpeeches])
 
   useEffect(() => {
     void loadStage()
   }, [loadStage])
+
+  useEffect(() => {
+    void loadStageSummary()
+  }, [loadStageSummary])
 
   useEffect(() => {
     handledEventIdsRef.current = []
@@ -186,7 +242,8 @@ export function MainStage({
     if (recoveryKey === 0) return
     void loadSpeeches()
     void loadStage()
-  }, [loadSpeeches, loadStage, recoveryKey])
+    void loadStageSummary(false)
+  }, [loadSpeeches, loadStage, loadStageSummary, recoveryKey])
 
   useEffect(() => {
     if (!selectedImage) {
@@ -244,6 +301,21 @@ export function MainStage({
 
     return unsubscribe
   }, [liveEnabled, rememberEvent, roomId, scheduleSpeechesRecovery, stompConnection])
+
+  useEffect(() => {
+    if (!liveEnabled || !stompConnection) return
+
+    const unsubscribe = stompConnection.subscribe<StageSummaryEvent>(
+      `/topic/rooms/${roomId}/stage-summary/events`,
+      (event) => {
+        if (!rememberEvent(event.eventId)) return
+        void loadStageSummary(false)
+      },
+      setSummaryError,
+    )
+
+    return unsubscribe
+  }, [liveEnabled, loadStageSummary, rememberEvent, roomId, stompConnection])
 
   useEffect(() => {
     if (!liveEnabled || !stompConnection) return
@@ -410,6 +482,11 @@ export function MainStage({
   const isCurrentUserSpeaking =
     Boolean(user && currentSpeaker?.currentSpeaker?.userId === user.userId)
 
+  const summaryKeyPoints = stageSummary?.keyPoints.filter((point) => point.trim()) ?? []
+  const hasCompletedSummary = Boolean(
+    stageSummary?.status === "COMPLETED" && (stageSummary.moderatorSummary?.trim() || summaryKeyPoints.length > 0),
+  )
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center justify-between border-b border-border/50 px-4 py-3">
@@ -482,6 +559,84 @@ export function MainStage({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <section className="mb-4 rounded-xl border border-border/50 bg-card p-4">
+          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-2">
+              <FileText className="size-4 shrink-0 text-primary" />
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-foreground">의견 요약</h3>
+                <p className="text-[11px] text-muted-foreground">
+                  {stageSummary?.completedAt
+                    ? `${new Date(stageSummary.completedAt).toLocaleString("ko-KR")} 기준`
+                    : "토론 흐름을 정리한 중간 요약입니다."}
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {stageSummary?.status && (
+                <Badge variant="outline" className="text-[10px]">
+                  {stageSummary.status === "COMPLETED" ? "완료" : stageSummary.status === "PENDING" ? "준비 중" : "대기"}
+                </Badge>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 text-xs"
+                disabled={!liveEnabled || summaryLoading}
+                onClick={() => void loadStageSummary()}
+              >
+                {summaryLoading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+                요약 확인
+              </Button>
+            </div>
+          </div>
+
+          {summaryError && (
+            <p className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{summaryError}</p>
+          )}
+
+          {summaryLoading && !stageSummary ? (
+            <div className="flex h-24 items-center justify-center">
+              <Loader2 className="size-5 animate-spin text-primary" />
+            </div>
+          ) : hasCompletedSummary ? (
+            <div className="space-y-3">
+              {stageSummary?.moderatorSummary?.trim() && (
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                  {stageSummary.moderatorSummary}
+                </p>
+              )}
+              {summaryKeyPoints.length > 0 && (
+                <ul className="space-y-2">
+                  {summaryKeyPoints.map((point) => (
+                    <li key={point} className="flex gap-2 text-sm leading-relaxed text-foreground">
+                      <span className="mt-2 size-1.5 shrink-0 rounded-full bg-primary" />
+                      <span className="min-w-0 break-words">{point}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="text-[11px] text-muted-foreground">
+                의견 {stageSummary?.speechCount ?? 0}개 · 완료 발언자 {stageSummary?.completedSpeakerCount ?? 0}명 기준
+              </p>
+            </div>
+          ) : (
+            <div className="flex min-h-24 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
+              <FileText className="size-6" />
+              <p className="text-sm">
+                {stageSummary?.status === "PENDING"
+                  ? "의견 요약을 준비 중입니다."
+                  : stageSummary?.status === "FAILED"
+                  ? "의견 요약을 준비하지 못했습니다."
+                  : "아직 생성된 의견 요약이 없습니다."}
+              </p>
+              <p className="text-xs">
+                {stageSummary?.status === "FAILED" ? "잠시 후 다시 확인해주세요." : "발언이 충분히 모이면 자동으로 생성됩니다."}
+              </p>
+            </div>
+          )}
+        </section>
+
         {error && <p className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
         {loading ? (
           <div className="flex h-40 items-center justify-center"><Loader2 className="size-5 animate-spin text-primary" /></div>
