@@ -27,6 +27,7 @@ class SpeakingQueueTest {
         assertThat(speakingQueue.getRequestedAt()).isEqualTo(requestedAt);
         assertThat(speakingQueue.getCanceledAt()).isNull();
         assertThat(speakingQueue.getActiveRequest()).isTrue();
+        assertThat(speakingQueue.getAssignedRoomId()).isNull();
     }
 
     @Test
@@ -72,6 +73,7 @@ class SpeakingQueueTest {
         assertThat(speakingQueue.getStatus()).isEqualTo(SpeakingQueueStatus.CANCELED);
         assertThat(speakingQueue.getCanceledAt()).isEqualTo(canceledAt);
         assertThat(speakingQueue.getActiveRequest()).isNull();
+        assertThat(speakingQueue.getAssignedRoomId()).isNull();
     }
 
     @Test
@@ -110,6 +112,7 @@ class SpeakingQueueTest {
 
         assertThat(speakingQueue.getStatus()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
         assertThat(speakingQueue.getActiveRequest()).isTrue();
+        assertThat(speakingQueue.getAssignedRoomId()).isEqualTo(1L);
         assertThat(speakingQueue.getAssignedAt()).isEqualTo(assignedAt);
         assertThat(speakingQueue.getExpiresAt()).isEqualTo(expiresAt);
         assertThat(speakingQueue.getLastActivityAt()).isEqualTo(assignedAt);
@@ -265,6 +268,7 @@ class SpeakingQueueTest {
 
         assertThat(speakingQueue.getStatus()).isEqualTo(SpeakingQueueStatus.COMPLETED);
         assertThat(speakingQueue.getActiveRequest()).isNull();
+        assertThat(speakingQueue.getAssignedRoomId()).isNull();
     }
 
     @Test

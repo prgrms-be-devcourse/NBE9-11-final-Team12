@@ -47,6 +47,10 @@ import lombok.NoArgsConstructor;
                 @UniqueConstraint(
                         name = "uk_speaking_queue_room_user_active",
                         columnNames = {"room_id", "user_id", "active_request"}
+                ),
+                @UniqueConstraint(
+                        name = "uk_speaking_queue_room_assigned",
+                        columnNames = {"assigned_room_id"}
                 )
         }
 )
@@ -67,6 +71,9 @@ public class SpeakingQueue {
 
     @Column(name = "active_request")
     private Boolean activeRequest;
+
+    @Column(name = "assigned_room_id")
+    private Long assignedRoomId;
 
     @Enumerated(EnumType.STRING)
     @Column(length = 10)
@@ -146,6 +153,7 @@ public class SpeakingQueue {
         }
 
         this.status = SpeakingQueueStatus.ASSIGNED;
+        this.assignedRoomId = roomId;
         this.assignedAt = assignedAt;
         this.expiresAt = expiresAt;
         this.lastActivityAt = assignedAt;
@@ -163,6 +171,7 @@ public class SpeakingQueue {
         this.status = SpeakingQueueStatus.CANCELED;
         this.canceledAt = canceledAt;
         this.activeRequest = null;
+        this.assignedRoomId = null;
     }
 
     public void complete() {
@@ -174,6 +183,7 @@ public class SpeakingQueue {
 
         this.status = SpeakingQueueStatus.COMPLETED;
         this.activeRequest = null;
+        this.assignedRoomId = null;
     }
 
     public void recordActivity(LocalDateTime activityAt) {

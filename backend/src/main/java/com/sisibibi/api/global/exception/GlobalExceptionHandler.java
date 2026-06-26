@@ -30,6 +30,8 @@ public class GlobalExceptionHandler {
             "uk_speaking_queue_room_order";
     private static final String SPEAKING_QUEUE_ROOM_USER_ACTIVE_UNIQUE_CONSTRAINT =
             "uk_speaking_queue_room_user_active";
+    private static final String SPEAKING_QUEUE_ROOM_ASSIGNED_UNIQUE_CONSTRAINT =
+            "uk_speaking_queue_room_assigned";
     private static final String SPEECH_REPORTS_SPEECH_REPORTER_UNIQUE_CONSTRAINT =
             "uk_speech_reports_speech_reporter";
     private static final String SPEECH_REACTIONS_SPEECH_USER_UNIQUE_CONSTRAINT =
@@ -253,6 +255,10 @@ public class GlobalExceptionHandler {
 
         if (isConstraintViolation(e, SPEAKING_QUEUE_ROOM_USER_ACTIVE_UNIQUE_CONSTRAINT)) {
             return ErrorCode.SPEAKING_REQUEST_ALREADY_EXISTS;
+        }
+
+        if (isConstraintViolation(e, SPEAKING_QUEUE_ROOM_ASSIGNED_UNIQUE_CONSTRAINT)) {
+            return ErrorCode.CURRENT_SPEAKER_ALREADY_EXISTS;
         }
 
         if (isConstraintViolation(e, SPEECH_REPORTS_SPEECH_REPORTER_UNIQUE_CONSTRAINT)) {

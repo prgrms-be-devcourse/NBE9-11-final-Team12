@@ -92,6 +92,31 @@ class SpeakingQueueRepositoryTest {
     }
 
     @Test
+    void save_rejectsDuplicateAssignedSpeakerInSameRoom() {
+        SpeakingQueue firstAssigned = SpeakingQueue.waiting(
+                1L,
+                7L,
+                1,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        assign(firstAssigned);
+        speakingQueueRepository.saveAndFlush(firstAssigned);
+
+        SpeakingQueue secondAssigned = SpeakingQueue.waiting(
+                1L,
+                8L,
+                2,
+                SpeechStance.CON,
+                LocalDateTime.of(2026, 6, 12, 11, 31)
+        );
+        assign(secondAssigned);
+
+        assertThatThrownBy(() -> speakingQueueRepository.saveAndFlush(secondAssigned))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
     void findFirstWaiting_returnsLowestQueueOrder() {
         speakingQueueRepository.saveAndFlush(
                 SpeakingQueue.waiting(
