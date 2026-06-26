@@ -15,6 +15,7 @@ import {
   TrendingUp,
   MessageSquare,
   Radio,
+  Shield,
   User,
   LogIn,
   Sun,
@@ -82,6 +83,20 @@ export function Navbar() {
               </Link>
             )
           })}
+          {user?.role === "ADMIN" && (
+            <Link
+              href="/admin"
+              className={cn(
+                "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                pathname.startsWith("/admin")
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              )}
+            >
+              <Shield className="size-3.5" />
+              관리자
+            </Link>
+          )}
         </nav>
 
         {/* Right actions */}
@@ -170,6 +185,21 @@ export function Navbar() {
                 </Link>
               )
             })}
+            {user?.role === "ADMIN" && (
+              <Link
+                href="/admin"
+                onClick={() => setMobileOpen(false)}
+                className={cn(
+                  "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium",
+                  pathname.startsWith("/admin")
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Shield className="size-3.5" />
+                관리자
+              </Link>
+            )}
             <div className="mt-2 flex gap-2 border-t border-border pt-2">
               <Link href="/login" className="flex-1" onClick={() => setMobileOpen(false)}>
                 <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs">

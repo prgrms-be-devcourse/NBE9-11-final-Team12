@@ -2,6 +2,7 @@ import { api } from "@/lib/api/client"
 import type {
   AuthUser,
   ChatMessageCursorPage,
+  ClassifiedIssueCandidate,
   RoomDetail,
   RoomParticipant,
   RoomParticipantCount,
@@ -54,6 +55,10 @@ export const roomApi = {
 export const adminApi = {
   createTopic: (body: { title: string; description?: string; category: string; sourceUrl?: string }) =>
     api.post<TopicCreateResponse>("/api/v1/admin/topics", body),
+  classifiedCandidates: () =>
+    api.get<ClassifiedIssueCandidate[]>("/api/v1/admin/topics/candidates/classified"),
+  refreshClassifiedCandidates: () =>
+    api.post<ClassifiedIssueCandidate[]>("/api/v1/admin/topics/candidates/classified/refresh"),
   updateTopic: (
     topicId: number,
     body: { title: string; description?: string; category: string; sourceUrl?: string },
