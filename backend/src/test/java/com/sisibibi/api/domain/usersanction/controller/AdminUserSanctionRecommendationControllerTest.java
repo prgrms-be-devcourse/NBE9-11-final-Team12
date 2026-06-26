@@ -54,6 +54,7 @@ class AdminUserSanctionRecommendationControllerTest {
                         UserSanctionType.SPEECH_RESTRICTION,
                         24,
                         false,
+                        false,
                         null,
                         null,
                         "최근 90일 누적 위반 점수가 4점 이상입니다."
@@ -67,6 +68,7 @@ class AdminUserSanctionRecommendationControllerTest {
                 .andExpect(jsonPath("$.data.recommendedType")
                         .value("SPEECH_RESTRICTION"))
                 .andExpect(jsonPath("$.data.recommendedDurationHours").value(24))
+                .andExpect(jsonPath("$.data.accountSuspensionReviewRecommended").value(false))
                 .andExpect(jsonPath("$.data.mediumCount").value(2))
                 .andExpect(jsonPath("$.data.activeSameTypeSanction").value(false));
     }
