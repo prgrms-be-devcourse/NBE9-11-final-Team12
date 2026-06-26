@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -200,6 +201,35 @@ class StageSummaryServiceTest {
         stageSummaryService.generateIfNeeded(1L);
 
         verify(stageSummaryPersistenceService).fail(eq(77L), any(String.class));
+        verify(stageSummaryPersistenceService, never()).complete(any(), any(), any(Integer.class), any());
+    }
+
+    @Test
+    void generateIfNeeded_cancelsPendingGeneration_whenInterrupted() {
+        Room room = room();
+        StageSummaryGenerationContext context =
+                StageSummaryGenerationContext.callAi(77L, room, List.of());
+        AtomicReference<Runnable> submittedTask = new AtomicReference<>();
+        stageSummaryService = createService(submittedTask::set);
+        given(stageSummaryPersistenceService.prepareGeneration(
+                eq(1L),
+                any(LocalDateTime.class),
+                eq(10),
+                eq(3)
+        )).willReturn(context);
+
+        Thread.currentThread().interrupt();
+        try {
+            stageSummaryService.generateIfNeeded(1L);
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+        } finally {
+            Thread.interrupted();
+        }
+
+        submittedTask.get().run();
+
+        verify(stageSummaryPersistenceService).fail(eq(77L), any(String.class));
+        verify(stageSummaryGenerator, never()).generate(any(), any());
         verify(stageSummaryPersistenceService, never()).complete(any(), any(), any(Integer.class), any());
     }
 

@@ -58,14 +58,17 @@ public class StageSummaryPersistenceService {
 
             summary.markPendingForRetry();
         } else {
-            summary = stageSummaryRepository.saveAndFlush(StageSummary.pending(
+            summary = StageSummary.pending(
                     roomId,
                     now,
                     Math.toIntExact(completedSpeakerCount)
-            ));
+            );
         }
 
         summary.markAttemptStarted(now);
+        if (summary.getId() == null) {
+            summary = stageSummaryRepository.save(summary);
+        }
         List<Speech> speeches =
                 speechRepository.findStageSummarySourceSpeeches(roomId, summary.getTriggeredAt());
 

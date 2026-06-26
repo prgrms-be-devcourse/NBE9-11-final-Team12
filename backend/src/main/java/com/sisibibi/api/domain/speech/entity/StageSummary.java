@@ -39,6 +39,8 @@ import java.util.List;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class StageSummary {
 
+    private static final int ERROR_MESSAGE_MAX_LENGTH = 2_000;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -75,7 +77,7 @@ public class StageSummary {
     @Column(name = "last_attempted_at")
     private LocalDateTime lastAttemptedAt;
 
-    @Column(name = "error_message", length = 1000)
+    @Column(name = "error_message", length = ERROR_MESSAGE_MAX_LENGTH)
     private String errorMessage;
 
     @CreatedDate
@@ -148,6 +150,8 @@ public class StageSummary {
             return null;
         }
 
-        return message.length() > 1000 ? message.substring(0, 1000) : message;
+        return message.length() > ERROR_MESSAGE_MAX_LENGTH
+                ? message.substring(0, ERROR_MESSAGE_MAX_LENGTH)
+                : message;
     }
 }

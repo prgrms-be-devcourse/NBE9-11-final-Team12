@@ -66,6 +66,7 @@ class StageSummaryPersistenceServiceTest {
 
         assertThat(context.shouldCallAi()).isFalse();
         verify(speakingQueueRepository, never()).countDistinctCompletedSpeakersByRoomId(any());
+        verify(stageSummaryRepository, never()).save(any());
         verify(stageSummaryRepository, never()).saveAndFlush(any());
     }
 
@@ -89,6 +90,7 @@ class StageSummaryPersistenceServiceTest {
         );
 
         assertThat(context.shouldCallAi()).isFalse();
+        verify(stageSummaryRepository, never()).save(any());
         verify(stageSummaryRepository, never()).saveAndFlush(any());
         verify(speechRepository, never()).findStageSummarySourceSpeeches(any(), any());
     }
@@ -106,7 +108,7 @@ class StageSummaryPersistenceServiceTest {
         given(speakingQueueRepository.countDistinctCompletedSpeakersByRoomId(1L))
                 .willReturn(10L);
         given(stageSummaryRepository.findByRoomIdForUpdate(1L)).willReturn(Optional.empty());
-        given(stageSummaryRepository.saveAndFlush(any(StageSummary.class))).willAnswer(invocation -> {
+        given(stageSummaryRepository.save(any(StageSummary.class))).willAnswer(invocation -> {
             StageSummary summary = invocation.getArgument(0);
             ReflectionTestUtils.setField(summary, "id", 77L);
             return summary;
@@ -122,7 +124,8 @@ class StageSummaryPersistenceServiceTest {
                 MAX_ATTEMPTS
         );
 
-        verify(stageSummaryRepository).saveAndFlush(summaryCaptor.capture());
+        verify(stageSummaryRepository).save(summaryCaptor.capture());
+        verify(stageSummaryRepository, never()).saveAndFlush(any());
         StageSummary savedSummary = summaryCaptor.getValue();
         assertThat(savedSummary.getRoomId()).isEqualTo(1L);
         assertThat(savedSummary.getStatus()).isEqualTo(StageSummaryStatus.PENDING);

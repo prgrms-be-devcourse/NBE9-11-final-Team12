@@ -99,12 +99,13 @@ public class StageSummaryService {
         try {
             return generation.get(timeoutMillis, TimeUnit.MILLISECONDS);
         } catch (TimeoutException exception) {
-            generation.cancel(true);
+            cancelGeneration(generation);
             throw new IllegalStateException(
                     "Stage summary generation timed out after " + timeoutMillis + "ms.",
                     exception
             );
         } catch (InterruptedException exception) {
+            cancelGeneration(generation);
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Stage summary generation was interrupted.", exception);
         } catch (ExecutionException exception) {
@@ -114,6 +115,10 @@ public class StageSummaryService {
             }
             throw new IllegalStateException("Stage summary generation failed.", cause);
         }
+    }
+
+    private void cancelGeneration(CompletableFuture<StageSummaryResult> generation) {
+        generation.cancel(true);
     }
 
     private void validateResult(StageSummaryResult result) {
