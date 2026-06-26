@@ -15,6 +15,8 @@ import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import com.sisibibi.api.global.exception.CustomException;
+import com.sisibibi.api.global.exception.ErrorCode;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -65,6 +67,19 @@ public class ChatReport {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private ChatReportStatus status;
+
+    @Column(name = "reviewed_by")
+    private Long reviewedBy;
+
+    @Column(name = "reviewed_at")
+    private LocalDateTime reviewedAt;
+
+    @Column(name = "resolution_note", length = 500)
+    private String resolutionNote;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private ChatReportSeverity severity;
 
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -118,5 +133,110 @@ public class ChatReport {
             return null;
         }
         return description.trim();
+    }
+
+    public void review(
+            ChatReportReviewAction action,
+            Long reviewerUserId,
+            String resolutionNote,
+            ChatReportSeverity severity,
+            LocalDateTime now
+    ) {
+        switch (action) {
+            case START_REVIEW -> startReview(reviewerUserId, severity);
+            case RESOLVE -> resolve(
+                    reviewerUserId,
+                    resolutionNote,
+                    severity,
+                    now
+            );
+            case REJECT -> reject(
+                    reviewerUserId,
+                    resolutionNote,
+                    severity,
+                    now
+            );
+        }
+    }
+
+    private void startReview(Long reviewerUserId, ChatReportSeverity severity) {
+        if (status != ChatReportStatus.PENDING) {
+            throw new CustomException(ErrorCode.CHAT_REPORT_INVALID_STATUS_TRANSITION);
+        }
+        validateSeverityNotAllowed(severity);
+
+        status = ChatReportStatus.REVIEWING;
+        reviewedBy = reviewerUserId;
+    }
+
+    private void resolve(
+            Long reviewerUserId,
+            String resolutionNote,
+            ChatReportSeverity severity,
+            LocalDateTime now
+    ) {
+        validateReviewing();
+        if (severity == null) {
+            throw new CustomException(ErrorCode.CHAT_REPORT_SEVERITY_REQUIRED);
+        }
+        completeReview(
+                ChatReportStatus.RESOLVED,
+                reviewerUserId,
+                resolutionNote,
+                severity,
+                now
+        );
+    }
+
+    private void reject(
+            Long reviewerUserId,
+            String resolutionNote,
+            ChatReportSeverity severity,
+            LocalDateTime now
+    ) {
+        validateReviewing();
+        validateSeverityNotAllowed(severity);
+        completeReview(
+                ChatReportStatus.REJECTED,
+                reviewerUserId,
+                resolutionNote,
+                null,
+                now
+        );
+    }
+
+    private void completeReview(
+            ChatReportStatus targetStatus,
+            Long reviewerUserId,
+            String resolutionNote,
+            ChatReportSeverity severity,
+            LocalDateTime now
+    ) {
+        if (resolutionNote == null || resolutionNote.isBlank()) {
+            throw new CustomException(ErrorCode.CHAT_REPORT_RESOLUTION_NOTE_REQUIRED);
+        }
+
+        String normalizedResolutionNote = resolutionNote.trim();
+        if (normalizedResolutionNote.length() > 500) {
+            throw new CustomException(ErrorCode.CHAT_REPORT_RESOLUTION_NOTE_TOO_LONG);
+        }
+
+        status = targetStatus;
+        reviewedBy = reviewerUserId;
+        reviewedAt = now;
+        this.resolutionNote = normalizedResolutionNote;
+        this.severity = severity;
+    }
+
+    private void validateReviewing() {
+        if (status != ChatReportStatus.REVIEWING) {
+            throw new CustomException(ErrorCode.CHAT_REPORT_INVALID_STATUS_TRANSITION);
+        }
+    }
+
+    private void validateSeverityNotAllowed(ChatReportSeverity severity) {
+        if (severity != null) {
+            throw new CustomException(ErrorCode.CHAT_REPORT_SEVERITY_NOT_ALLOWED);
+        }
     }
 }

@@ -6,16 +6,23 @@ import com.sisibibi.api.domain.chatreport.dto.request.ChatReportCreateReq;
 import com.sisibibi.api.domain.chatreport.dto.response.ChatReportCreateRes;
 import com.sisibibi.api.domain.chatreport.entity.ChatReport;
 import com.sisibibi.api.domain.chatreport.entity.ChatReportReason;
+import com.sisibibi.api.domain.chatreport.entity.ChatReportReviewAction;
+import com.sisibibi.api.domain.chatreport.entity.ChatReportSeverity;
 import com.sisibibi.api.domain.chatreport.entity.ChatReportStatus;
 import com.sisibibi.api.domain.chatreport.repository.ChatReportRepository;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
+import com.sisibibi.api.domain.user.entity.User;
+import com.sisibibi.api.domain.user.repository.UserRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -41,8 +48,94 @@ class ChatReportServiceTest {
     @Mock
     private RoomParticipantRepository roomParticipantRepository;
 
+    @Mock
+    private UserRepository userRepository;
+
     @InjectMocks
     private ChatReportService chatReportService;
+
+    @Test
+    void getReports_returnsSummaryPage() {
+        ChatReport report = report(100L, ChatReportStatus.PENDING);
+        PageRequest pageable = PageRequest.of(0, 20);
+        given(chatReportRepository.findAllByFilters(
+                ChatReportStatus.PENDING,
+                ChatReportReason.SPAM,
+                pageable
+        )).willReturn(new PageImpl<>(List.of(report), pageable, 1));
+        given(userRepository.findAllById(any()))
+                .willReturn(List.of(user(20L, "신고자"), user(30L, "대상자")));
+
+        var response = chatReportService.getReports(
+                ChatReportStatus.PENDING,
+                ChatReportReason.SPAM,
+                pageable
+        );
+
+        assertThat(response.getTotalElements()).isEqualTo(1);
+        assertThat(response.getContent().get(0).reportId()).isEqualTo(100L);
+        assertThat(response.getContent().get(0).reportedUserNickname()).isEqualTo("대상자");
+        assertThat(response.getContent().get(0).reporterUserNickname()).isEqualTo("신고자");
+        assertThat(response.getContent().get(0).status()).isEqualTo(ChatReportStatus.PENDING);
+    }
+
+    @Test
+    void reviewReport_startsReview() {
+        ChatReport report = report(100L, ChatReportStatus.PENDING);
+        given(chatReportRepository.findByIdForUpdate(100L)).willReturn(Optional.of(report));
+        given(userRepository.findAllById(any()))
+                .willReturn(List.of(user(1L, "관리자")));
+
+        var response = chatReportService.reviewReport(
+                100L,
+                1L,
+                ChatReportReviewAction.START_REVIEW,
+                null,
+                null
+        );
+
+        assertThat(response.reportId()).isEqualTo(100L);
+        assertThat(response.status()).isEqualTo(ChatReportStatus.REVIEWING);
+        assertThat(response.reviewedBy()).isEqualTo(1L);
+        assertThat(response.reviewedByNickname()).isEqualTo("관리자");
+    }
+
+    @Test
+    void reviewReport_throwsSeverityRequired_whenResolveWithoutSeverity() {
+        ChatReport report = report(100L, ChatReportStatus.REVIEWING);
+        given(chatReportRepository.findByIdForUpdate(100L)).willReturn(Optional.of(report));
+
+        assertThatThrownBy(() -> chatReportService.reviewReport(
+                100L,
+                1L,
+                ChatReportReviewAction.RESOLVE,
+                "위반 확인",
+                null
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CHAT_REPORT_SEVERITY_REQUIRED);
+    }
+
+    @Test
+    void reviewReport_resolvesReviewingReport() {
+        ChatReport report = report(100L, ChatReportStatus.REVIEWING);
+        given(chatReportRepository.findByIdForUpdate(100L)).willReturn(Optional.of(report));
+        given(userRepository.findAllById(any()))
+                .willReturn(List.of(user(1L, "관리자")));
+
+        var response = chatReportService.reviewReport(
+                100L,
+                1L,
+                ChatReportReviewAction.RESOLVE,
+                "채팅 운영 정책 위반",
+                ChatReportSeverity.MEDIUM
+        );
+
+        assertThat(response.status()).isEqualTo(ChatReportStatus.RESOLVED);
+        assertThat(response.severity()).isEqualTo(ChatReportSeverity.MEDIUM);
+        assertThat(response.resolutionNote()).isEqualTo("채팅 운영 정책 위반");
+    }
 
     @Test
     void createReport_savesPendingReport() {
@@ -181,5 +274,28 @@ class ChatReportServiceTest {
         ReflectionTestUtils.setField(message, "id", id);
         ReflectionTestUtils.setField(message, "createdAt", LocalDateTime.of(2026, 6, 26, 9, 0));
         return message;
+    }
+
+    private ChatReport report(Long id, ChatReportStatus status) {
+        ChatReport report = ChatReport.create(
+                1L,
+                10L,
+                30L,
+                20L,
+                "신고 대상 채팅",
+                ChatReportReason.SPAM,
+                null
+        );
+        ReflectionTestUtils.setField(report, "id", id);
+        ReflectionTestUtils.setField(report, "status", status);
+        ReflectionTestUtils.setField(report, "createdAt", LocalDateTime.of(2026, 6, 26, 10, 0));
+        ReflectionTestUtils.setField(report, "updatedAt", LocalDateTime.of(2026, 6, 26, 10, 0));
+        return report;
+    }
+
+    private User user(Long id, String nickname) {
+        User user = User.signup("user" + id + "@example.com", "password", nickname);
+        ReflectionTestUtils.setField(user, "id", id);
+        return user;
     }
 }

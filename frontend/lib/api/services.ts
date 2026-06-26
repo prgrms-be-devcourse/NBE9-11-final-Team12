@@ -1,10 +1,18 @@
 import { api } from "@/lib/api/client"
 import type {
   ActiveUserSanction,
+  AdminUser,
+  AdminUserRole,
+  AdminUserStatus,
   AuthUser,
   BestSpeech,
   ChatReportCreateResponse,
+  ChatReportDetail,
   ChatReportReason,
+  ChatReportReviewAction,
+  ChatReportReviewResponse,
+  ChatReportStatus,
+  ChatReportSummary,
   ChatMessageCursorPage,
   ClassifiedIssueCandidate,
   RoomDetail,
@@ -102,6 +110,29 @@ export const adminApi = {
     reportId: number,
     body: { action: SpeechReportReviewAction; resolutionNote?: string; severity?: ViolationSeverity },
   ) => api.patch<SpeechReportReviewResponse>(`/api/v1/admin/reports/${reportId}`, body),
+  chatReports: (params: { status?: ChatReportStatus | ""; reason?: ChatReportReason | ""; page?: number; size?: number } = {}) => {
+    const query = new URLSearchParams()
+    if (params.status) query.set("status", params.status)
+    if (params.reason) query.set("reason", params.reason)
+    query.set("page", String(params.page ?? 0))
+    query.set("size", String(params.size ?? 20))
+    return api.get<SpringPage<ChatReportSummary>>(`/api/v1/admin/chat-reports?${query.toString()}`)
+  },
+  chatReportDetail: (reportId: number) => api.get<ChatReportDetail>(`/api/v1/admin/chat-reports/${reportId}`),
+  reviewChatReport: (
+    reportId: number,
+    body: { action: ChatReportReviewAction; resolutionNote?: string; severity?: ViolationSeverity },
+  ) => api.patch<ChatReportReviewResponse>(`/api/v1/admin/chat-reports/${reportId}`, body),
+  users: (params: { keyword?: string; status?: AdminUserStatus | ""; role?: AdminUserRole | ""; page?: number; size?: number } = {}) => {
+    const query = new URLSearchParams()
+    if (params.keyword?.trim()) query.set("keyword", params.keyword.trim())
+    if (params.status) query.set("status", params.status)
+    if (params.role) query.set("role", params.role)
+    query.set("page", String(params.page ?? 0))
+    query.set("size", String(params.size ?? 20))
+    return api.get<SpringPage<AdminUser>>(`/api/v1/admin/users?${query.toString()}`)
+  },
+  userDetail: (userId: number) => api.get<AdminUser>(`/api/v1/admin/users/${userId}`),
   sanctions: (userId: number, page = 0, size = 20) =>
     api.get<SpringPage<UserSanction>>(`/api/v1/admin/users/${userId}/sanctions?page=${page}&size=${size}`),
   sanctionRecommendation: (userId: number, reportId: number) =>
@@ -110,6 +141,13 @@ export const adminApi = {
     userId: number,
     body: { type: UserSanctionType; reason: string; durationHours?: number | null; reportId?: number | null },
   ) => api.post<UserSanction>(`/api/v1/admin/users/${userId}/sanctions`, body),
+  revokeSanction: (userId: number, sanctionId: number, reason: string) =>
+    api.patch<UserSanction>(`/api/v1/admin/users/${userId}/sanctions/${sanctionId}/revoke`, { reason }),
+  extendSanction: (userId: number, sanctionId: number, durationHours: number, reason: string) =>
+    api.patch<UserSanction>(`/api/v1/admin/users/${userId}/sanctions/${sanctionId}/extend`, {
+      durationHours,
+      reason,
+    }),
 }
 
 export const speechApi = {

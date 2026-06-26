@@ -4,15 +4,30 @@ import com.sisibibi.api.domain.chat.entity.ChatMessage;
 import com.sisibibi.api.domain.chat.repository.ChatMessageRepository;
 import com.sisibibi.api.domain.chatreport.dto.request.ChatReportCreateReq;
 import com.sisibibi.api.domain.chatreport.dto.response.ChatReportCreateRes;
+import com.sisibibi.api.domain.chatreport.dto.response.ChatReportDetailRes;
+import com.sisibibi.api.domain.chatreport.dto.response.ChatReportReviewRes;
+import com.sisibibi.api.domain.chatreport.dto.response.ChatReportSummaryRes;
 import com.sisibibi.api.domain.chatreport.entity.ChatReport;
 import com.sisibibi.api.domain.chatreport.entity.ChatReportReason;
+import com.sisibibi.api.domain.chatreport.entity.ChatReportReviewAction;
+import com.sisibibi.api.domain.chatreport.entity.ChatReportSeverity;
+import com.sisibibi.api.domain.chatreport.entity.ChatReportStatus;
 import com.sisibibi.api.domain.chatreport.repository.ChatReportRepository;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
+import com.sisibibi.api.domain.user.entity.User;
+import com.sisibibi.api.domain.user.repository.UserRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
+import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +39,63 @@ public class ChatReportService {
     private final ChatMessageRepository chatMessageRepository;
     private final ChatReportRepository chatReportRepository;
     private final RoomParticipantRepository roomParticipantRepository;
+    private final UserRepository userRepository;
+
+    @Transactional(readOnly = true)
+    public Page<ChatReportSummaryRes> getReports(
+            ChatReportStatus status,
+            ChatReportReason reason,
+            Pageable pageable
+    ) {
+        Page<ChatReport> reports = chatReportRepository.findAllByFilters(status, reason, pageable);
+        Map<Long, String> nicknames = findNicknames(extractUserIds(reports));
+
+        return reports.map(report -> ChatReportSummaryRes.from(
+                report,
+                nicknames.get(report.getReportedUserId()),
+                nicknames.get(report.getReporterUserId())
+        ));
+    }
+
+    @Transactional(readOnly = true)
+    public ChatReportDetailRes getReport(Long reportId) {
+        ChatReport report = chatReportRepository.findById(reportId)
+                .orElseThrow(() -> new CustomException(ErrorCode.CHAT_REPORT_NOT_FOUND));
+
+        Map<Long, String> nicknames = findNicknames(extractUserIds(report));
+
+        return ChatReportDetailRes.from(
+                report,
+                nicknames.get(report.getReportedUserId()),
+                nicknames.get(report.getReporterUserId()),
+                nicknames.get(report.getReviewedBy())
+        );
+    }
+
+    @Transactional
+    public ChatReportReviewRes reviewReport(
+            Long reportId,
+            Long reviewerUserId,
+            ChatReportReviewAction action,
+            String resolutionNote,
+            ChatReportSeverity severity
+    ) {
+        ChatReport report = chatReportRepository.findByIdForUpdate(reportId)
+                .orElseThrow(() -> new CustomException(ErrorCode.CHAT_REPORT_NOT_FOUND));
+
+        report.review(action, reviewerUserId, resolutionNote, severity, LocalDateTime.now());
+        log.info(
+                "Chat report reviewed. reportId={}, reviewerUserId={}, action={}, status={}, severity={}",
+                reportId,
+                reviewerUserId,
+                action,
+                report.getStatus(),
+                report.getSeverity()
+        );
+
+        Map<Long, String> nicknames = findNicknames(Set.of(reviewerUserId));
+        return ChatReportReviewRes.from(report, nicknames.get(reviewerUserId));
+    }
 
     @Transactional
     public ChatReportCreateRes createReport(
@@ -93,5 +165,37 @@ public class ChatReportService {
         if (!participating) {
             throw new CustomException(ErrorCode.ROOM_PARTICIPATION_REQUIRED);
         }
+    }
+
+    private Set<Long> extractUserIds(Page<ChatReport> reports) {
+        Set<Long> userIds = new HashSet<>();
+        reports.forEach(report -> {
+            userIds.add(report.getReportedUserId());
+            userIds.add(report.getReporterUserId());
+            if (report.getReviewedBy() != null) {
+                userIds.add(report.getReviewedBy());
+            }
+        });
+        return userIds;
+    }
+
+    private Set<Long> extractUserIds(ChatReport report) {
+        Set<Long> userIds = new HashSet<>();
+        userIds.add(report.getReportedUserId());
+        userIds.add(report.getReporterUserId());
+        if (report.getReviewedBy() != null) {
+            userIds.add(report.getReviewedBy());
+        }
+        return userIds;
+    }
+
+    private Map<Long, String> findNicknames(Set<Long> userIds) {
+        if (userIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return userRepository.findAllById(userIds)
+                .stream()
+                .collect(Collectors.toMap(User::getId, User::getNickname, (left, right) -> left));
     }
 }

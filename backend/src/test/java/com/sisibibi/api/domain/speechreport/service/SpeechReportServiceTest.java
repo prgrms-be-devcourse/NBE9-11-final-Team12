@@ -10,6 +10,7 @@ import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportDetailRes;
 import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportSummaryRes;
 import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportReviewRes;
 import com.sisibibi.api.domain.speechreport.entity.OffTopicAiReview;
+import com.sisibibi.api.domain.speechreport.entity.OffTopicAiReviewResult;
 import com.sisibibi.api.domain.speechreport.entity.OffTopicAiReviewStatus;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReport;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportReason;
@@ -18,6 +19,8 @@ import com.sisibibi.api.domain.speechreport.entity.SpeechReportReviewAction;
 import com.sisibibi.api.domain.speechreport.entity.ViolationSeverity;
 import com.sisibibi.api.domain.speechreport.repository.OffTopicAiReviewRepository;
 import com.sisibibi.api.domain.speechreport.repository.SpeechReportRepository;
+import com.sisibibi.api.domain.user.entity.User;
+import com.sisibibi.api.domain.user.repository.UserRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import org.junit.jupiter.api.Test;
@@ -56,6 +59,9 @@ class SpeechReportServiceTest {
     @Mock
     private OffTopicAiReviewService offTopicAiReviewService;
 
+    @Mock
+    private UserRepository userRepository;
+
     @InjectMocks
     private SpeechReportService speechReportService;
 
@@ -68,6 +74,8 @@ class SpeechReportServiceTest {
                 SpeechReportReason.SPAM,
                 pageable
         )).willReturn(new PageImpl<>(List.of(report), pageable, 1));
+        given(userRepository.findAllById(org.mockito.ArgumentMatchers.any()))
+                .willReturn(List.of(user(20L, "신고자"), user(30L, "대상자")));
 
         Page<SpeechReportSummaryRes> response = speechReportService.getReports(
                 SpeechReportStatus.PENDING,
@@ -77,6 +85,8 @@ class SpeechReportServiceTest {
 
         assertThat(response.getTotalElements()).isEqualTo(1);
         assertThat(response.getContent().getFirst().reportId()).isEqualTo(100L);
+        assertThat(response.getContent().getFirst().reportedUserNickname()).isEqualTo("대상자");
+        assertThat(response.getContent().getFirst().reporterUserNickname()).isEqualTo("신고자");
         assertThat(response.getContent().getFirst().status()).isEqualTo(SpeechReportStatus.PENDING);
     }
 
@@ -86,10 +96,14 @@ class SpeechReportServiceTest {
         given(speechReportRepository.findById(100L)).willReturn(Optional.of(report));
         given(offTopicAiReviewRepository.findBySpeechId(10L))
                 .willReturn(Optional.of(completedOffTopicAiReview()));
+        given(userRepository.findAllById(org.mockito.ArgumentMatchers.any()))
+                .willReturn(List.of(user(20L, "신고자"), user(30L, "대상자")));
 
         SpeechReportDetailRes response = speechReportService.getReport(100L);
 
         assertThat(response.reportId()).isEqualTo(100L);
+        assertThat(response.reportedUserNickname()).isEqualTo("대상자");
+        assertThat(response.reporterUserNickname()).isEqualTo("신고자");
         assertThat(response.contentSnapshot()).isEqualTo("신고 대상 의견");
         assertThat(response.reason()).isEqualTo(SpeechReportReason.SPAM);
         assertThat(response.offTopicAiReview()).isNotNull();
@@ -112,6 +126,8 @@ class SpeechReportServiceTest {
     void reviewReport_startsReview() {
         SpeechReport report = createReport(100L, SpeechReportStatus.PENDING);
         given(speechReportRepository.findByIdForUpdate(100L)).willReturn(Optional.of(report));
+        given(userRepository.findAllById(org.mockito.ArgumentMatchers.any()))
+                .willReturn(List.of(user(99L, "관리자")));
 
         SpeechReportReviewRes response = speechReportService.reviewReport(
                 100L,
@@ -123,6 +139,7 @@ class SpeechReportServiceTest {
 
         assertThat(response.status()).isEqualTo(SpeechReportStatus.REVIEWING);
         assertThat(response.reviewedBy()).isEqualTo(99L);
+        assertThat(response.reviewedByNickname()).isEqualTo("관리자");
     }
 
     @Test
@@ -337,5 +354,11 @@ class SpeechReportServiceTest {
         ), LocalDateTime.of(2026, 6, 21, 12, 5));
         ReflectionTestUtils.setField(review, "id", 200L);
         return review;
+    }
+
+    private User user(Long id, String nickname) {
+        User user = User.signup("user" + id + "@example.com", "password", nickname);
+        ReflectionTestUtils.setField(user, "id", id);
+        return user;
     }
 }
