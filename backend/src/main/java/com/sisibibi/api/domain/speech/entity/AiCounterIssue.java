@@ -76,11 +76,13 @@ public class AiCounterIssue {
     }
 
     public void markAttemptStarted(LocalDateTime attemptedAt) {
+        validatePendingStatus("start an attempt");
         this.retryCount++;
         this.lastAttemptedAt = attemptedAt;
     }
 
     public void complete(String content, LocalDateTime completedAt) {
+        validatePendingStatus("complete");
         this.content = content;
         this.status = AiCounterIssueStatus.COMPLETED;
         this.completedAt = completedAt;
@@ -88,7 +90,16 @@ public class AiCounterIssue {
     }
 
     public void fail(String errorMessage) {
+        validatePendingStatus("fail");
         this.status = AiCounterIssueStatus.FAILED;
         this.errorMessage = errorMessage;
+    }
+
+    private void validatePendingStatus(String action) {
+        if (this.status != AiCounterIssueStatus.PENDING) {
+            throw new IllegalStateException(
+                    "Only PENDING AI counter issues can " + action + "."
+            );
+        }
     }
 }

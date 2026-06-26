@@ -31,6 +31,8 @@ import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 @ExtendWith(MockitoExtension.class)
 class AiCounterIssueServiceTest {
@@ -138,6 +140,18 @@ class AiCounterIssueServiceTest {
                         org.mockito.ArgumentMatchers.anyLong(),
                         org.mockito.ArgumentMatchers.any()
                 );
+    }
+
+    @Test
+    void suggestIfNeeded_suspendsCallerTransactionDuringAiGeneration()
+            throws NoSuchMethodException {
+        Transactional transactional =
+                AiCounterIssueService.class
+                        .getMethod("suggestIfNeeded", Long.class)
+                        .getAnnotation(Transactional.class);
+
+        assertThat(transactional).isNotNull();
+        assertThat(transactional.propagation()).isEqualTo(Propagation.NOT_SUPPORTED);
     }
 
     @Test

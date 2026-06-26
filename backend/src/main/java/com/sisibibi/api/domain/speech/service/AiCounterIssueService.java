@@ -20,6 +20,8 @@ import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @Service
@@ -54,6 +56,7 @@ public class AiCounterIssueService {
         this.aiCounterIssueProperties = aiCounterIssueProperties;
     }
 
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void suggestIfNeeded(Long roomId) {
         List<SpeakingQueue> recentAssignments =
                 speakingQueueRepository
