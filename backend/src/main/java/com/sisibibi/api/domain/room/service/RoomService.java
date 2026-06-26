@@ -158,7 +158,7 @@ public class RoomService {
     }
   }
 
-  @Transactional(propagation = Propagation.NOT_SUPPORTED)
+  @Transactional
   public void deleteRoom(Long roomId) {
     roomCloseCommandService.closeRoom(roomId, LocalDateTime.now());
   }
