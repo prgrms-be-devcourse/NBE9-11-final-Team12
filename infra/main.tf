@@ -233,9 +233,92 @@ resource "aws_iam_role_policy_attachment" "ssm_core" {
 }
 
 # EC2 역할에 AmazonS3FullAccess 정책을 부착
-resource "aws_iam_role_policy_attachment" "s3_full_access" {
+resource "aws_s3_bucket" "speech_images" {
+  bucket = var.s3_speech_image_bucket_name
+
+  tags = {
+    Name = "${var.prefix}-speech-images"
+  }
+}
+
+resource "aws_s3_bucket_ownership_controls" "speech_images" {
+  bucket = aws_s3_bucket.speech_images.id
+
+  rule {
+    object_ownership = "BucketOwnerEnforced"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "speech_images" {
+  bucket = aws_s3_bucket.speech_images.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "speech_images" {
+  bucket = aws_s3_bucket.speech_images.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_cors_configuration" "speech_images" {
+  bucket = aws_s3_bucket.speech_images.id
+
+  cors_rule {
+    allowed_methods = ["PUT", "HEAD", "GET"]
+    allowed_origins = [var.frontend_origin]
+    allowed_headers = ["*"]
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3000
+  }
+}
+
+resource "aws_iam_policy" "speech_image_s3_policy" {
+  name = "${var.prefix}-speech-image-s3-policy"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:HeadObject",
+          "s3:DeleteObject"
+        ]
+        Resource = "${aws_s3_bucket.speech_images.arn}/speeches/*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket"
+        ]
+        Resource = aws_s3_bucket.speech_images.arn
+        Condition = {
+          StringLike = {
+            "s3:prefix" = ["speeches/*"]
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "speech_image_s3_policy" {
   role       = data.aws_iam_role.ec2_role_1.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+  policy_arn = aws_iam_policy.speech_image_s3_policy.arn
+}
+
+output "speech_image_bucket_name" {
+  value = aws_s3_bucket.speech_images.bucket
 }
 
 locals {
@@ -304,7 +387,7 @@ resource "aws_instance" "ec2_1" {
   # 사용할 AMI ID
   ami = data.aws_ssm_parameter.amazon_linux_ami.value
   # EC2 인스턴스 유형
-  instance_type = "t3.small"
+  instance_type = "t3.medium"
   # 사용할 서브넷 ID
   subnet_id = aws_subnet.subnet_2.id
   # 적용할 보안 그룹 ID
@@ -317,7 +400,7 @@ resource "aws_instance" "ec2_1" {
 
   # 인스턴스에 태그 설정
   tags = {
-    Name = "${var.prefix}-ec2-1"
+    Name = "${var.prefix}-web"
   }
 
   # 루트 볼륨 설정
@@ -343,7 +426,7 @@ resource "aws_instance" "mysql_1" {
   iam_instance_profile = data.aws_iam_instance_profile.instance_profile_1.name
 
   tags = {
-    Name = "${var.prefix}-mysql-1"
+    Name = "${var.prefix}-mysql"
   }
 
   root_block_device {
@@ -403,7 +486,7 @@ EOF
 data "aws_eip" "eip_ec2_1" {
   filter {
     name   = "tag:Name"
-    values = ["${var.prefix}-ec2-1"]
+    values = ["${var.prefix}-eip"]
   }
 }
 
