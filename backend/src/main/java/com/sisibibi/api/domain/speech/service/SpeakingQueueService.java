@@ -42,6 +42,7 @@ public class SpeakingQueueService {
     private final SpeakingQueuePersistenceService speakingQueuePersistenceService;
     private final SpeakingQueueProperties speakingQueueProperties;
     private final ApplicationEventPublisher eventPublisher;
+    private final AiCounterIssueService aiCounterIssueService;
 
     public StageRequestRes requestSpeakingTurn(
             Long roomId,
@@ -141,6 +142,7 @@ public class SpeakingQueueService {
                 completed,
                 StageTurnEndReason.COMPLETED
         );
+        suggestAiCounterIssue(roomId);
         tryAssignNextSpeaker(roomId);
     }
 
@@ -227,7 +229,10 @@ public class SpeakingQueueService {
                 speakingQueue,
                 StageTurnEndReason.EXPIRED
         ));
-        expired.ifPresent(speakingQueue -> tryAssignNextSpeaker(roomId));
+        expired.ifPresent(speakingQueue -> {
+            suggestAiCounterIssue(roomId);
+            tryAssignNextSpeaker(roomId);
+        });
         return expired;
     }
 
@@ -339,6 +344,7 @@ public class SpeakingQueueService {
 
     private void synchronizeParticipantLeftTurnCompletion(SpeakingQueue completed) {
         synchronizeCompletedRedisProjection(completed);
+        suggestAiCounterIssue(completed.getRoomId());
         tryAssignNextSpeaker(completed.getRoomId());
     }
 
@@ -775,6 +781,18 @@ public class SpeakingQueueService {
             List<SpeakingQueue> waitingQueues,
             Optional<SpeakingQueue> currentSpeaker
     ) {
+    }
+
+    private void suggestAiCounterIssue(Long roomId) {
+        try {
+            aiCounterIssueService.suggestIfNeeded(roomId);
+        } catch (RuntimeException exception) {
+            log.warn(
+                    "Failed to suggest AI counter issue. roomId={}",
+                    roomId,
+                    exception
+            );
+        }
     }
 
 }

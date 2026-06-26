@@ -11,6 +11,7 @@ import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.RoomQueueSequenceRepository;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
+import com.sisibibi.api.domain.speech.util.SpeakingStreakPolicy;
 import com.sisibibi.api.domain.user.repository.UserRepository;
 import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import com.sisibibi.api.global.exception.CustomException;
@@ -36,7 +37,6 @@ public class SpeakingQueuePersistenceService {
             List.of(SpeakingQueueStatus.WAITING, SpeakingQueueStatus.ASSIGNED);
     private static final List<SpeakingQueueStatus> ASSIGNMENT_HISTORY_STATUSES =
             List.of(SpeakingQueueStatus.COMPLETED);
-    private static final int BALANCE_STREAK_THRESHOLD = 3;
 
     private final SpeakingQueueRepository speakingQueueRepository;
     private final RoomQueueSequenceRepository roomQueueSequenceRepository;
@@ -44,6 +44,7 @@ public class SpeakingQueuePersistenceService {
     private final RoomParticipantRepository roomParticipantRepository;
     private final UserRepository userRepository;
     private final UserSanctionPolicyService userSanctionPolicyService;
+    private final SpeakingStreakPolicy speakingStreakPolicy;
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public SpeakingQueue createWaitingRequest(
@@ -374,14 +375,9 @@ public class SpeakingQueuePersistenceService {
                                 ASSIGNMENT_HISTORY_STATUSES
                         );
 
-        if (recentAssignments.size() < BALANCE_STREAK_THRESHOLD) {
-            return Optional.empty();
-        }
-
-        SpeechStance recentStance = recentAssignments.getFirst().getStance();
-        boolean sameStanceStreak = recentAssignments.stream()
-                .allMatch(assignment -> recentStance == assignment.getStance());
-        if (!sameStanceStreak) {
+        Optional<SpeechStance> oppositeStance =
+                speakingStreakPolicy.counterStanceFor(recentAssignments);
+        if (oppositeStance.isEmpty()) {
             return Optional.empty();
         }
 
@@ -389,15 +385,8 @@ public class SpeakingQueuePersistenceService {
                 .findFirstByRoomIdAndStatusAndStanceOrderByQueueOrderAsc(
                         roomId,
                         SpeakingQueueStatus.WAITING,
-                        oppositeOf(recentStance)
+                        oppositeStance.get()
                 );
-    }
-
-    private SpeechStance oppositeOf(SpeechStance stance) {
-        if (stance == SpeechStance.PRO) {
-            return SpeechStance.CON;
-        }
-        return SpeechStance.PRO;
     }
 
     @Transactional

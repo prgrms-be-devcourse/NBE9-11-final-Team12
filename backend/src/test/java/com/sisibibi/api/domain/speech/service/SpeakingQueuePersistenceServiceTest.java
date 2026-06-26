@@ -20,6 +20,7 @@ import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.RoomQueueSequenceRepository;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
+import com.sisibibi.api.domain.speech.util.SpeakingStreakPolicy;
 import com.sisibibi.api.domain.user.repository.UserRepository;
 import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import com.sisibibi.api.global.exception.CustomException;
@@ -35,6 +36,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.InOrder;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
@@ -62,6 +64,9 @@ class SpeakingQueuePersistenceServiceTest {
 
     @Mock
     private UserSanctionPolicyService userSanctionPolicyService;
+
+    @Spy
+    private SpeakingStreakPolicy speakingStreakPolicy;
 
     @InjectMocks
     private SpeakingQueuePersistenceService speakingQueuePersistenceService;
