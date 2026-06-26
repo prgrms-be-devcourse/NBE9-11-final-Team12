@@ -28,7 +28,6 @@ public class TopicService {
   private final TopicRepository topicRepository;
   private final RoomRepository roomRepository;
 
-  @Cacheable(value = "topicDetail", key = "#topicId")
   public TopicDetailRes getTopicDetail(Long topicId) {
     Topic topic = topicRepository.findByIdAndStatus(topicId, TopicStatus.APPROVED)
         .orElseThrow(() -> new CustomException(ErrorCode.TOPIC_NOT_FOUND));
@@ -52,7 +51,6 @@ public class TopicService {
   }
 
   @Transactional
-  @CacheEvict(value = "topicDetail", key = "#topicId")
   public TopicDetailRes updateTopic(Long topicId, UpdateTopicReq request) {
     Topic topic = topicRepository.findById(topicId)
         .orElseThrow(() -> new CustomException(ErrorCode.TOPIC_NOT_FOUND));
@@ -68,7 +66,6 @@ public class TopicService {
   }
 
   @Transactional
-  @CacheEvict(value = "topicDetail", key = "#topicId")
   public void deleteTopic(Long topicId) {
     Topic topic = topicRepository.findByIdForUpdate(topicId)
         .orElseThrow(() -> new CustomException(ErrorCode.TOPIC_NOT_FOUND));
