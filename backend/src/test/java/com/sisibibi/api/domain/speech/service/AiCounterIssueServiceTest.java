@@ -22,7 +22,6 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.Executor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -61,7 +60,7 @@ class AiCounterIssueServiceTest {
     void setUp() {
         aiCounterIssueProperties = new AiCounterIssueProperties();
         aiCounterIssueProperties.setGenerateTimeout(Duration.ofSeconds(10));
-        aiCounterIssueService = createService(Runnable::run);
+        aiCounterIssueService = createService();
     }
 
     @Test
@@ -142,7 +141,7 @@ class AiCounterIssueServiceTest {
     }
 
     @Test
-    void suggestIfNeeded_retriesTwiceAndFails_whenAiGenerationTimesOut() {
+    void suggestIfNeeded_retriesTwiceAndFails_whenAiGenerationFails() {
         Long roomId = 1L;
         SpeakingQueue first = completedQueue(30L, SpeechStance.PRO);
         SpeakingQueue second = completedQueue(29L, SpeechStance.PRO);
@@ -156,9 +155,6 @@ class AiCounterIssueServiceTest {
                 LocalDateTime.of(2026, 6, 25, 15, 0),
                 100
         );
-        aiCounterIssueProperties.setGenerateTimeout(Duration.ofMillis(1));
-        aiCounterIssueService = createService(command -> {
-        });
 
         given(speakingQueueRepository
                 .findTop3ByRoomIdAndStatusInAndStanceIsNotNullOrderByAssignedAtDesc(
@@ -174,6 +170,10 @@ class AiCounterIssueServiceTest {
         given(aiCounterIssuePersistenceService.markAttemptStarted(11L))
                 .willReturn(pending);
         given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
+        given(aiCounterIssueGenerator.generate(room, SpeechStance.CON))
+                .willThrow(new IllegalStateException(
+                        "AI counter issue generation timed out after 10000ms."
+                ));
         ArgumentCaptor<String> failureMessageCaptor = ArgumentCaptor.forClass(String.class);
 
         aiCounterIssueService.suggestIfNeeded(roomId);
@@ -183,6 +183,7 @@ class AiCounterIssueServiceTest {
         assertThat(failureMessageCaptor.getValue())
                 .contains("AI counter issue generation timed out");
         verify(aiCounterIssuePersistenceService, times(3)).markAttemptStarted(11L);
+        verify(aiCounterIssueGenerator, times(3)).generate(room, SpeechStance.CON);
         verify(aiCounterIssuePersistenceService, never())
                 .complete(
                         org.mockito.ArgumentMatchers.anyLong(),
@@ -249,7 +250,7 @@ class AiCounterIssueServiceTest {
                 .fail(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyString());
     }
 
-    private AiCounterIssueService createService(Executor executor) {
+    private AiCounterIssueService createService() {
         return new AiCounterIssueService(
                 speakingQueueRepository,
                 aiCounterIssuePersistenceService,
@@ -257,7 +258,6 @@ class AiCounterIssueServiceTest {
                 speakingStreakPolicy,
                 aiCounterIssueGenerator,
                 eventPublisher,
-                executor,
                 aiCounterIssueProperties
         );
     }

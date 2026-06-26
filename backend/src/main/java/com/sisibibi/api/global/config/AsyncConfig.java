@@ -11,7 +11,6 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 public class AsyncConfig {
 
     public static final String DOMAIN_EVENT_TASK_EXECUTOR = "domainEventTaskExecutor";
-    public static final String AI_COUNTER_ISSUE_TASK_EXECUTOR = "aiCounterIssueTaskExecutor";
 
     @Bean(name = DOMAIN_EVENT_TASK_EXECUTOR)
     public Executor domainEventTaskExecutor() {
@@ -20,17 +19,6 @@ public class AsyncConfig {
         executor.setMaxPoolSize(4);
         executor.setQueueCapacity(100);
         executor.setThreadNamePrefix("domain-event-");
-        executor.initialize();
-        return executor;
-    }
-
-    @Bean(name = AI_COUNTER_ISSUE_TASK_EXECUTOR)
-    public Executor aiCounterIssueTaskExecutor() {
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(2);
-        executor.setMaxPoolSize(4);
-        executor.setQueueCapacity(50);
-        executor.setThreadNamePrefix("ai-counter-issue-");
         executor.initialize();
         return executor;
     }

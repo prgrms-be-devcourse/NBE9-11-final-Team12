@@ -13,19 +13,11 @@ import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.domain.speech.util.SpeakingStreakPolicy;
-import com.sisibibi.api.global.config.AsyncConfig;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
-import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
@@ -42,7 +34,6 @@ public class AiCounterIssueService {
     private final SpeakingStreakPolicy speakingStreakPolicy;
     private final SpeechAiGenerator aiCounterIssueGenerator;
     private final ApplicationEventPublisher eventPublisher;
-    private final Executor aiCounterIssueExecutor;
     private final AiCounterIssueProperties aiCounterIssueProperties;
 
     public AiCounterIssueService(
@@ -52,7 +43,6 @@ public class AiCounterIssueService {
             SpeakingStreakPolicy speakingStreakPolicy,
             SpeechAiGenerator aiCounterIssueGenerator,
             ApplicationEventPublisher eventPublisher,
-            @Qualifier(AsyncConfig.AI_COUNTER_ISSUE_TASK_EXECUTOR) Executor aiCounterIssueExecutor,
             AiCounterIssueProperties aiCounterIssueProperties
     ) {
         this.speakingQueueRepository = speakingQueueRepository;
@@ -61,7 +51,6 @@ public class AiCounterIssueService {
         this.speakingStreakPolicy = speakingStreakPolicy;
         this.aiCounterIssueGenerator = aiCounterIssueGenerator;
         this.eventPublisher = eventPublisher;
-        this.aiCounterIssueExecutor = aiCounterIssueExecutor;
         this.aiCounterIssueProperties = aiCounterIssueProperties;
     }
 
@@ -112,7 +101,8 @@ public class AiCounterIssueService {
                     aiCounterIssuePersistenceService.markAttemptStarted(issue.getId());
 
             try {
-                String content = generateWithTimeout(room, attemptedIssue.getTargetStance());
+                String content =
+                        aiCounterIssueGenerator.generate(room, attemptedIssue.getTargetStance());
                 AiCounterIssue completedIssue =
                         aiCounterIssuePersistenceService.complete(attemptedIssue.getId(), content);
                 publishAiCounterIssueChangedEvent(completedIssue);
@@ -131,50 +121,22 @@ public class AiCounterIssueService {
             }
         }
 
-        failIssue(issue, lastException);
+        failIssue(issue, lastException != null
+                ? lastException
+                : new IllegalStateException("Unknown AI counter issue generation failure."));
     }
 
     private void failIssue(AiCounterIssue issue, RuntimeException exception) {
+        RuntimeException failure = exception != null
+                ? exception
+                : new IllegalStateException("Unknown AI counter issue generation failure.");
         log.warn(
                 "Failed to generate AI counter issue. roomId={}, triggerQueueId={}",
                 issue.getRoomId(),
                 issue.getTriggerQueueId(),
-                exception
+                failure
         );
-        aiCounterIssuePersistenceService.fail(issue.getId(), exception.getMessage());
-    }
-
-    private String generateWithTimeout(Room room, SpeechStance targetStance) {
-        Duration timeout = aiCounterIssueProperties.getGenerateTimeout();
-        long timeoutMillis = Math.max(1L, timeout.toMillis());
-
-        CompletableFuture<String> generation =
-                CompletableFuture.supplyAsync(
-                        () -> aiCounterIssueGenerator.generate(room, targetStance),
-                        aiCounterIssueExecutor
-                );
-
-        try {
-            return generation.get(timeoutMillis, TimeUnit.MILLISECONDS);
-        } catch (TimeoutException exception) {
-            generation.cancel(true);
-            throw new IllegalStateException(
-                    "AI counter issue generation timed out after " + timeoutMillis + "ms.",
-                    exception
-            );
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException(
-                    "AI counter issue generation was interrupted.",
-                    exception
-            );
-        } catch (ExecutionException exception) {
-            Throwable cause = exception.getCause();
-            if (cause instanceof RuntimeException runtimeException) {
-                throw runtimeException;
-            }
-            throw new IllegalStateException("AI counter issue generation failed.", cause);
-        }
+        aiCounterIssuePersistenceService.fail(issue.getId(), failure.getMessage());
     }
 
     private void publishAiCounterIssueChangedEvent(AiCounterIssue issue) {

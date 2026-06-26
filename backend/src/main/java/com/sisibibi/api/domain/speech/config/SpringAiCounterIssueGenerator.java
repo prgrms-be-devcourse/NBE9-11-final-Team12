@@ -2,16 +2,35 @@ package com.sisibibi.api.domain.speech.config;
 
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
+import java.net.http.HttpClient;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClient;
 
 @Component
-public class SpringAiCounterIssueGenerator implements SpeechAiGenerator{
+public class SpringAiCounterIssueGenerator implements SpeechAiGenerator {
 
     private final ChatClient chatClient;
 
-    public SpringAiCounterIssueGenerator(ChatClient.Builder chatClientBuilder) {
-        this.chatClient = chatClientBuilder.build();
+    public SpringAiCounterIssueGenerator(
+            OpenAiApi openAiApi,
+            OpenAiChatModel openAiChatModel,
+            RestClient.Builder restClientBuilder,
+            AiCounterIssueProperties properties
+    ) {
+        RestClient.Builder timeoutRestClientBuilder = restClientBuilder.clone()
+                .requestFactory(createRequestFactory(properties));
+        OpenAiApi timeoutOpenAiApi = openAiApi.mutate()
+                .restClientBuilder(timeoutRestClientBuilder)
+                .build();
+        OpenAiChatModel timeoutChatModel = openAiChatModel.mutate()
+                .openAiApi(timeoutOpenAiApi)
+                .build();
+
+        this.chatClient = ChatClient.builder(timeoutChatModel).build();
     }
 
     @Override
@@ -45,5 +64,18 @@ public class SpringAiCounterIssueGenerator implements SpeechAiGenerator{
         }
 
         return content.trim();
+    }
+
+    private JdkClientHttpRequestFactory createRequestFactory(
+            AiCounterIssueProperties properties
+    ) {
+        HttpClient httpClient = HttpClient.newBuilder()
+                .connectTimeout(properties.getGenerateTimeout())
+                .build();
+
+        JdkClientHttpRequestFactory requestFactory =
+                new JdkClientHttpRequestFactory(httpClient);
+        requestFactory.setReadTimeout(properties.getGenerateTimeout());
+        return requestFactory;
     }
 }
