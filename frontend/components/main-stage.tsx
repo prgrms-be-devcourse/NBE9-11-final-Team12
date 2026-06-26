@@ -734,39 +734,68 @@ export function MainStage({
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {speeches.map((speech) => (
-              <article key={speech.speechId} className="rounded-xl border border-border/50 bg-card p-4">
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Avatar className="size-7"><AvatarFallback className="text-[10px]">U{speech.userId}</AvatarFallback></Avatar>
-                    <div>
-                      <p className="text-xs font-semibold">사용자 #{speech.userId}</p>
-                      <p className="text-[10px] text-muted-foreground">{new Date(speech.createdAt).toLocaleString("ko-KR")}</p>
+            {speeches.map((speech) => {
+              const isDeleted = speech.deleted
+              const isOffTopicDeleted = speech.deleteReason === "OFF_TOPIC"
+
+              return (
+                <article
+                  key={speech.speechId}
+                  className={
+                    isDeleted
+                      ? "rounded-xl border border-dashed border-border/70 bg-muted/30 p-4 text-muted-foreground"
+                      : "rounded-xl border border-border/50 bg-card p-4"
+                  }
+                >
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    {isDeleted ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="secondary" className="text-[10px]">
+                          {isOffTopicDeleted ? "논점 이탈 삭제" : "삭제됨"}
+                        </Badge>
+                        <span className="text-[10px] text-muted-foreground">
+                          {new Date(speech.createdAt).toLocaleString("ko-KR")}
+                        </span>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <Avatar className="size-7"><AvatarFallback className="text-[10px]">U{speech.userId}</AvatarFallback></Avatar>
+                          <div>
+                            <p className="text-xs font-semibold">사용자 #{speech.userId}</p>
+                            <p className="text-[10px] text-muted-foreground">{new Date(speech.createdAt).toLocaleString("ko-KR")}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {speech.stance && <Badge variant="outline" className="text-[10px]">{speech.stance === "PRO" ? "찬성" : "반대"}</Badge>}
+                          <Badge variant="secondary" className="text-[10px]">{speech.status}</Badge>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <p className={isDeleted ? "whitespace-pre-wrap text-sm leading-relaxed italic" : "whitespace-pre-wrap text-sm leading-relaxed"}>
+                    {speech.content}
+                  </p>
+                  {!isDeleted && speech.imageUrl && (
+                    <a
+                      href={speech.imageUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-3 block overflow-hidden rounded-lg border border-border/60"
+                    >
+                      <img src={speech.imageUrl} alt="첨부 이미지" className="max-h-80 w-full object-cover" />
+                    </a>
+                  )}
+                  {!isDeleted && (
+                    <div className="mt-3 flex justify-end">
+                      <Button variant="ghost" size="sm" className="gap-1 text-xs text-muted-foreground hover:text-destructive" onClick={() => openReport(speech)}>
+                        <Flag className="size-3" /> 신고
+                      </Button>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {speech.stance && <Badge variant="outline" className="text-[10px]">{speech.stance === "PRO" ? "찬성" : "반대"}</Badge>}
-                    <Badge variant="secondary" className="text-[10px]">{speech.status}</Badge>
-                  </div>
-                </div>
-                <p className="whitespace-pre-wrap text-sm leading-relaxed">{speech.content}</p>
-                {speech.imageUrl && (
-                  <a
-                    href={speech.imageUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-3 block overflow-hidden rounded-lg border border-border/60"
-                  >
-                    <img src={speech.imageUrl} alt="첨부 이미지" className="max-h-80 w-full object-cover" />
-                  </a>
-                )}
-                <div className="mt-3 flex justify-end">
-                  <Button variant="ghost" size="sm" className="gap-1 text-xs text-muted-foreground hover:text-destructive" onClick={() => openReport(speech)}>
-                    <Flag className="size-3" /> 신고
-                  </Button>
-                </div>
-              </article>
-            ))}
+                  )}
+                </article>
+              )
+            })}
           </div>
         )}
       </div>

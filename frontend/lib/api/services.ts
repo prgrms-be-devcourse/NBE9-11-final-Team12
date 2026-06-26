@@ -15,7 +15,12 @@ import type {
   SpeechDetail,
   SpeechImageUploadUrl,
   SpeechReportCreateResponse,
+  SpeechReportDetail,
   SpeechReportReason,
+  SpeechReportReviewAction,
+  SpeechReportReviewResponse,
+  SpeechReportStatus,
+  SpeechReportSummary,
   SpeechStance,
   SpringPage,
   StageCurrentSpeaker,
@@ -26,6 +31,7 @@ import type {
   TopicDetail,
   TopicCreateResponse,
   TopicSummary,
+  ViolationSeverity,
 } from "@/lib/api/types"
 
 export const authApi = {
@@ -75,6 +81,21 @@ export const adminApi = {
   updateRoom: (roomId: number, body: { title?: string; startedAt?: string; endedAt?: string }) =>
     api.patch<RoomDetail>(`/api/v1/admin/rooms/${roomId}`, body),
   deleteRoom: (roomId: number) => api.delete<void>(`/api/v1/admin/rooms/${roomId}`),
+  reports: (params: { status?: SpeechReportStatus; reason?: SpeechReportReason; page?: number; size?: number } = {}) => {
+    const searchParams = new URLSearchParams()
+    searchParams.set("page", String(params.page ?? 0))
+    searchParams.set("size", String(params.size ?? 20))
+    if (params.status) searchParams.set("status", params.status)
+    if (params.reason) searchParams.set("reason", params.reason)
+
+    return api.get<SpringPage<SpeechReportSummary>>(`/api/v1/admin/reports?${searchParams.toString()}`)
+  },
+  reportDetail: (reportId: number) =>
+    api.get<SpeechReportDetail>(`/api/v1/admin/reports/${reportId}`),
+  reviewReport: (
+    reportId: number,
+    body: { action: SpeechReportReviewAction; resolutionNote?: string | null; severity?: ViolationSeverity | null },
+  ) => api.patch<SpeechReportReviewResponse>(`/api/v1/admin/reports/${reportId}`, body),
 }
 
 export const speechApi = {

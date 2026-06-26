@@ -10,8 +10,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAuth } from "@/components/auth-provider"
 import { ApiError } from "@/lib/api/client"
 import { adminApi, topicApi } from "@/lib/api/services"
-import type { ClassifiedIssueCandidate, ClassifiedIssueNews, TopicSummary } from "@/lib/api/types"
+import type {
+  ClassifiedIssueCandidate,
+  ClassifiedIssueNews,
+  OffTopicAiReview,
+  SpeechReportDetail,
+  SpeechReportStatus,
+  SpeechReportSummary,
+  TopicSummary,
+  ViolationSeverity,
+} from "@/lib/api/types"
 import {
+  AlertTriangle,
   CheckCircle2,
   ExternalLink,
   FileText,
@@ -42,8 +52,55 @@ type RoomDraft = {
   maxParticipants: string
 }
 
+const REPORT_STATUS_FILTERS: { value: SpeechReportStatus | "ALL"; label: string }[] = [
+  { value: "ALL", label: "전체" },
+  { value: "PENDING", label: "대기" },
+  { value: "REVIEWING", label: "검토 중" },
+  { value: "RESOLVED", label: "처리됨" },
+  { value: "REJECTED", label: "반려됨" },
+]
+
+const REPORT_STATUS_LABELS: Record<SpeechReportStatus, string> = {
+  PENDING: "대기",
+  REVIEWING: "검토 중",
+  RESOLVED: "처리됨",
+  REJECTED: "반려됨",
+}
+
+const REPORT_REASON_LABELS: Record<string, string> = {
+  ABUSE_HARASSMENT: "욕설 / 괴롭힘",
+  HATE_SPEECH: "혐오 발언",
+  SEXUAL_CONTENT: "성적 콘텐츠",
+  THREAT_VIOLENCE: "위협 / 폭력",
+  SPAM: "광고 / 스팸",
+  MISINFORMATION: "허위 정보",
+  PRIVACY_VIOLATION: "개인정보 노출",
+  OFF_TOPIC: "논점 이탈",
+  OTHER: "기타",
+}
+
+const SEVERITY_OPTIONS: { value: ViolationSeverity; label: string }[] = [
+  { value: "LOW", label: "낮음" },
+  { value: "MEDIUM", label: "보통" },
+  { value: "HIGH", label: "높음" },
+  { value: "CRITICAL", label: "심각" },
+]
+
 function messageOf(error: unknown, fallback: string) {
   return error instanceof ApiError ? error.message : fallback
+}
+
+function formatPercent(value: number | null) {
+  if (value === null) return null
+  const normalized = value <= 1 ? value * 100 : value
+  return `${Math.round(normalized)}%`
+}
+
+function aiReviewLabel(review: OffTopicAiReview | null | undefined) {
+  if (!review) return "AI 검토 없음"
+  if (review.status === "PENDING") return "AI 검토 중"
+  if (review.status === "FAILED") return "AI 검토 실패"
+  return review.offTopic ? "AI 검토 완료 · 논점 이탈 가능성 있음" : "AI 검토 완료 · 논점 이탈 가능성 낮음"
 }
 
 function categoryOf(candidate: ClassifiedIssueCandidate) {
@@ -102,6 +159,17 @@ export default function AdminDashboardPage() {
   const [manualDraft, setManualDraft] = useState<TopicDraft>(emptyDraft)
   const [editDraft, setEditDraft] = useState<TopicEditDraft | null>(null)
   const [roomDraft, setRoomDraft] = useState<RoomDraft | null>(null)
+  const [reports, setReports] = useState<SpeechReportSummary[]>([])
+  const [reportsLoading, setReportsLoading] = useState(false)
+  const [reportsError, setReportsError] = useState("")
+  const [reportsMessage, setReportsMessage] = useState("")
+  const [reportStatusFilter, setReportStatusFilter] = useState<SpeechReportStatus | "ALL">("ALL")
+  const [selectedReportId, setSelectedReportId] = useState<number | null>(null)
+  const [selectedReport, setSelectedReport] = useState<SpeechReportDetail | null>(null)
+  const [reportDetailLoading, setReportDetailLoading] = useState(false)
+  const [reportDetailError, setReportDetailError] = useState("")
+  const [resolutionNote, setResolutionNote] = useState("")
+  const [reviewSeverity, setReviewSeverity] = useState<ViolationSeverity>("MEDIUM")
   const [mutatingKey, setMutatingKey] = useState("")
 
   const isAdmin = user?.role === "ADMIN"
@@ -149,12 +217,53 @@ export default function AdminDashboardPage() {
     }
   }
 
+  const loadReports = async () => {
+    setReportsLoading(true)
+    setReportsError("")
+    try {
+      const response = await adminApi.reports({
+        status: reportStatusFilter === "ALL" ? undefined : reportStatusFilter,
+        page: 0,
+        size: 30,
+      })
+      setReports(response.content)
+    } catch (error) {
+      setReportsError(messageOf(error, "신고 목록을 불러오지 못했습니다."))
+    } finally {
+      setReportsLoading(false)
+    }
+  }
+
+  const loadReportDetail = async (reportId: number) => {
+    setSelectedReportId(reportId)
+    setReportDetailLoading(true)
+    setReportDetailError("")
+    setReportsMessage("")
+    try {
+      const detail = await adminApi.reportDetail(reportId)
+      setSelectedReport(detail)
+      setResolutionNote(detail.resolutionNote ?? "")
+      setReviewSeverity(detail.severity ?? "MEDIUM")
+    } catch (error) {
+      setSelectedReport(null)
+      setReportDetailError(messageOf(error, "신고 상세를 불러오지 못했습니다."))
+    } finally {
+      setReportDetailLoading(false)
+    }
+  }
+
   useEffect(() => {
     if (!loading && isAdmin) {
       void loadCandidates()
       void loadTopics()
     }
   }, [loading, isAdmin])
+
+  useEffect(() => {
+    if (!loading && isAdmin) {
+      void loadReports()
+    }
+  }, [loading, isAdmin, reportStatusFilter])
 
   const createTopic = async (draft: TopicDraft, key: string) => {
     if (!draft.title.trim() || !draft.category.trim()) return false
@@ -276,6 +385,50 @@ export default function AdminDashboardPage() {
     }
   }
 
+  const startReportReview = async () => {
+    if (!selectedReport || selectedReport.status !== "PENDING") return
+
+    setMutatingKey(`report-start-${selectedReport.reportId}`)
+    setReportDetailError("")
+    setReportsMessage("")
+    try {
+      await adminApi.reviewReport(selectedReport.reportId, { action: "START_REVIEW" })
+      setReportsMessage(`신고 #${selectedReport.reportId} 검토를 시작했습니다.`)
+      await Promise.all([loadReports(), loadReportDetail(selectedReport.reportId)])
+    } catch (error) {
+      setReportDetailError(messageOf(error, "신고 검토 시작에 실패했습니다."))
+    } finally {
+      setMutatingKey("")
+    }
+  }
+
+  const completeReportReview = async (action: "RESOLVE" | "REJECT") => {
+    if (!selectedReport || selectedReport.status !== "REVIEWING") return
+    const note = resolutionNote.trim()
+    if (!note) return
+
+    setMutatingKey(`report-${action.toLowerCase()}-${selectedReport.reportId}`)
+    setReportDetailError("")
+    setReportsMessage("")
+    try {
+      await adminApi.reviewReport(selectedReport.reportId, {
+        action,
+        resolutionNote: note,
+        severity: action === "RESOLVE" ? reviewSeverity : null,
+      })
+      setReportsMessage(
+        action === "RESOLVE"
+          ? `신고 #${selectedReport.reportId}을 처리했습니다.`
+          : `신고 #${selectedReport.reportId}을 반려했습니다.`,
+      )
+      await Promise.all([loadReports(), loadReportDetail(selectedReport.reportId)])
+    } catch (error) {
+      setReportDetailError(messageOf(error, "신고 처리에 실패했습니다."))
+    } finally {
+      setMutatingKey("")
+    }
+  }
+
   const startEdit = async (topic: TopicSummary) => {
     setTopicsError("")
     try {
@@ -336,9 +489,9 @@ export default function AdminDashboardPage() {
 
       <main className="mx-auto max-w-screen-xl px-4 py-6 md:px-6">
         <div className="mb-6">
-          <h1 className="text-xl font-bold text-foreground">토픽 관리</h1>
+          <h1 className="text-xl font-bold text-foreground">관리자 대시보드</h1>
           <p className="text-sm text-muted-foreground">
-            스케줄러가 모은 이슈 후보를 확인하고, 필요한 뉴스만 승인된 토픽으로 등록합니다.
+            토픽과 토론방을 운영하고, 신고된 의견을 검토합니다.
           </p>
         </div>
 
@@ -346,6 +499,7 @@ export default function AdminDashboardPage() {
           <TabsList className="w-full justify-start sm:w-fit">
             <TabsTrigger value="candidates">이슈 후보</TabsTrigger>
             <TabsTrigger value="topics">승인된 토픽</TabsTrigger>
+            <TabsTrigger value="reports">신고 관리</TabsTrigger>
           </TabsList>
 
           <TabsContent value="candidates" className="space-y-5">
@@ -608,6 +762,204 @@ export default function AdminDashboardPage() {
               </Card>
             )}
           </TabsContent>
+
+          <TabsContent value="reports" className="space-y-5">
+            <Card>
+              <CardHeader>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-sm">
+                      <AlertTriangle className="size-4 text-primary" />
+                      신고 관리
+                    </CardTitle>
+                    <CardDescription>
+                      AI 검토 결과는 관리자 판단을 돕는 보조 정보이며, 최종 처리는 관리자가 결정합니다.
+                    </CardDescription>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {REPORT_STATUS_FILTERS.map((filter) => (
+                      <Button
+                        key={filter.value}
+                        type="button"
+                        variant={reportStatusFilter === filter.value ? "default" : "outline"}
+                        size="sm"
+                        className="text-xs"
+                        onClick={() => setReportStatusFilter(filter.value)}
+                      >
+                        {filter.label}
+                      </Button>
+                    ))}
+                    <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={loadReports} disabled={reportsLoading}>
+                      <RefreshCw className="size-3.5" />
+                      새로고침
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {reportsMessage && <StatusMessage tone="success" message={reportsMessage} />}
+                {reportsError && <StatusMessage tone="error" message={reportsError} />}
+                {reportsLoading ? (
+                  <LoadingBox message="신고 목록을 불러오는 중입니다." />
+                ) : reports.length === 0 ? (
+                  <EmptyBox message="표시할 신고가 없습니다." />
+                ) : (
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    {reports.map((report) => {
+                      const confidence = formatPercent(report.offTopicAiReview?.confidence ?? null)
+                      const selected = selectedReportId === report.reportId
+
+                      return (
+                        <button
+                          key={report.reportId}
+                          type="button"
+                          className={
+                            selected
+                              ? "rounded-lg border border-primary/60 bg-primary/5 p-4 text-left transition-colors"
+                              : "rounded-lg border border-border/60 bg-card p-4 text-left transition-colors hover:border-primary/40 hover:bg-muted/30"
+                          }
+                          onClick={() => loadReportDetail(report.reportId)}
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline">{REPORT_REASON_LABELS[report.reason] ?? report.reason}</Badge>
+                            <Badge variant="secondary">{REPORT_STATUS_LABELS[report.status]}</Badge>
+                            <span className="text-[11px] text-muted-foreground">신고 #{report.reportId}</span>
+                          </div>
+                          <p className="mt-2 text-sm font-semibold text-foreground">의견 #{report.speechId}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            신고자 #{report.reporterUserId} · 대상 사용자 #{report.reportedUserId} · {new Date(report.createdAt).toLocaleString("ko-KR")}
+                          </p>
+                          <div className="mt-3 rounded-lg bg-muted/40 px-3 py-2">
+                            <p className="text-xs font-medium text-foreground">
+                              {aiReviewLabel(report.offTopicAiReview)}
+                              {confidence ? ` · 신뢰도 ${confidence}` : ""}
+                            </p>
+                            {report.offTopicAiReview && (
+                              <p className="mt-1 text-[11px] text-muted-foreground">
+                                신고 {report.offTopicAiReview.reportCount} / 기준 {report.offTopicAiReview.threshold} · 현재 참여자 {report.offTopicAiReview.participantCount}명
+                              </p>
+                            )}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="border-border/70">
+              <CardHeader>
+                <CardTitle className="text-sm">신고 상세</CardTitle>
+                <CardDescription>신고 내용과 AI 검토 보조 근거를 함께 확인합니다.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {reportDetailError && <StatusMessage tone="error" message={reportDetailError} />}
+                {reportDetailLoading ? (
+                  <LoadingBox message="신고 상세를 불러오는 중입니다." />
+                ) : !selectedReport ? (
+                  <EmptyBox message="목록에서 신고를 선택하면 상세 정보가 표시됩니다." />
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">{REPORT_REASON_LABELS[selectedReport.reason] ?? selectedReport.reason}</Badge>
+                      <Badge variant="secondary">{REPORT_STATUS_LABELS[selectedReport.status]}</Badge>
+                      <span className="text-xs text-muted-foreground">신고 #{selectedReport.reportId}</span>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <InfoBox label="의견" value={`#${selectedReport.speechId}`} />
+                      <InfoBox label="신고자" value={`#${selectedReport.reporterUserId}`} />
+                      <InfoBox label="대상 사용자" value={`#${selectedReport.reportedUserId}`} />
+                    </div>
+
+                    <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                      <p className="text-[11px] font-medium text-muted-foreground">신고 당시 의견 내용</p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-foreground">{selectedReport.contentSnapshot}</p>
+                    </div>
+
+                    {selectedReport.description && (
+                      <div className="rounded-lg border border-border/60 p-3">
+                        <p className="text-[11px] font-medium text-muted-foreground">신고 설명</p>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-foreground">{selectedReport.description}</p>
+                      </div>
+                    )}
+
+                    <AiReviewBox review={selectedReport.offTopicAiReview} />
+
+                    {selectedReport.resolutionNote && (
+                      <div className="rounded-lg border border-border/60 p-3">
+                        <p className="text-[11px] font-medium text-muted-foreground">관리자 처리 메모</p>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-foreground">{selectedReport.resolutionNote}</p>
+                      </div>
+                    )}
+
+                    {selectedReport.status === "PENDING" ? (
+                      <div className="flex justify-end">
+                        <Button
+                          size="sm"
+                          className="text-xs"
+                          disabled={mutatingKey === `report-start-${selectedReport.reportId}`}
+                          onClick={startReportReview}
+                        >
+                          {mutatingKey === `report-start-${selectedReport.reportId}` && <Loader2 className="mr-2 size-4 animate-spin" />}
+                          검토 시작
+                        </Button>
+                      </div>
+                    ) : selectedReport.status === "REVIEWING" ? (
+                      <div className="space-y-3 rounded-lg border border-border/60 p-3">
+                        <div>
+                          <p className="mb-2 text-xs font-medium text-foreground">심각도</p>
+                          <div className="flex flex-wrap gap-2">
+                            {SEVERITY_OPTIONS.map((option) => (
+                              <Button
+                                key={option.value}
+                                type="button"
+                                variant={reviewSeverity === option.value ? "default" : "outline"}
+                                size="sm"
+                                className="text-xs"
+                                onClick={() => setReviewSeverity(option.value)}
+                              >
+                                {option.label}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                        <textarea
+                          value={resolutionNote}
+                          onChange={(event) => setResolutionNote(event.target.value)}
+                          placeholder="관리자 처리 사유를 입력하세요."
+                          rows={4}
+                          maxLength={500}
+                          className="w-full resize-none rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                        />
+                        <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={!resolutionNote.trim() || mutatingKey === `report-reject-${selectedReport.reportId}`}
+                            onClick={() => completeReportReview("REJECT")}
+                          >
+                            {mutatingKey === `report-reject-${selectedReport.reportId}` && <Loader2 className="mr-2 size-4 animate-spin" />}
+                            반려
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            disabled={!resolutionNote.trim() || mutatingKey === `report-resolve-${selectedReport.reportId}`}
+                            onClick={() => completeReportReview("RESOLVE")}
+                          >
+                            {mutatingKey === `report-resolve-${selectedReport.reportId}` && <Loader2 className="mr-2 size-4 animate-spin" />}
+                            처리
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
       </main>
     </div>
@@ -708,6 +1060,46 @@ function RoomForm({
         </Button>
       </div>
     </form>
+  )
+}
+
+function InfoBox({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+      <p className="text-[11px] text-muted-foreground">{label}</p>
+      <p className="mt-1 text-sm font-medium text-foreground">{value}</p>
+    </div>
+  )
+}
+
+function AiReviewBox({ review }: { review: OffTopicAiReview | null | undefined }) {
+  const confidence = formatPercent(review?.confidence ?? null)
+
+  return (
+    <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant={review?.status === "COMPLETED" ? "secondary" : "outline"} className="text-[10px]">
+          AI 검토 보조 결과
+        </Badge>
+        <p className="text-xs font-medium text-foreground">
+          {aiReviewLabel(review)}
+          {confidence ? ` · 신뢰도 ${confidence}` : ""}
+        </p>
+      </div>
+      {review ? (
+        <>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            신고 {review.reportCount} / 기준 {review.threshold} · 현재 참여자 {review.participantCount}명
+            {review.completedAt ? ` · 완료 ${new Date(review.completedAt).toLocaleString("ko-KR")}` : ""}
+          </p>
+          {review.reason && (
+            <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground">{review.reason}</p>
+          )}
+        </>
+      ) : (
+        <p className="mt-2 text-xs text-muted-foreground">이 신고에는 AI 검토 보조 결과가 없습니다.</p>
+      )}
+    </div>
   )
 }
 

@@ -101,6 +101,7 @@ export type SpringPage<T> = {
 
 export type SpeechStance = "PRO" | "CON"
 export type SpeechStatus = "READY" | "SPEAKING" | "COMPLETED"
+export type SpeechDeleteReason = "USER_DELETED" | "OFF_TOPIC"
 
 export type SpeechSummary = {
   speechId: number
@@ -110,6 +111,9 @@ export type SpeechSummary = {
   stance: SpeechStance | null
   status: SpeechStatus
   imageUrl: string | null
+  deleted: boolean
+  deleteReason: SpeechDeleteReason | null
+  deletedAt?: string | null
   createdAt: string
   reactionCount?: number
   reactedByMe?: boolean
@@ -125,7 +129,7 @@ export type SpeechDetail = SpeechSummary & {
 
 export type SpeechCreateResponse = Omit<
   SpeechSummary,
-  "createdAt" | "imageUrl" | "reactionCount" | "reactedByMe"
+  "createdAt" | "imageUrl" | "deleted" | "deleteReason" | "deletedAt" | "reactionCount" | "reactedByMe"
 >
 
 export type SpeechImageUploadUrl = {
@@ -156,8 +160,55 @@ export type SpeechReportCreateResponse = {
   reportId: number
   speechId: number
   reason: SpeechReportReason
-  status: "PENDING" | "REVIEWING" | "RESOLVED" | "REJECTED"
+  status: SpeechReportStatus
   createdAt: string
+}
+
+export type SpeechReportStatus = "PENDING" | "REVIEWING" | "RESOLVED" | "REJECTED"
+export type SpeechReportReviewAction = "START_REVIEW" | "RESOLVE" | "REJECT"
+export type ViolationSeverity = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
+export type OffTopicAiReviewStatus = "PENDING" | "COMPLETED" | "FAILED"
+
+export type OffTopicAiReview = {
+  reviewId: number
+  status: OffTopicAiReviewStatus
+  offTopic: boolean | null
+  confidence: number | null
+  reason: string | null
+  reportCount: number
+  threshold: number
+  participantCount: number
+  completedAt: string | null
+}
+
+export type SpeechReportSummary = {
+  reportId: number
+  speechId: number
+  reportedUserId: number
+  reporterUserId: number
+  reason: SpeechReportReason
+  status: SpeechReportStatus
+  createdAt: string
+  offTopicAiReview?: OffTopicAiReview | null
+}
+
+export type SpeechReportDetail = SpeechReportSummary & {
+  contentSnapshot: string
+  description: string | null
+  reviewedBy: number | null
+  reviewedAt: string | null
+  resolutionNote: string | null
+  severity: ViolationSeverity | null
+  updatedAt: string
+}
+
+export type SpeechReportReviewResponse = {
+  reportId: number
+  status: SpeechReportStatus
+  reviewedBy: number
+  reviewedAt: string | null
+  resolutionNote: string | null
+  severity: ViolationSeverity | null
 }
 
 export type ChatMessage = {
