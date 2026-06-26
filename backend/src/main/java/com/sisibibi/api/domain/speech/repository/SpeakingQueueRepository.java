@@ -80,6 +80,21 @@ public interface SpeakingQueueRepository extends JpaRepository<SpeakingQueue, Lo
             Collection<SpeakingQueueStatus> statuses
     );
 
+    default long countDistinctCompletedSpeakersByRoomId(Long roomId) {
+        return countDistinctSpeakersByRoomIdAndStatus(roomId, SpeakingQueueStatus.COMPLETED);
+    }
+
+    @Query("""
+            select count(distinct queue.userId)
+            from SpeakingQueue queue
+            where queue.roomId = :roomId
+              and queue.status = :status
+            """)
+    long countDistinctSpeakersByRoomIdAndStatus(
+            @Param("roomId") Long roomId,
+            @Param("status") SpeakingQueueStatus status
+    );
+
     Optional<SpeakingQueue> findByRoomIdAndStatus(
             Long roomId,
             SpeakingQueueStatus status

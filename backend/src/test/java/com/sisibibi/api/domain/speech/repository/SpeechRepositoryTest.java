@@ -3,6 +3,7 @@ package com.sisibibi.api.domain.speech.repository;
 import com.sisibibi.api.domain.speech.entity.Speech;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.global.config.JpaAuditingConfig;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -23,6 +24,9 @@ class SpeechRepositoryTest {
 
     @Autowired
     private SpeechRepository speechRepository;
+
+    @Autowired
+    private EntityManager entityManager;
 
     @Test
     void saveAndUpdate_applyJpaAuditingTimestamps() {
@@ -112,5 +116,60 @@ class SpeechRepositoryTest {
         long count = speechRepository.countByUserIdAndDeletedFalse(10L);
 
         assertThat(count).isEqualTo(2L);
+    }
+
+    @Test
+    void findStageSummarySourceSpeeches_returnsVisibleNonBlankSpeechesUntilTriggeredAtInChronologicalOrder() {
+        LocalDateTime triggeredAt = LocalDateTime.of(2026, 6, 26, 12, 30);
+        Speech first = Speech.createMainOpinion(1L, 10L, "첫 번째 의견", SpeechStance.PRO);
+        Speech secondSameTimeLowerId = Speech.createMainOpinion(1L, 20L, "두 번째 의견", SpeechStance.CON);
+        Speech secondSameTimeHigherId = Speech.createMainOpinion(1L, 30L, "세 번째 의견", SpeechStance.PRO);
+        Speech afterTrigger = Speech.createMainOpinion(1L, 40L, "늦은 의견", SpeechStance.CON);
+        Speech blank = Speech.createMainOpinion(1L, 50L, "   \n  ", SpeechStance.PRO);
+        Speech deleted = Speech.createMainOpinion(1L, 60L, "삭제된 의견", SpeechStance.CON);
+        Speech otherRoom = Speech.createMainOpinion(2L, 70L, "다른 방 의견", SpeechStance.PRO);
+        ReflectionTestUtils.setField(first, "createdAt", LocalDateTime.of(2026, 6, 26, 12, 0));
+        ReflectionTestUtils.setField(secondSameTimeLowerId, "createdAt", LocalDateTime.of(2026, 6, 26, 12, 10));
+        ReflectionTestUtils.setField(secondSameTimeHigherId, "createdAt", LocalDateTime.of(2026, 6, 26, 12, 10));
+        ReflectionTestUtils.setField(afterTrigger, "createdAt", LocalDateTime.of(2026, 6, 26, 12, 31));
+        ReflectionTestUtils.setField(blank, "createdAt", LocalDateTime.of(2026, 6, 26, 12, 15));
+        ReflectionTestUtils.setField(deleted, "createdAt", LocalDateTime.of(2026, 6, 26, 12, 20));
+        ReflectionTestUtils.setField(otherRoom, "createdAt", LocalDateTime.of(2026, 6, 26, 12, 5));
+        deleted.softDelete(LocalDateTime.of(2026, 6, 26, 12, 21));
+        List<Speech> saved = speechRepository.saveAllAndFlush(List.of(
+                first,
+                secondSameTimeLowerId,
+                secondSameTimeHigherId,
+                afterTrigger,
+                blank,
+                deleted,
+                otherRoom
+        ));
+        updateCreatedAt(saved.get(0).getId(), LocalDateTime.of(2026, 6, 26, 12, 0));
+        updateCreatedAt(saved.get(1).getId(), LocalDateTime.of(2026, 6, 26, 12, 10));
+        updateCreatedAt(saved.get(2).getId(), LocalDateTime.of(2026, 6, 26, 12, 10));
+        updateCreatedAt(saved.get(3).getId(), LocalDateTime.of(2026, 6, 26, 12, 31));
+        updateCreatedAt(saved.get(4).getId(), LocalDateTime.of(2026, 6, 26, 12, 15));
+        updateCreatedAt(saved.get(5).getId(), LocalDateTime.of(2026, 6, 26, 12, 20));
+        updateCreatedAt(saved.get(6).getId(), LocalDateTime.of(2026, 6, 26, 12, 5));
+        entityManager.flush();
+        entityManager.clear();
+
+        List<Speech> speeches = speechRepository.findStageSummarySourceSpeeches(1L, triggeredAt);
+
+        assertThat(speeches)
+                .extracting(Speech::getContent)
+                .containsExactly("첫 번째 의견", "두 번째 의견", "세 번째 의견");
+    }
+
+    private void updateCreatedAt(Long speechId, LocalDateTime createdAt) {
+        entityManager.createNativeQuery("""
+                        update speeches
+                        set created_at = :createdAt
+                        where id = :speechId
+                        """)
+                .setParameter("createdAt", createdAt)
+                .setParameter("speechId", speechId)
+                .executeUpdate();
     }
 }
