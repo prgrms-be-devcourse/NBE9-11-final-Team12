@@ -2,6 +2,7 @@ package com.sisibibi.api.domain.speech.repository;
 
 import com.sisibibi.api.domain.speech.entity.Speech;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
+import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.global.config.JpaAuditingConfig;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
@@ -171,5 +172,47 @@ class SpeechRepositoryTest {
                 .setParameter("createdAt", createdAt)
                 .setParameter("speechId", speechId)
                 .executeUpdate();
+    }
+
+    @Test
+    void completeSpeakingSpeeches_completesOnlyActiveVisibleSpeechesForRoomAndUser() {
+        LocalDateTime endedAt = LocalDateTime.of(2026, 6, 24, 12, 0);
+        Speech target = Speech.createMainOpinion(1L, 10L, "진행 중 의견", SpeechStance.PRO);
+        Speech alreadyCompleted =
+                Speech.createMainOpinion(1L, 10L, "이미 완료된 의견", SpeechStance.CON);
+        Speech otherUser = Speech.createMainOpinion(1L, 20L, "다른 사용자 의견", SpeechStance.PRO);
+        Speech otherRoom = Speech.createMainOpinion(2L, 10L, "다른 방 의견", SpeechStance.CON);
+        Speech deleted = Speech.createMainOpinion(1L, 10L, "삭제된 의견", SpeechStance.PRO);
+        ReflectionTestUtils.setField(alreadyCompleted, "status", SpeechStatus.COMPLETED);
+        deleted.softDelete(LocalDateTime.of(2026, 6, 24, 11, 0));
+        speechRepository.saveAllAndFlush(List.of(
+                target,
+                alreadyCompleted,
+                otherUser,
+                otherRoom,
+                deleted
+        ));
+
+        int updatedCount = speechRepository.completeSpeakingSpeeches(
+                1L,
+                10L,
+                SpeechStatus.SPEAKING,
+                SpeechStatus.COMPLETED,
+                endedAt
+        );
+
+        assertThat(updatedCount).isEqualTo(1);
+        assertThat(speechRepository.findById(target.getId()).orElseThrow().getStatus())
+                .isEqualTo(SpeechStatus.COMPLETED);
+        assertThat(speechRepository.findById(target.getId()).orElseThrow().getEndedAt())
+                .isEqualTo(endedAt);
+        assertThat(speechRepository.findById(alreadyCompleted.getId()).orElseThrow().getEndedAt())
+                .isNull();
+        assertThat(speechRepository.findById(otherUser.getId()).orElseThrow().getStatus())
+                .isEqualTo(SpeechStatus.SPEAKING);
+        assertThat(speechRepository.findById(otherRoom.getId()).orElseThrow().getStatus())
+                .isEqualTo(SpeechStatus.SPEAKING);
+        assertThat(speechRepository.findById(deleted.getId()).orElseThrow().getStatus())
+                .isEqualTo(SpeechStatus.SPEAKING);
     }
 }

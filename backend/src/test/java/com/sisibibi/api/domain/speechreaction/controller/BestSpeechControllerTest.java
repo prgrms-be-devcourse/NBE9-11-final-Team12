@@ -45,7 +45,7 @@ class BestSpeechControllerTest {
                 20L,
                 "베스트 의견",
                 SpeechStance.PRO,
-                SpeechStatus.READY,
+                SpeechStatus.SPEAKING,
                 LocalDateTime.of(2026, 6, 19, 12, 0),
                 3L
         ));
