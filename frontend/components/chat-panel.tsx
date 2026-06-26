@@ -1,9 +1,9 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { ApiError } from "@/lib/api/client"
 import { chatApi } from "@/lib/api/services"
-import type { RoomStompConnection } from "@/lib/api/stomp"
+import type { RealtimeStatus, RoomStompConnection } from "@/lib/api/stomp"
 import type { ChatEvent, ChatMessageEventPayload, ChatMessage as ApiChatMessage } from "@/lib/api/types"
 import { useAuth } from "@/components/auth-provider"
 import { Button } from "@/components/ui/button"
@@ -67,10 +67,14 @@ export function ChatPanel({
   roomId,
   stompConnection,
   stompConnected,
+  realtimeStatus,
+  recoveryKey,
 }: {
   roomId: number
   stompConnection: RoomStompConnection | null
   stompConnected: boolean
+  realtimeStatus: RealtimeStatus
+  recoveryKey: number
 }) {
   const { user } = useAuth()
   const [messages, setMessages] = useState<ChatViewMessage[]>([])
@@ -79,57 +83,84 @@ export function ChatPanel({
   const [error, setError] = useState("")
   const [deletingId, setDeletingId] = useState("")
   const bottomRef = useRef<HTMLDivElement>(null)
+  const handledEventIdsRef = useRef<string[]>([])
+  const deletedMessageIdsRef = useRef<Set<string>>(new Set())
+  const messageRequestSeqRef = useRef(0)
+
+  const rememberEvent = (eventId: string) => {
+    if (handledEventIdsRef.current.includes(eventId)) return false
+    handledEventIdsRef.current = [...handledEventIdsRef.current.slice(-199), eventId]
+    return true
+  }
+
+  const mergeMessages = useCallback((incoming: ChatViewMessage[]) => {
+    setMessages((prev) => {
+      const byId = new Map<string, ChatViewMessage>()
+      for (const message of prev) {
+        if (!deletedMessageIdsRef.current.has(message.id)) byId.set(message.id, message)
+      }
+      for (const message of incoming) {
+        if (!deletedMessageIdsRef.current.has(message.id)) byId.set(message.id, message)
+      }
+      return Array.from(byId.values()).sort((left, right) => Number(left.id) - Number(right.id))
+    })
+  }, [])
+
+  const loadLatestMessages = useCallback(async (showLoading: boolean) => {
+    const requestSeq = ++messageRequestSeqRef.current
+    if (showLoading) setLoading(true)
+    setError("")
+    try {
+      const response = await chatApi.messages(roomId)
+      if (requestSeq !== messageRequestSeqRef.current) return
+      mergeMessages(response.items.map(toViewMessage))
+    } catch (requestError) {
+      if (requestSeq !== messageRequestSeqRef.current) return
+      setError(messageOf(requestError))
+    } finally {
+      if (showLoading && requestSeq === messageRequestSeqRef.current) setLoading(false)
+    }
+  }, [mergeMessages, roomId])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
   useEffect(() => {
-    let mounted = true
-    setLoading(true)
-    setError("")
-
-    chatApi.messages(roomId)
-      .then((response) => {
-        if (!mounted) return
-        setMessages(response.items.map(toViewMessage))
-      })
-      .catch((requestError) => {
-        if (!mounted) return
-        setError(messageOf(requestError))
-      })
-      .finally(() => {
-        if (mounted) setLoading(false)
-      })
-
-    return () => {
-      mounted = false
-    }
-  }, [roomId])
+    setMessages([])
+    handledEventIdsRef.current = []
+    deletedMessageIdsRef.current.clear()
+    messageRequestSeqRef.current = 0
+    void loadLatestMessages(true)
+  }, [loadLatestMessages, roomId])
 
   useEffect(() => {
-    if (!stompConnection || !stompConnected) return
+    if (recoveryKey === 0) return
+    void loadLatestMessages(false)
+  }, [loadLatestMessages, recoveryKey])
+
+  useEffect(() => {
+    if (!stompConnection) return
 
     const unsubscribe = stompConnection.subscribe<ChatEvent>(
       `/topic/rooms/${roomId}/chat/events`,
       (event) => {
+        if (!rememberEvent(event.eventId)) return
         if (event.eventType === "MESSAGE_DELETED") {
+          deletedMessageIdsRef.current.add(String(event.data.messageId))
           setMessages((prev) => prev.filter((message) => message.id !== String(event.data.messageId)))
           return
         }
 
         const nextMessage = eventToViewMessage(event.data)
         if (!nextMessage) return
-        setMessages((prev) => {
-          if (prev.some((message) => message.id === nextMessage.id)) return prev
-          return [...prev, nextMessage]
-        })
+        mergeMessages([nextMessage])
       },
       setError,
     )
 
     return unsubscribe
-  }, [roomId, stompConnected, stompConnection])
+  }, [mergeMessages, roomId, stompConnection])
 
   const handleSend = () => {
     if (!input.trim()) return
@@ -147,6 +178,7 @@ export function ChatPanel({
     setError("")
     try {
       await chatApi.delete(roomId, Number(messageId))
+      deletedMessageIdsRef.current.add(messageId)
       setMessages((prev) => prev.filter((message) => message.id !== messageId))
     } catch (requestError) {
       setError(messageOf(requestError))
@@ -163,7 +195,7 @@ export function ChatPanel({
           <span className="text-sm font-semibold text-foreground">실시간 채팅</span>
         </div>
         <Badge variant="outline" className={cn("text-[10px]", stompConnected ? "border-primary/30 text-primary" : "border-border text-muted-foreground")}>
-          {stompConnected ? `${messages.length}개` : "연결 중"}
+          {stompConnected ? `${messages.length}개` : realtimeStatus === "offline" ? "오프라인" : "연결 중"}
         </Badge>
       </div>
 
