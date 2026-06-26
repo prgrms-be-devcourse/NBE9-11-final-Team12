@@ -1,7 +1,7 @@
 "use client"
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react"
-import { Flag, History, Loader2, MessageSquarePlus, Mic, MicOff, Users } from "lucide-react"
+import { Flag, History, ImageIcon, Loader2, MessageSquarePlus, Mic, MicOff, Users, X } from "lucide-react"
 import { ApiError } from "@/lib/api/client"
 import { speechApi, stageApi } from "@/lib/api/services"
 import type { RoomStompConnection } from "@/lib/api/stomp"
@@ -34,6 +34,9 @@ const REPORT_REASONS: { value: SpeechReportReason; label: string }[] = [
   { value: "OTHER", label: "기타" },
 ]
 
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"]
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024
+
 function messageOf(error: unknown) {
   return error instanceof ApiError ? error.message : "요청 처리 중 오류가 발생했습니다."
 }
@@ -63,6 +66,9 @@ export function MainStage({
   const [createOpen, setCreateOpen] = useState(false)
   const [content, setContent] = useState("")
   const [stance, setStance] = useState<SpeechStance>("PRO")
+  const [selectedImage, setSelectedImage] = useState<File | null>(null)
+  const [imagePreviewUrl, setImagePreviewUrl] = useState("")
+  const [imageError, setImageError] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [reportTarget, setReportTarget] = useState<SpeechSummary | null>(null)
   const [reportReason, setReportReason] = useState<SpeechReportReason | null>(null)
@@ -71,6 +77,7 @@ export function MainStage({
   const [reportError, setReportError] = useState("")
   const speechesRequestSeqRef = useRef(0)
   const stageRequestSeqRef = useRef(0)
+  const imageInputRef = useRef<HTMLInputElement | null>(null)
   const handledEventIdsRef = useRef<string[]>([])
   const speechesRecoveryTimerRef = useRef<number | null>(null)
   const stageRecoveryTimerRef = useRef<number | null>(null)
@@ -182,6 +189,18 @@ export function MainStage({
   }, [loadSpeeches, loadStage, recoveryKey])
 
   useEffect(() => {
+    if (!selectedImage) {
+      setImagePreviewUrl("")
+      return
+    }
+
+    const previewUrl = URL.createObjectURL(selectedImage)
+    setImagePreviewUrl(previewUrl)
+
+    return () => URL.revokeObjectURL(previewUrl)
+  }, [selectedImage])
+
+  useEffect(() => {
     if (!liveEnabled || stompConnected) return
     if (document.visibilityState !== "visible") return
     const hasActiveStageInterest = Boolean(
@@ -246,16 +265,79 @@ export function MainStage({
     if (!content.trim()) return
     setSubmitting(true)
     setError("")
+    setImageError("")
     try {
-      await speechApi.create(roomId, { content: content.trim(), stance })
+      const speech = await speechApi.create(roomId, { content: content.trim(), stance })
+
+      if (selectedImage) {
+        const upload = await speechApi.createImageUploadUrl(speech.speechId, {
+          contentType: selectedImage.type,
+          fileSize: selectedImage.size,
+        })
+        const uploadResponse = await fetch(upload.uploadUrl, {
+          method: "PUT",
+          headers: {
+            "Content-Type": selectedImage.type,
+          },
+          body: selectedImage,
+        })
+
+        if (!uploadResponse.ok) {
+          throw new Error("이미지 업로드에 실패했습니다.")
+        }
+
+        await speechApi.confirmImage(speech.speechId, upload.imageKey)
+      }
+
       setContent("")
+      setSelectedImage(null)
+      if (imageInputRef.current) imageInputRef.current.value = ""
       await loadSpeeches()
       setCreateOpen(false)
     } catch (requestError) {
-      setError(messageOf(requestError))
+      setError(requestError instanceof Error ? requestError.message : messageOf(requestError))
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const selectImage = (file: File | null) => {
+    setImageError("")
+
+    if (!file) {
+      setSelectedImage(null)
+      return
+    }
+
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      setSelectedImage(null)
+      setImageError("jpg, png, webp 이미지만 첨부할 수 있습니다.")
+      if (imageInputRef.current) imageInputRef.current.value = ""
+      return
+    }
+
+    if (file.size > MAX_IMAGE_SIZE) {
+      setSelectedImage(null)
+      setImageError("이미지는 5MB 이하만 첨부할 수 있습니다.")
+      if (imageInputRef.current) imageInputRef.current.value = ""
+      return
+    }
+
+    setSelectedImage(file)
+  }
+
+  const removeImage = () => {
+    setSelectedImage(null)
+    setImageError("")
+    if (imageInputRef.current) imageInputRef.current.value = ""
+  }
+
+  const setCreateDialogOpen = (open: boolean) => {
+    setCreateOpen(open)
+    if (open) return
+    setImageError("")
+    setSelectedImage(null)
+    if (imageInputRef.current) imageInputRef.current.value = ""
   }
 
   const submitReport = async () => {
@@ -427,6 +509,16 @@ export function MainStage({
                   </div>
                 </div>
                 <p className="whitespace-pre-wrap text-sm leading-relaxed">{speech.content}</p>
+                {speech.imageUrl && (
+                  <a
+                    href={speech.imageUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-3 block overflow-hidden rounded-lg border border-border/60"
+                  >
+                    <img src={speech.imageUrl} alt="첨부 이미지" className="max-h-80 w-full object-cover" />
+                  </a>
+                )}
                 <div className="mt-3 flex justify-end">
                   <Button variant="ghost" size="sm" className="gap-1 text-xs text-muted-foreground hover:text-destructive" onClick={() => openReport(speech)}>
                     <Flag className="size-3" /> 신고
@@ -438,15 +530,48 @@ export function MainStage({
         )}
       </div>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog open={createOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>메인 의견 작성</DialogTitle><DialogDescription>찬반 입장과 의견을 입력해주세요.</DialogDescription></DialogHeader>
           <form className="flex flex-col gap-4" onSubmit={createSpeech}>
             {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
+            {imageError && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{imageError}</p>}
             <div className="grid grid-cols-2 gap-2">
               {(["PRO", "CON"] as SpeechStance[]).map((value) => <Button key={value} type="button" variant={stance === value ? "default" : "outline"} onClick={() => setStance(value)}>{value === "PRO" ? "찬성" : "반대"}</Button>)}
             </div>
             <textarea value={content} onChange={(event) => setContent(event.target.value)} rows={7} maxLength={2000} placeholder="의견을 입력하세요." className="resize-none rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
+            <div className="space-y-2">
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={(event) => selectImage(event.target.files?.[0] ?? null)}
+              />
+              {selectedImage && imagePreviewUrl ? (
+                <div className="overflow-hidden rounded-lg border border-border/70">
+                  <div className="flex items-center justify-between border-b border-border/60 px-3 py-2 text-xs">
+                    <span className="truncate text-muted-foreground">{selectedImage.name}</span>
+                    <Button type="button" variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={removeImage}>
+                      <X className="size-3" />
+                      삭제
+                    </Button>
+                  </div>
+                  <img src={imagePreviewUrl} alt="첨부 이미지 미리보기" className="max-h-52 w-full object-cover" />
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full gap-2 text-xs"
+                  onClick={() => imageInputRef.current?.click()}
+                >
+                  <ImageIcon className="size-4" />
+                  이미지 첨부
+                </Button>
+              )}
+              <p className="text-[11px] text-muted-foreground">jpg, png, webp 형식의 5MB 이하 이미지를 첨부할 수 있습니다.</p>
+            </div>
             <div className="flex items-center justify-between text-xs text-muted-foreground"><span>욕설이 포함된 의견은 등록되지 않습니다.</span><span>{content.length}/2000</span></div>
             <Button type="submit" disabled={submitting || !content.trim()}>{submitting && <Loader2 className="mr-2 size-4 animate-spin" />}등록</Button>
           </form>

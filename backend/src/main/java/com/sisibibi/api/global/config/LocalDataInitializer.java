@@ -36,7 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @Component
-@Profile("local")
+//@Profile("local")
 @RequiredArgsConstructor
 public class LocalDataInitializer implements ApplicationRunner {
 
