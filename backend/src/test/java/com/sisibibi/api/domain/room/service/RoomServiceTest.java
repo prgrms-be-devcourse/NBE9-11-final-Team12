@@ -10,7 +10,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.sisibibi.api.domain.room.config.RoomTopicGenerator;
-import com.sisibibi.api.domain.room.dto.event.RoomClosedEvent;
 import com.sisibibi.api.domain.room.dto.request.CreateRoomReq;
 import com.sisibibi.api.domain.room.dto.request.PreviewRoomTitleReq;
 import com.sisibibi.api.domain.room.dto.request.UpdateRoomReq;
@@ -21,7 +20,6 @@ import com.sisibibi.api.domain.room.dto.response.RoomSummaryRes;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
-import com.sisibibi.api.domain.speech.service.SpeakingQueueService;
 import com.sisibibi.api.domain.topic.entity.Topic;
 import com.sisibibi.api.domain.topic.entity.TopicStatus;
 import com.sisibibi.api.domain.topic.repository.TopicRepository;
@@ -32,11 +30,9 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -53,9 +49,6 @@ class RoomServiceTest {
   private RoomService roomService;
 
   @Mock
-  private ApplicationEventPublisher eventPublisher;
-
-  @Mock
   private RoomCloseCommandService roomCloseCommandService;
 
   @Mock
@@ -63,9 +56,6 @@ class RoomServiceTest {
 
   @Mock
   private RoomTopicGenerator roomTopicGenerator;
-
-  @Mock
-  private SpeakingQueueService speakingQueueService;
 
   @Test
   void createRoom_createsRoomWithConfirmedTitle_whenTopicIsApproved() {
@@ -389,58 +379,24 @@ class RoomServiceTest {
   }
 
   @Test
-  void deleteRoom_closesRoom_whenRoomExists() {
-    LocalDateTime startedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
-    LocalDateTime endedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
-    Room room = Room.open(1L, "room to delete", startedAt, endedAt, 100);
-    ReflectionTestUtils.setField(room, "id", 10L);
-
-    given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
-
+  void deleteRoom_delegatesToRoomCloseCommandService() {
     roomService.deleteRoom(10L);
 
-    assertThat(room.getStatus()).isEqualTo(RoomStatus.CLOSED);
-    assertThat(room.getEndedAt()).isNotNull();
-
-    verify(roomRepository).findByIdForUpdate(10L);
-    verify(speakingQueueService).closeSpeakingQueuesWhenRoomClosed(10L, room.getEndedAt());
-    ArgumentCaptor<RoomClosedEvent> eventCaptor =
-        ArgumentCaptor.forClass(RoomClosedEvent.class);
-    verify(eventPublisher).publishEvent(eventCaptor.capture());
-    assertThat(eventCaptor.getValue().roomId()).isEqualTo(10L);
-    assertThat(eventCaptor.getValue().closedAt()).isEqualTo(room.getEndedAt());
-  }
-
-  @Test
-  void deleteRoom_doesNotPublishEvent_whenRoomIsAlreadyClosed() {
-    LocalDateTime closedAt = LocalDateTime.of(2026, 6, 15, 12, 0);
-    Room room = Room.open(
-        1L,
-        "already closed room",
-        LocalDateTime.of(2026, 6, 15, 10, 0),
-        closedAt,
-        100
-    );
-    room.close(closedAt);
-
-    given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
-
-    roomService.deleteRoom(10L);
-
-    verify(speakingQueueService, never()).closeSpeakingQueuesWhenRoomClosed(anyLong(), any());
-    verify(eventPublisher, never()).publishEvent(any());
+    verify(roomCloseCommandService).closeRoom(eq(10L), any(LocalDateTime.class));
+    verify(roomRepository, never()).findByIdForUpdate(anyLong());
   }
 
   @Test
   void deleteRoom_throwsRoomNotFound_whenRoomDoesNotExist() {
-    given(roomRepository.findByIdForUpdate(999L)).willReturn(Optional.empty());
+    given(roomCloseCommandService.closeRoom(eq(999L), any(LocalDateTime.class)))
+        .willThrow(new CustomException(ErrorCode.ROOM_NOT_FOUND));
 
     assertThatThrownBy(() -> roomService.deleteRoom(999L))
         .isInstanceOf(CustomException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
 
-    verify(roomRepository).findByIdForUpdate(999L);
+    verify(roomCloseCommandService).closeRoom(eq(999L), any(LocalDateTime.class));
   }
 
   private Topic approvedTopic(Long topicId) {
