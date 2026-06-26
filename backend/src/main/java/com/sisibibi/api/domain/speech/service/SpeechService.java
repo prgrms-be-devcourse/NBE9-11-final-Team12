@@ -97,7 +97,7 @@ public class SpeechService {
             throw new CustomException(ErrorCode.ROOM_NOT_FOUND);
         }
 
-        List<Speech> speeches = speechRepository.findByRoomIdBeforeCursor(
+        List<Speech> speeches = speechRepository.findByRoomIdBeforeCursorIncludingDeleted(
                 roomId,
                 cursor,
                 PageRequest.of(0, size + 1)
