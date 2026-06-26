@@ -1,7 +1,6 @@
 package com.sisibibi.api.domain.room.service;
 
 import com.sisibibi.api.domain.room.config.RoomTopicGenerator;
-import com.sisibibi.api.domain.room.dto.event.RoomClosedEvent;
 import com.sisibibi.api.domain.room.dto.request.CreateRoomReq;
 import com.sisibibi.api.domain.room.dto.request.PreviewRoomTitleReq;
 import com.sisibibi.api.domain.room.dto.request.UpdateRoomReq;
@@ -12,7 +11,6 @@ import com.sisibibi.api.domain.room.dto.response.RoomSummaryRes;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
-import com.sisibibi.api.domain.speech.service.SpeakingQueueService;
 import com.sisibibi.api.domain.topic.entity.Topic;
 import com.sisibibi.api.domain.topic.entity.TopicStatus;
 import com.sisibibi.api.domain.topic.repository.TopicRepository;
@@ -20,8 +18,6 @@ import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -40,10 +36,8 @@ public class RoomService {
   private final RoomRepository roomRepository;
   private final TopicRepository topicRepository;
   private final RoomCloseCommandService roomCloseCommandService;
-  private final ApplicationEventPublisher eventPublisher;
   private final RoomCreateCommandService roomCreateCommandService;
   private final RoomTopicGenerator roomTopicGenerator;
-  private final SpeakingQueueService speakingQueueService;
 
 
 
@@ -164,22 +158,9 @@ public class RoomService {
     }
   }
 
-  @Transactional
+  @Transactional(propagation = Propagation.NOT_SUPPORTED)
   public void deleteRoom(Long roomId) {
-    Room room = roomRepository.findByIdForUpdate(roomId)
-        .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
-
-    if (room.getStatus() == RoomStatus.CLOSED) {
-      return;
-    }
-
-    room.close(LocalDateTime.now());
-    speakingQueueService.closeSpeakingQueuesWhenRoomClosed(room.getId(), room.getEndedAt());
-    publishRoomClosedEvent(room);
-  }
-
-  private void publishRoomClosedEvent(Room room) {
-    eventPublisher.publishEvent(new RoomClosedEvent(room.getId(), room.getEndedAt()));
+    roomCloseCommandService.closeRoom(roomId, LocalDateTime.now());
   }
 
   // 방 정원 검증 로직
