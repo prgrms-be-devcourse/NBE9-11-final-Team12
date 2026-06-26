@@ -1,8 +1,10 @@
 package com.sisibibi.api.domain.speech.repository;
 
 import com.sisibibi.api.domain.speech.entity.Speech;
+import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -71,5 +73,23 @@ public interface SpeechRepository extends JpaRepository<Speech, Long> {
     List<Speech> findStageSummarySourceSpeeches(
             @Param("roomId") Long roomId,
             @Param("triggeredAt") LocalDateTime triggeredAt
+    );
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            update Speech speech
+            set speech.status = :completedStatus,
+                speech.endedAt = :endedAt
+            where speech.roomId = :roomId
+              and speech.userId = :userId
+              and speech.deleted = false
+              and speech.status = :speakingStatus
+            """)
+    int completeSpeakingSpeeches(
+            @Param("roomId") Long roomId,
+            @Param("userId") Long userId,
+            @Param("speakingStatus") SpeechStatus speakingStatus,
+            @Param("completedStatus") SpeechStatus completedStatus,
+            @Param("endedAt") LocalDateTime endedAt
     );
 }
