@@ -25,12 +25,14 @@ import static org.mockito.Mockito.verify;
 class WebSocketAuthChannelInterceptorTest {
 
     private RoomParticipantRepository roomParticipantRepository;
+    private RedisWebSocketSessionRegistry sessionRegistry;
     private WebSocketAuthChannelInterceptor interceptor;
 
     @BeforeEach
     void setUp() {
         roomParticipantRepository = mock(RoomParticipantRepository.class);
-        interceptor = new WebSocketAuthChannelInterceptor(roomParticipantRepository);
+        sessionRegistry = mock(RedisWebSocketSessionRegistry.class);
+        interceptor = new WebSocketAuthChannelInterceptor(roomParticipantRepository, sessionRegistry);
     }
 
     @Test
@@ -39,7 +41,8 @@ class WebSocketAuthChannelInterceptorTest {
                 StompCommand.CONNECT,
                 null,
                 null,
-                sessionAttributes(new AuthPrincipal(1L, "user@example.com", "USER"))
+                sessionAttributes(new AuthPrincipal(1L, "user@example.com", "USER")),
+                "session-1"
         );
 
         Message<?> result = interceptor.preSend(message, null);
@@ -47,6 +50,7 @@ class WebSocketAuthChannelInterceptorTest {
 
         assertThat(accessor.getUser()).isNotNull();
         assertThat(accessor.getUser().getName()).contains("user@example.com");
+        verify(sessionRegistry).registerSession("session-1", 1L);
     }
 
     @Test
@@ -82,7 +86,39 @@ class WebSocketAuthChannelInterceptorTest {
                 2L,
                 RoomParticipantStatus.JOINED
         )).willReturn(true);
-        Message<byte[]> message = message(StompCommand.SUBSCRIBE, "/topic/rooms/1/chat/events", user, null);
+        Message<byte[]> message = message(
+                StompCommand.SUBSCRIBE,
+                "/topic/rooms/1/chat/events",
+                user,
+                null,
+                "session-1"
+        );
+
+        Message<?> result = interceptor.preSend(message, null);
+
+        assertThat(result).isNotNull();
+        verify(sessionRegistry).registerRoomSession("session-1", 1L, 2L);
+    }
+
+    @Test
+    void preSend_allowsSubscribe_whenRedisRegistryFails() {
+        AuthPrincipal principal = new AuthPrincipal(2L, "user@example.com", "USER");
+        Principal user = authenticatedPrincipal(principal);
+        given(roomParticipantRepository.existsByRoomIdAndUserIdAndStatus(
+                1L,
+                2L,
+                RoomParticipantStatus.JOINED
+        )).willReturn(true);
+        org.mockito.BDDMockito.willThrow(new RuntimeException("Redis unavailable"))
+                .given(sessionRegistry)
+                .registerRoomSession("session-1", 1L, 2L);
+        Message<byte[]> message = message(
+                StompCommand.SUBSCRIBE,
+                "/topic/rooms/1/chat/events",
+                user,
+                null,
+                "session-1"
+        );
 
         Message<?> result = interceptor.preSend(message, null);
 
@@ -144,6 +180,27 @@ class WebSocketAuthChannelInterceptorTest {
 
         assertThatThrownBy(() -> interceptor.preSend(message, null))
                 .isInstanceOf(AccessDeniedException.class);
+        verify(sessionRegistry, never()).registerRoomSession(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any()
+        );
+    }
+
+    @Test
+    void preSend_unregistersSession_whenDisconnect() {
+        Message<byte[]> message = message(
+                StompCommand.DISCONNECT,
+                null,
+                null,
+                null,
+                "session-1"
+        );
+
+        Message<?> result = interceptor.preSend(message, null);
+
+        assertThat(result).isNotNull();
+        verify(sessionRegistry).unregisterSession("session-1");
     }
 
     @Test
@@ -203,6 +260,24 @@ class WebSocketAuthChannelInterceptorTest {
         StompHeaderAccessor accessor = StompHeaderAccessor.create(command);
         accessor.setDestination(destination);
         accessor.setUser(user);
+        if (sessionAttributes != null) {
+            accessor.setSessionAttributes(sessionAttributes);
+        }
+
+        return MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+    }
+
+    private Message<byte[]> message(
+            StompCommand command,
+            String destination,
+            Principal user,
+            Map<String, Object> sessionAttributes,
+            String sessionId
+    ) {
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(command);
+        accessor.setDestination(destination);
+        accessor.setUser(user);
+        accessor.setSessionId(sessionId);
         if (sessionAttributes != null) {
             accessor.setSessionAttributes(sessionAttributes);
         }

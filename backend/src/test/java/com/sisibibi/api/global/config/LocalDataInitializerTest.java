@@ -18,6 +18,8 @@ import com.sisibibi.api.domain.user.entity.User;
 import com.sisibibi.api.domain.user.repository.UserRepository;
 import java.util.List;
 import java.util.Optional;
+
+import com.sisibibi.api.global.init.LocalDataInitializer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -53,7 +55,8 @@ class LocalDataInitializerTest {
     @Mock RedisSpeakingQueueRepository redisSpeakingQueueRepository;
     @Mock SpeechReportRepository speechReportRepository;
     @Mock PasswordEncoder passwordEncoder;
-    @InjectMocks LocalDataInitializer initializer;
+    @InjectMocks
+    LocalDataInitializer initializer;
 
     @Test
     void doesNotCreateDuplicateSpeechWhenLocalDataAlreadyExists() {

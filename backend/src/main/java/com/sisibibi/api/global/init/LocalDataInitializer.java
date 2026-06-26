@@ -1,4 +1,4 @@
-package com.sisibibi.api.global.config;
+package com.sisibibi.api.global.init;
 
 import com.sisibibi.api.domain.chat.entity.ChatMessage;
 import com.sisibibi.api.domain.chat.repository.ChatMessageRepository;
@@ -28,7 +28,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
-import org.springframework.context.annotation.Profile;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;

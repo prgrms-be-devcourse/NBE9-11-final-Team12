@@ -94,6 +94,9 @@ spring:
 app:
   frontend:
     url: ${FRONTEND_URL:http://localhost:3000}
+  websocket:
+    session-registry:
+      ttl: ${APP_WEBSOCKET_SESSION_REGISTRY_TTL:120s}
   speaking:
     turn-duration: ${SPEAKING_TURN_DURATION:3m}
     queue:
