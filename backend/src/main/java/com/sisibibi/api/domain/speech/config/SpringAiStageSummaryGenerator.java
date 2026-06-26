@@ -5,6 +5,7 @@ import com.sisibibi.api.domain.speech.entity.Speech;
 import com.sisibibi.api.domain.speech.service.StageSummaryGenerator;
 import com.sisibibi.api.domain.speech.service.StageSummaryResult;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -17,8 +18,11 @@ public class SpringAiStageSummaryGenerator implements StageSummaryGenerator {
 
     private final ChatClient chatClient;
 
-    public SpringAiStageSummaryGenerator(ChatClient.Builder chatClientBuilder) {
-        this.chatClient = chatClientBuilder.build();
+    public SpringAiStageSummaryGenerator(
+            @Qualifier(StageSummaryGeneratorConfig.STAGE_SUMMARY_CHAT_CLIENT)
+            ChatClient chatClient
+    ) {
+        this.chatClient = chatClient;
     }
 
     @Override
