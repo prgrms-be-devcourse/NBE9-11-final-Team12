@@ -105,6 +105,10 @@ public class Speech {
         this.linkUrl = linkUrl;
     }
 
+    public void updateImage(String imageUrl) {
+        this.imageUrl = imageUrl;
+    }
+
     public void softDelete(LocalDateTime deletedAt) {
         if (this.deleted) {
             return;

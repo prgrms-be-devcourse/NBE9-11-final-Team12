@@ -13,6 +13,7 @@ public record SpeechListRes(
         String content,
         SpeechStance stance,
         SpeechStatus status,
+        String imageUrl,
         LocalDateTime createdAt,
         long reactionCount,
         boolean reactedByMe
@@ -30,6 +31,7 @@ public record SpeechListRes(
                 speech.getContent(),
                 speech.getStance(),
                 speech.getStatus(),
+                speech.getImageUrl(),
                 speech.getCreatedAt(),
                 reactionCount,
                 reactedByMe

@@ -31,6 +31,10 @@ dependencies {
 	implementation("org.springframework.ai:spring-ai-starter-model-openai")
 	runtimeOnly("io.micrometer:micrometer-registry-prometheus")
 
+	// S3
+	implementation(platform("software.amazon.awssdk:bom:2.31.54"))
+	implementation("software.amazon.awssdk:s3")
+
 	// JWT 라이브러리
 	implementation("io.jsonwebtoken:jjwt-api:0.12.6")
 	runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")

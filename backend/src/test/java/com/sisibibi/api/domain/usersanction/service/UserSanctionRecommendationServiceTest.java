@@ -56,6 +56,7 @@ class UserSanctionRecommendationServiceTest {
         )).willReturn(new SanctionRecommendation(
                 UserSanctionType.SPEECH_RESTRICTION,
                 24,
+                false,
                 "최근 90일 누적 위반 점수가 4점 이상입니다."
         ));
         given(userSanctionRepository.findFirstActive(
@@ -71,6 +72,7 @@ class UserSanctionRecommendationServiceTest {
         assertThat(response.mediumCount()).isEqualTo(2);
         assertThat(response.weightedScore()).isEqualTo(5);
         assertThat(response.recommendedDurationHours()).isEqualTo(24);
+        assertThat(response.accountSuspensionReviewRecommended()).isFalse();
         assertThat(response.activeSameTypeSanction()).isTrue();
         assertThat(response.activeSameTypeSanctionId()).isEqualTo(200L);
     }

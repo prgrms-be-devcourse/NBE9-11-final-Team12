@@ -60,6 +60,7 @@ public class UserSanctionRecommendationService {
                 history.weightedScore(),
                 recommendation.type(),
                 recommendation.durationHours(),
+                recommendation.accountSuspensionReviewRecommended(),
                 activeSameTypeSanction != null,
                 activeSameTypeSanction == null ? null : activeSameTypeSanction.getId(),
                 activeSameTypeSanction == null ? null : activeSameTypeSanction.getEndsAt(),

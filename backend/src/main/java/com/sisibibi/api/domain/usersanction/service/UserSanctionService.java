@@ -3,6 +3,7 @@ package com.sisibibi.api.domain.usersanction.service;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReport;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportStatus;
 import com.sisibibi.api.domain.speechreport.repository.SpeechReportRepository;
+import com.sisibibi.api.domain.roomparticipant.service.RoomParticipantForceLeaveService;
 import com.sisibibi.api.domain.user.repository.UserRepository;
 import com.sisibibi.api.domain.user.entity.User;
 import com.sisibibi.api.domain.user.entity.UserRole;
@@ -36,6 +37,7 @@ public class UserSanctionService {
     private final UserRepository userRepository;
     private final SpeechReportRepository speechReportRepository;
     private final UserSanctionRepository userSanctionRepository;
+    private final RoomParticipantForceLeaveService roomParticipantForceLeaveService;
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
@@ -75,6 +77,7 @@ public class UserSanctionService {
         UserSanction savedSanction = userSanctionRepository.save(sanction);
         if (request.type() == UserSanctionType.ACCOUNT_SUSPENSION) {
             targetUser.ban();
+            roomParticipantForceLeaveService.leaveAllJoinedRooms(userId);
         }
         publishSanctionChangedEvent(
                 UserSanctionEventType.SANCTION_CREATED,

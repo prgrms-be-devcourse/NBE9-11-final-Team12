@@ -16,7 +16,7 @@ on:
       - ".github/workflows/**"
       - "backend/src/**"
       - "backend/build.gradle.kts"
-      - "backend/Dockerfile"  
+      - "backend/Dockerfile"
 
   push:
     paths:

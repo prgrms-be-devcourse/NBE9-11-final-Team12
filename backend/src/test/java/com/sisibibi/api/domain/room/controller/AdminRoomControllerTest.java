@@ -59,10 +59,11 @@ class AdminRoomControllerTest {
     mockMvc.perform(post("/api/v1/admin/rooms")
             .contentType(MediaType.APPLICATION_JSON)
             .content("""
-                    {
-                      "topicId": 1
-                    }
-                    """))
+                {
+                  "topicId": 1,
+                  "title": "토론 주제"
+                }
+                """))
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.status").value(201))
         .andExpect(jsonPath("$.code").value("SUCCESS"))

@@ -4,6 +4,7 @@ import com.sisibibi.api.domain.speechreport.entity.SpeechReport;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportReason;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportStatus;
 import com.sisibibi.api.domain.speechreport.repository.SpeechReportRepository;
+import com.sisibibi.api.domain.roomparticipant.service.RoomParticipantForceLeaveService;
 import com.sisibibi.api.domain.user.entity.User;
 import com.sisibibi.api.domain.user.repository.UserRepository;
 import com.sisibibi.api.domain.usersanction.dto.request.UserSanctionCreateReq;
@@ -34,6 +35,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 class UserSanctionServiceTest {
@@ -46,6 +48,9 @@ class UserSanctionServiceTest {
 
     @Mock
     private UserSanctionRepository userSanctionRepository;
+
+    @Mock
+    private RoomParticipantForceLeaveService roomParticipantForceLeaveService;
 
     @Mock
     private ApplicationEventPublisher eventPublisher;
@@ -86,6 +91,7 @@ class UserSanctionServiceTest {
         assertThat(response.sanctionId()).isEqualTo(200L);
         assertThat(response.reportId()).isEqualTo(100L);
         assertThat(response.state()).isEqualTo(UserSanctionState.ACTIVE);
+        verify(roomParticipantForceLeaveService, never()).leaveAllJoinedRooms(10L);
         verify(eventPublisher).publishEvent(any(UserSanctionChangedEvent.class));
     }
 
@@ -170,6 +176,7 @@ class UserSanctionServiceTest {
         assertThat(user.getTokenVersion()).isEqualTo(1L);
         assertThat(response.endsAt()).isNull();
         assertThat(response.state()).isEqualTo(UserSanctionState.ACTIVE);
+        verify(roomParticipantForceLeaveService).leaveAllJoinedRooms(10L);
     }
 
     @Test

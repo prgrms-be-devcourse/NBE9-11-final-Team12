@@ -97,6 +97,7 @@ public enum ErrorCode {
     BEST_SPEECH_NOT_FOUND(HttpStatus.NOT_FOUND, "베스트 의견이 존재하지 않습니다."),
     INVALID_STANCE(HttpStatus.BAD_REQUEST, "올바르지 않은 입장 값입니다."),
     IMAGE_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "이미지 업로드에 실패했습니다."),
+    S3_CONFIG_MISSING(HttpStatus.INTERNAL_SERVER_ERROR, "서버 설정이 누락되었습니다."),
 
     // AI Report
     AI_REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "AI 리포트를 찾을 수 없습니다."),

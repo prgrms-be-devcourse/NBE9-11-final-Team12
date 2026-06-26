@@ -4,6 +4,7 @@ import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
@@ -144,6 +145,59 @@ public interface SpeakingQueueRepository extends JpaRepository<SpeakingQueue, Lo
             """)
     List<Long> findRoomIdsWithExpiredSpeaker(
             @Param("assignedStatus") SpeakingQueueStatus assignedStatus,
+            @Param("now") LocalDateTime now
+    );
+
+    default List<Long> findRoomIdsRequiringIdleWarning(
+            LocalDateTime now,
+            Duration warningDelay,
+            Duration warningSuppressionBeforeExpiration
+    ) {
+        return findRoomIdsRequiringIdleWarning(
+                SpeakingQueueStatus.ASSIGNED,
+                now.minus(warningDelay),
+                now.plus(warningSuppressionBeforeExpiration)
+        );
+    }
+
+    @Query("""
+            select distinct queue.roomId
+            from SpeakingQueue queue
+            where queue.status = :assignedStatus
+              and queue.idleWarningSent = false
+              and queue.lastActivityAt is not null
+              and queue.lastActivityAt <= :activityCutoff
+              and queue.expiresAt > :expirationWarningCutoff
+            """)
+    List<Long> findRoomIdsRequiringIdleWarning(
+            @Param("assignedStatus") SpeakingQueueStatus assignedStatus,
+            @Param("activityCutoff") LocalDateTime activityCutoff,
+            @Param("expirationWarningCutoff") LocalDateTime expirationWarningCutoff
+    );
+
+    default List<Long> findRoomIdsWithIdleTimedOutSpeaker(
+            LocalDateTime now,
+            Duration timeoutDelayAfterWarning
+    ) {
+        return findRoomIdsWithIdleTimedOutSpeaker(
+                SpeakingQueueStatus.ASSIGNED,
+                now.minus(timeoutDelayAfterWarning),
+                now
+        );
+    }
+
+    @Query("""
+            select distinct queue.roomId
+            from SpeakingQueue queue
+            where queue.status = :assignedStatus
+              and queue.idleWarningSent = true
+              and queue.idleWarnedAt is not null
+              and queue.idleWarnedAt <= :warningCutoff
+              and queue.expiresAt > :now
+            """)
+    List<Long> findRoomIdsWithIdleTimedOutSpeaker(
+            @Param("assignedStatus") SpeakingQueueStatus assignedStatus,
+            @Param("warningCutoff") LocalDateTime warningCutoff,
             @Param("now") LocalDateTime now
     );
 }
