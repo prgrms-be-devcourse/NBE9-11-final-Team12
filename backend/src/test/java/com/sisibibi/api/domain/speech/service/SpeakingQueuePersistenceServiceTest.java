@@ -3,6 +3,7 @@ package com.sisibibi.api.domain.speech.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.doThrow;
@@ -17,6 +18,7 @@ import com.sisibibi.api.domain.speech.entity.RoomQueueSequence;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
+import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.repository.RoomQueueSequenceRepository;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
@@ -425,6 +427,8 @@ class SpeakingQueuePersistenceServiceTest {
                 LocalDateTime.of(2026, 6, 24, 11, 51)
         );
         assign(assigned);
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(openRoom(1L, "토론방")));
         given(speakingQueueRepository.findByRoomIdAndStatusInOrderByQueueOrderAsc(
                 1L,
                 List.of(SpeakingQueueStatus.WAITING, SpeakingQueueStatus.ASSIGNED)
@@ -440,6 +444,13 @@ class SpeakingQueuePersistenceServiceTest {
         assertThat(waiting.getActiveRequest()).isNull();
         assertThat(assigned.getStatus()).isEqualTo(SpeakingQueueStatus.COMPLETED);
         assertThat(assigned.getActiveRequest()).isNull();
+        verify(speechRepository).completeSpeakingSpeeches(
+                1L,
+                8L,
+                SpeechStatus.SPEAKING,
+                SpeechStatus.COMPLETED,
+                closedAt
+        );
     }
 
     @Test
@@ -848,6 +859,13 @@ class SpeakingQueuePersistenceServiceTest {
         assertThat(completed).isSameAs(assigned);
         assertThat(completed.getStatus()).isEqualTo(SpeakingQueueStatus.COMPLETED);
         assertThat(completed.getActiveRequest()).isNull();
+        verify(speechRepository).completeSpeakingSpeeches(
+                eq(1L),
+                eq(7L),
+                eq(SpeechStatus.SPEAKING),
+                eq(SpeechStatus.COMPLETED),
+                any(LocalDateTime.class)
+        );
 
         InOrder order = inOrder(roomRepository, speakingQueueRepository);
         order.verify(roomRepository).findByIdForUpdate(1L);
@@ -922,6 +940,13 @@ class SpeakingQueuePersistenceServiceTest {
         assertThat(completed).contains(assigned);
         assertThat(assigned.getStatus()).isEqualTo(SpeakingQueueStatus.COMPLETED);
         assertThat(assigned.getActiveRequest()).isNull();
+        verify(speechRepository).completeSpeakingSpeeches(
+                eq(1L),
+                eq(7L),
+                eq(SpeechStatus.SPEAKING),
+                eq(SpeechStatus.COMPLETED),
+                any(LocalDateTime.class)
+        );
     }
 
     @Test
@@ -1032,6 +1057,13 @@ class SpeakingQueuePersistenceServiceTest {
         assertThat(expired).contains(assigned);
         assertThat(assigned.getStatus()).isEqualTo(SpeakingQueueStatus.COMPLETED);
         assertThat(assigned.getActiveRequest()).isNull();
+        verify(speechRepository).completeSpeakingSpeeches(
+                1L,
+                7L,
+                SpeechStatus.SPEAKING,
+                SpeechStatus.COMPLETED,
+                java.time.LocalDateTime.of(2026, 6, 12, 11, 34)
+        );
 
         InOrder order = inOrder(roomRepository, speakingQueueRepository);
         order.verify(roomRepository).findByIdForUpdate(1L);
@@ -1234,6 +1266,13 @@ class SpeakingQueuePersistenceServiceTest {
         assertThat(completed).contains(assigned);
         assertThat(assigned.getStatus()).isEqualTo(SpeakingQueueStatus.COMPLETED);
         assertThat(assigned.getActiveRequest()).isNull();
+        verify(speechRepository).completeSpeakingSpeeches(
+                1L,
+                7L,
+                SpeechStatus.SPEAKING,
+                SpeechStatus.COMPLETED,
+                ASSIGNED_AT.plusSeconds(40)
+        );
     }
 
     private void givenJoined(Long roomId, Long userId) {

@@ -274,6 +274,8 @@ public class SpeakingQueuePersistenceService {
             Long roomId,
             LocalDateTime closedAt
     ) {
+        roomRepository.findByIdForUpdate(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
         lockQueueSequenceIfExists(roomId);
         List<SpeakingQueue> activeRequests =
                 speakingQueueRepository.findByRoomIdAndStatusInOrderByQueueOrderAsc(
@@ -291,8 +293,7 @@ public class SpeakingQueuePersistenceService {
             }
 
             if (speakingQueue.getStatus() == SpeakingQueueStatus.ASSIGNED) {
-                speakingQueue.complete();
-                completeSpeakingSpeeches(speakingQueue, closedAt);
+                completeSpeakingQueueAndSpeeches(speakingQueue, closedAt);
                 completedRequests.add(speakingQueue);
             }
         }
@@ -425,8 +426,7 @@ public class SpeakingQueuePersistenceService {
         }
 
         LocalDateTime completedAt = LocalDateTime.now();
-        currentSpeaker.complete();
-        completeSpeakingSpeeches(currentSpeaker, completedAt);
+        completeSpeakingQueueAndSpeeches(currentSpeaker, completedAt);
         return currentSpeaker;
     }
 
@@ -448,8 +448,7 @@ public class SpeakingQueuePersistenceService {
 
         SpeakingQueue assigned = currentSpeaker.get();
         LocalDateTime completedAt = LocalDateTime.now();
-        assigned.complete();
-        completeSpeakingSpeeches(assigned, completedAt);
+        completeSpeakingQueueAndSpeeches(assigned, completedAt);
         return Optional.of(assigned);
     }
 
@@ -488,8 +487,7 @@ public class SpeakingQueuePersistenceService {
             return Optional.empty();
         }
 
-        assigned.complete();
-        completeSpeakingSpeeches(assigned, now);
+        completeSpeakingQueueAndSpeeches(assigned, now);
         return Optional.of(assigned);
     }
 
@@ -516,9 +514,16 @@ public class SpeakingQueuePersistenceService {
             return Optional.empty();
         }
 
-        assigned.complete();
-        completeSpeakingSpeeches(assigned, now);
+        completeSpeakingQueueAndSpeeches(assigned, now);
         return Optional.of(assigned);
+    }
+
+    private void completeSpeakingQueueAndSpeeches(
+            SpeakingQueue speakingQueue,
+            LocalDateTime endedAt
+    ) {
+        speakingQueue.complete();
+        completeSpeakingSpeeches(speakingQueue, endedAt);
     }
 
     private void completeSpeakingSpeeches(SpeakingQueue speakingQueue, LocalDateTime endedAt) {
