@@ -250,6 +250,16 @@ export type StageSummary = {
   completedAt: string | null
 }
 
+export type AiCounterIssue = {
+  issueId: number
+  roomId: number
+  triggerQueueId: number
+  targetStance: SpeechStance
+  content: string
+  createdAt: string
+  completedAt: string | null
+}
+
 export type WebSocketEventEnvelope<TData, TEventType extends string = string> = {
   eventId: string
   eventType: TEventType
@@ -288,6 +298,19 @@ export type StageSummaryEvent = WebSocketEventEnvelope<
     roomId: number
   },
   "STAGE_SUMMARY_COMPLETED"
+>
+
+export type AiCounterIssueEvent = WebSocketEventEnvelope<
+  {
+    issueId: number
+    roomId: number
+    triggerQueueId: number
+    targetStance: SpeechStance
+    createdAt: string
+    completedAt: string | null
+    occurredAt: string
+  },
+  "AI_COUNTER_ISSUE_SUGGESTED"
 >
 
 export type RoomEvent = WebSocketEventEnvelope<

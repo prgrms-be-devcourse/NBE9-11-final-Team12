@@ -1,5 +1,6 @@
 import { api } from "@/lib/api/client"
 import type {
+  AiCounterIssue,
   AuthUser,
   ChatMessageCursorPage,
   ClassifiedIssueCandidate,
@@ -123,4 +124,9 @@ export const stageApi = {
 
 export const stageSummaryApi = {
   get: (roomId: number) => api.get<StageSummary>(`/api/v1/rooms/${roomId}/stage-summary`),
+}
+
+export const aiCounterIssueApi = {
+  recent: (roomId: number) =>
+    api.get<AiCounterIssue[]>(`/api/v1/rooms/${roomId}/ai-counter-issues/recent`),
 }

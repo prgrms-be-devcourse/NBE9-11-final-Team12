@@ -1,12 +1,14 @@
 "use client"
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react"
-import { FileText, Flag, History, ImageIcon, Loader2, MessageSquarePlus, Mic, MicOff, RefreshCw, Users, X } from "lucide-react"
+import { FileText, Flag, History, ImageIcon, Lightbulb, Loader2, MessageSquarePlus, Mic, MicOff, RefreshCw, Users, X } from "lucide-react"
 import { ApiError } from "@/lib/api/client"
-import { speechApi, stageApi, stageSummaryApi } from "@/lib/api/services"
+import { aiCounterIssueApi, speechApi, stageApi, stageSummaryApi } from "@/lib/api/services"
 import type { RoomStompConnection } from "@/lib/api/stomp"
 import { useAuth } from "@/components/auth-provider"
 import type {
+  AiCounterIssue,
+  AiCounterIssueEvent,
   SpeechReportReason,
   SpeechEvent,
   SpeechReactionEvent,
@@ -68,6 +70,8 @@ export function MainStage({
   const [stageSummary, setStageSummary] = useState<StageSummary | null>(null)
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [summaryError, setSummaryError] = useState("")
+  const [counterIssues, setCounterIssues] = useState<AiCounterIssue[]>([])
+  const [counterIssueError, setCounterIssueError] = useState("")
   const [createOpen, setCreateOpen] = useState(false)
   const [content, setContent] = useState("")
   const [stance, setStance] = useState<SpeechStance>("PRO")
@@ -83,7 +87,10 @@ export function MainStage({
   const speechesRequestSeqRef = useRef(0)
   const stageRequestSeqRef = useRef(0)
   const summaryRequestSeqRef = useRef(0)
+  const counterIssueRequestSeqRef = useRef(0)
   const summaryInFlightRoomIdRef = useRef<number | null>(null)
+  const counterIssueInFlightRoomIdRef = useRef<number | null>(null)
+  const counterIssueReloadPendingRef = useRef(false)
   const mountedRef = useRef(true)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
   const handledEventIdsRef = useRef<string[]>([])
@@ -185,6 +192,44 @@ export function MainStage({
     }
   }, [liveEnabled, roomId])
 
+  const loadCounterIssues = useCallback(async () => {
+    if (!liveEnabled) {
+      setCounterIssues([])
+      setCounterIssueError("")
+      return
+    }
+
+    if (counterIssueInFlightRoomIdRef.current === roomId) {
+      counterIssueReloadPendingRef.current = true
+      return
+    }
+    counterIssueInFlightRoomIdRef.current = roomId
+    counterIssueReloadPendingRef.current = false
+    const requestSeq = ++counterIssueRequestSeqRef.current
+
+    setCounterIssueError("")
+    try {
+      const response = await aiCounterIssueApi.recent(roomId)
+      if (!mountedRef.current || requestSeq !== counterIssueRequestSeqRef.current) return
+      setCounterIssues(response.filter((issue) => issue.content.trim()))
+    } catch (requestError) {
+      if (!mountedRef.current || requestSeq !== counterIssueRequestSeqRef.current) return
+      if (requestError instanceof ApiError && requestError.status === 404) {
+        setCounterIssues([])
+        return
+      }
+      setCounterIssueError(messageOf(requestError))
+    } finally {
+      if (counterIssueInFlightRoomIdRef.current === roomId) {
+        counterIssueInFlightRoomIdRef.current = null
+      }
+      if (mountedRef.current && counterIssueReloadPendingRef.current) {
+        counterIssueReloadPendingRef.current = false
+        void loadCounterIssues()
+      }
+    }
+  }, [liveEnabled, roomId])
+
   const scheduleSpeechesRecovery = useCallback(() => {
     if (speechesRecoveryTimerRef.current !== null) {
       window.clearTimeout(speechesRecoveryTimerRef.current)
@@ -210,7 +255,10 @@ export function MainStage({
     return () => {
       mountedRef.current = false
       summaryRequestSeqRef.current += 1
+      counterIssueRequestSeqRef.current += 1
       summaryInFlightRoomIdRef.current = null
+      counterIssueInFlightRoomIdRef.current = null
+      counterIssueReloadPendingRef.current = false
     }
   }, [])
 
@@ -225,6 +273,10 @@ export function MainStage({
   useEffect(() => {
     void loadStageSummary()
   }, [loadStageSummary])
+
+  useEffect(() => {
+    void loadCounterIssues()
+  }, [loadCounterIssues])
 
   useEffect(() => {
     handledEventIdsRef.current = []
@@ -243,7 +295,8 @@ export function MainStage({
     void loadSpeeches()
     void loadStage()
     void loadStageSummary(false)
-  }, [loadSpeeches, loadStage, loadStageSummary, recoveryKey])
+    void loadCounterIssues()
+  }, [loadCounterIssues, loadSpeeches, loadStage, loadStageSummary, recoveryKey])
 
   useEffect(() => {
     if (!selectedImage) {
@@ -316,6 +369,21 @@ export function MainStage({
 
     return unsubscribe
   }, [liveEnabled, loadStageSummary, rememberEvent, roomId, stompConnection])
+
+  useEffect(() => {
+    if (!liveEnabled || !stompConnection) return
+
+    const unsubscribe = stompConnection.subscribe<AiCounterIssueEvent>(
+      `/topic/rooms/${roomId}/ai-counter-issues/events`,
+      (event) => {
+        if (!rememberEvent(event.eventId)) return
+        void loadCounterIssues()
+      },
+      setCounterIssueError,
+    )
+
+    return unsubscribe
+  }, [liveEnabled, loadCounterIssues, rememberEvent, roomId, stompConnection])
 
   useEffect(() => {
     if (!liveEnabled || !stompConnection) return
@@ -486,6 +554,7 @@ export function MainStage({
   const hasCompletedSummary = Boolean(
     stageSummary?.status === "COMPLETED" && (stageSummary.moderatorSummary?.trim() || summaryKeyPoints.length > 0),
   )
+  const latestCounterIssue = counterIssues[0] ?? null
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -506,6 +575,7 @@ export function MainStage({
 
       <div className="border-b border-border/50 bg-muted/20 px-4 py-3">
         {stageError && <p className="mb-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{stageError}</p>}
+        {counterIssueError && <p className="mb-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{counterIssueError}</p>}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0 flex flex-col gap-1">
             <div className="flex items-center gap-2">
@@ -556,6 +626,22 @@ export function MainStage({
             )}
           </div>
         </div>
+        {latestCounterIssue && (
+          <div className="mt-3 rounded-lg border border-border/60 bg-background/70 px-3 py-2">
+            <div className="mb-1.5 flex flex-wrap items-center gap-2">
+              <span className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground">
+                <Lightbulb className="size-3.5 text-primary" />
+                AI가 제안한 반대 쟁점
+              </span>
+              <Badge variant="outline" className="text-[10px]">
+                {latestCounterIssue.targetStance === "PRO" ? "찬성 입장 대상" : "반대 입장 대상"}
+              </Badge>
+            </div>
+            <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
+              {latestCounterIssue.content}
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
