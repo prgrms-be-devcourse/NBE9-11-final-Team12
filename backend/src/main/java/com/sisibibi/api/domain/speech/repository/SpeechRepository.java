@@ -80,21 +80,5 @@ public interface SpeechRepository extends JpaRepository<Speech, Long> {
             @Param("triggeredAt") LocalDateTime triggeredAt
     );
 
-    @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("""
-            update Speech speech
-            set speech.status = :completedStatus,
-                speech.endedAt = :endedAt
-            where speech.roomId = :roomId
-              and speech.userId = :userId
-              and speech.deleted = false
-              and speech.status = :speakingStatus
-            """)
-    int completeSpeakingSpeeches(
-            @Param("roomId") Long roomId,
-            @Param("userId") Long userId,
-            @Param("speakingStatus") SpeechStatus speakingStatus,
-            @Param("completedStatus") SpeechStatus completedStatus,
-            @Param("endedAt") LocalDateTime endedAt
-    );
+
 }
