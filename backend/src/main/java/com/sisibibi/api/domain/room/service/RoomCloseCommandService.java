@@ -22,7 +22,7 @@ public class RoomCloseCommandService {
   private final ApplicationEventPublisher eventPublisher;
   private final SpeakingQueueService speakingQueueService;
 
-  @Transactional
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
   public boolean closeRoom(Long roomId, LocalDateTime now) {
     Room room = roomRepository.findByIdForUpdate(roomId)
         .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
