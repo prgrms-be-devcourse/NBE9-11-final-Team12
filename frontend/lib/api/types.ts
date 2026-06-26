@@ -69,6 +69,11 @@ export type RoomDetail = RoomSummary & {
   endedAt: string | null
 }
 
+export type RoomTitlePreview = {
+  topicId: number
+  title: string
+}
+
 export type RoomParticipantStatus = "JOINED" | "LEFT"
 
 export type RoomParticipant = {

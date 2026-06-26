@@ -2,8 +2,8 @@
 
 import Link from "next/link"
 import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -33,6 +33,13 @@ type TopicDraft = {
 
 type TopicEditDraft = TopicDraft & {
   topicId: number
+}
+
+type RoomDraft = {
+  topicId: number
+  topicTitle: string
+  title: string
+  maxParticipants: string
 }
 
 function messageOf(error: unknown, fallback: string) {
@@ -94,14 +101,11 @@ export default function AdminDashboardPage() {
   const [topicMessage, setTopicMessage] = useState("")
   const [manualDraft, setManualDraft] = useState<TopicDraft>(emptyDraft)
   const [editDraft, setEditDraft] = useState<TopicEditDraft | null>(null)
+  const [roomDraft, setRoomDraft] = useState<RoomDraft | null>(null)
   const [mutatingKey, setMutatingKey] = useState("")
 
   const isAdmin = user?.role === "ADMIN"
-
-  const candidateCountLabel = useMemo(
-    () => `${candidates.length.toLocaleString()}개`,
-    [candidates.length],
-  )
+  const candidateCountLabel = useMemo(() => `${candidates.length.toLocaleString()}개`, [candidates.length])
 
   const loadCandidates = async () => {
     setCandidatesLoading(true)
@@ -167,13 +171,13 @@ export default function AdminDashboardPage() {
         category: draft.category.trim(),
         sourceUrl: draft.sourceUrl.trim() || undefined,
       })
-      const message = `토픽 #${created.topicId}이 등록되었습니다.`
+      const message = `토픽 #${created.topicId}이 승인되었습니다.`
       setCandidateMessage(message)
       setTopicMessage(message)
       await loadTopics()
       return true
     } catch (error) {
-      setCandidatesError(messageOf(error, "토픽 등록에 실패했습니다."))
+      setCandidatesError(messageOf(error, "토픽 승인에 실패했습니다."))
       return false
     } finally {
       setMutatingKey("")
@@ -227,15 +231,46 @@ export default function AdminDashboardPage() {
     }
   }
 
-  const createRoomFromTopic = async (topicId: number) => {
-    setMutatingKey(`room-create-${topicId}`)
+  const previewRoomTitle = async (topic: TopicSummary) => {
+    setMutatingKey(`room-preview-${topic.id}`)
     setTopicsError("")
     setTopicMessage("")
     try {
-      const room = await adminApi.createRoom(topicId)
+      const preview = await adminApi.previewRoomTitle(topic.id)
+      setRoomDraft({
+        topicId: topic.id,
+        topicTitle: topic.title,
+        title: preview.title,
+        maxParticipants: "",
+      })
+      setTopicMessage("AI가 만든 토론방 제목을 확인한 뒤 수정하거나 최종 생성할 수 있습니다.")
+    } catch (error) {
+      setTopicsError(messageOf(error, "토론방 제목 미리보기에 실패했습니다. 이미 토론방이 있는 토픽일 수 있습니다."))
+    } finally {
+      setMutatingKey("")
+    }
+  }
+
+  const createRoom = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!roomDraft || !roomDraft.title.trim()) return
+
+    setMutatingKey(`room-create-${roomDraft.topicId}`)
+    setTopicsError("")
+    setTopicMessage("")
+    try {
+      const maxParticipants = roomDraft.maxParticipants.trim()
+        ? Number(roomDraft.maxParticipants)
+        : undefined
+      const room = await adminApi.createRoom({
+        topicId: roomDraft.topicId,
+        title: roomDraft.title.trim(),
+        maxParticipants,
+      })
+      setRoomDraft(null)
       setTopicMessage(`토론방 #${room.roomId}이 생성되었습니다.`)
     } catch (error) {
-      setTopicsError(messageOf(error, "토론방 생성에 실패했습니다. 이미 토론방이 있는 토픽일 수 있습니다."))
+      setTopicsError(messageOf(error, "토론방 생성에 실패했습니다. 제목이나 정원 값을 확인해주세요."))
     } finally {
       setMutatingKey("")
     }
@@ -303,7 +338,7 @@ export default function AdminDashboardPage() {
         <div className="mb-6">
           <h1 className="text-xl font-bold text-foreground">토픽 관리</h1>
           <p className="text-sm text-muted-foreground">
-            스케줄러가 모은 이슈 후보를 확인하고, 필요한 후보만 승인된 토픽으로 등록합니다.
+            스케줄러가 모은 이슈 후보를 확인하고, 필요한 뉴스만 승인된 토픽으로 등록합니다.
           </p>
         </div>
 
@@ -323,7 +358,7 @@ export default function AdminDashboardPage() {
                       이슈 후보
                     </CardTitle>
                     <CardDescription>
-                      3시간마다 자동 갱신되는 후보를 보거나, 지금 즉시 새로 가져올 수 있습니다.
+                      3시간마다 자동 갱신되는 후보를 보거나, 즉시 새로 가져올 수 있습니다.
                     </CardDescription>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -374,41 +409,42 @@ export default function AdminDashboardPage() {
                                 const newsKey = `news-${key}-${newsIndex}`
 
                                 return (
-                                <div
-                                  key={`${key}-news-${newsIndex}`}
-                                  className="rounded-lg border border-border/50 p-3 transition-colors hover:border-primary/40 hover:bg-muted/40"
-                                >
-                                  <div className="mb-1 flex items-center justify-between gap-2">
-                                    <Badge variant="outline" className="text-[10px]">
-                                      {item.category}
-                                    </Badge>
-                                    {(item.news.originallink || item.news.link) && (
-                                      <a
-                                        href={item.news.originallink || item.news.link}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-primary"
-                                      >
-                                        원문
-                                        <ExternalLink className="size-3" />
-                                      </a>
-                                    )}
-                                  </div>
-                                  <p className="line-clamp-2 text-xs font-medium text-foreground">{item.news.title}</p>
-                                  <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
-                                    {item.news.description}
-                                  </p>
-                                  <Button
-                                    className="mt-3 w-full gap-1.5 text-xs"
-                                    size="sm"
-                                    disabled={mutatingKey === newsKey}
-                                    onClick={() => createTopic(newsDraft, newsKey)}
+                                  <div
+                                    key={`${key}-news-${newsIndex}`}
+                                    className="rounded-lg border border-border/50 p-3 transition-colors hover:border-primary/40 hover:bg-muted/40"
                                   >
-                                    {mutatingKey === newsKey ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
-                                    이 뉴스로 토픽 승인
-                                  </Button>
-                                </div>
-                              )})}
+                                    <div className="mb-1 flex items-center justify-between gap-2">
+                                      <Badge variant="outline" className="text-[10px]">
+                                        {item.category}
+                                      </Badge>
+                                      {(item.news.originallink || item.news.link) && (
+                                        <a
+                                          href={item.news.originallink || item.news.link}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-primary"
+                                        >
+                                          원문
+                                          <ExternalLink className="size-3" />
+                                        </a>
+                                      )}
+                                    </div>
+                                    <p className="line-clamp-2 text-xs font-medium text-foreground">{item.news.title}</p>
+                                    <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
+                                      {item.news.description}
+                                    </p>
+                                    <Button
+                                      className="mt-3 w-full gap-1.5 text-xs"
+                                      size="sm"
+                                      disabled={mutatingKey === newsKey}
+                                      onClick={() => createTopic(newsDraft, newsKey)}
+                                    >
+                                      {mutatingKey === newsKey ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
+                                      이 뉴스로 토픽 승인
+                                    </Button>
+                                  </div>
+                                )
+                              })}
                             </div>
                             <div className="flex flex-wrap gap-1">
                               {Array.from(new Set(candidate.news.flatMap((item) => item.keywords))).slice(0, 8).map((keyword) => (
@@ -429,7 +465,7 @@ export default function AdminDashboardPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">직접 토픽 등록</CardTitle>
-                <CardDescription>후보에 없는 주제도 바로 승인된 토픽으로 등록할 수 있습니다.</CardDescription>
+                <CardDescription>후보에 없는 주제를 바로 승인된 토픽으로 등록할 수 있습니다.</CardDescription>
               </CardHeader>
               <CardContent>
                 <TopicForm
@@ -452,7 +488,9 @@ export default function AdminDashboardPage() {
                       <FileText className="size-4 text-primary" />
                       승인된 토픽
                     </CardTitle>
-                    <CardDescription>DB에 저장되어 토론방 생성에 사용할 수 있는 토픽입니다.</CardDescription>
+                    <CardDescription>
+                      승인된 토픽에서 AI 제목을 먼저 확인하고, 수정한 뒤 최종 토론방을 생성합니다.
+                    </CardDescription>
                   </div>
                   <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={loadTopics} disabled={topicsLoading}>
                     <RefreshCw className="size-3.5" />
@@ -475,9 +513,7 @@ export default function AdminDashboardPage() {
                           <div className="min-w-0">
                             <div className="mb-2 flex flex-wrap items-center gap-2">
                               <Badge variant="outline">{topic.category}</Badge>
-                              <span className="text-[11px] text-muted-foreground">
-                                #{topic.id}
-                              </span>
+                              <span className="text-[11px] text-muted-foreground">#{topic.id}</span>
                             </div>
                             <p className="line-clamp-2 text-sm font-semibold text-foreground">{topic.title}</p>
                             {topic.sourceUrl && (
@@ -500,11 +536,11 @@ export default function AdminDashboardPage() {
                             <Button
                               size="sm"
                               className="gap-1.5 text-xs"
-                              disabled={mutatingKey === `room-create-${topic.id}`}
-                              onClick={() => createRoomFromTopic(topic.id)}
+                              disabled={mutatingKey === `room-preview-${topic.id}`}
+                              onClick={() => previewRoomTitle(topic)}
                             >
-                              {mutatingKey === `room-create-${topic.id}` ? <Loader2 className="size-3.5 animate-spin" /> : <Zap className="size-3.5" />}
-                              토론방 생성
+                              {mutatingKey === `room-preview-${topic.id}` ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+                              AI 제목 확인
                             </Button>
                             <Button
                               variant="ghost"
@@ -524,6 +560,30 @@ export default function AdminDashboardPage() {
                 )}
               </CardContent>
             </Card>
+
+            {roomDraft && (
+              <Card className="border-primary/30">
+                <CardHeader>
+                  <CardTitle className="text-sm">토론방 최종 생성</CardTitle>
+                  <CardDescription>
+                    AI가 만든 제목을 확인하고 필요하면 수정한 뒤 토론방을 생성합니다.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <RoomForm
+                    draft={roomDraft}
+                    onChange={setRoomDraft}
+                    onSubmit={createRoom}
+                    submitting={mutatingKey === `room-create-${roomDraft.topicId}`}
+                    secondaryAction={
+                      <Button type="button" variant="outline" onClick={() => setRoomDraft(null)}>
+                        취소
+                      </Button>
+                    }
+                  />
+                </CardContent>
+              </Card>
+            )}
 
             {editDraft && (
               <Card className="border-primary/30">
@@ -601,6 +661,50 @@ function TopicForm({
         <Button type="submit" disabled={submitting || !draft.title.trim() || !draft.category.trim()}>
           {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
           {submitLabel}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+function RoomForm({
+  draft,
+  onChange,
+  onSubmit,
+  submitting,
+  secondaryAction,
+}: {
+  draft: RoomDraft
+  onChange: (draft: RoomDraft) => void
+  onSubmit: (event: FormEvent) => void
+  submitting: boolean
+  secondaryAction?: ReactNode
+}) {
+  return (
+    <form className="grid gap-3" onSubmit={onSubmit}>
+      <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
+        <p className="text-[11px] text-muted-foreground">원본 토픽</p>
+        <p className="mt-1 line-clamp-2 text-sm font-medium text-foreground">{draft.topicTitle}</p>
+      </div>
+      <Input
+        value={draft.title}
+        onChange={(event) => onChange({ ...draft, title: event.target.value })}
+        placeholder="토론방 제목"
+        maxLength={100}
+        required
+      />
+      <Input
+        value={draft.maxParticipants}
+        onChange={(event) => onChange({ ...draft, maxParticipants: event.target.value })}
+        placeholder="최대 참여자 수, 비워두면 기본값"
+        type="number"
+        min={1}
+      />
+      <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+        {secondaryAction}
+        <Button type="submit" disabled={submitting || !draft.title.trim()}>
+          {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
+          최종 토론방 생성
         </Button>
       </div>
     </form>

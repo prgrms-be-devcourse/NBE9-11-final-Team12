@@ -3,8 +3,10 @@ package com.sisibibi.api.domain.room.service;
 import com.sisibibi.api.domain.room.config.RoomTopicGenerator;
 import com.sisibibi.api.domain.room.dto.event.RoomClosedEvent;
 import com.sisibibi.api.domain.room.dto.request.CreateRoomReq;
+import com.sisibibi.api.domain.room.dto.request.PreviewRoomTitleReq;
 import com.sisibibi.api.domain.room.dto.request.UpdateRoomReq;
 import com.sisibibi.api.domain.room.dto.response.CreateRoomRes;
+import com.sisibibi.api.domain.room.dto.response.PreviewRoomTitleRes;
 import com.sisibibi.api.domain.room.dto.response.RoomDetailRes;
 import com.sisibibi.api.domain.room.dto.response.RoomSummaryRes;
 import com.sisibibi.api.domain.room.entity.Room;
@@ -54,13 +56,24 @@ public class RoomService {
       throw new CustomException(ErrorCode.ROOM_ALREADY_EXISTS);
     }
 
-    String debateTitle = roomTopicGenerator.generate(topic);
-
     return roomCreateCommandService.createRoom(
         topic.getId(),
-        debateTitle,
+        request.title(),
         request.maxParticipants()
     );
+  }
+
+  public PreviewRoomTitleRes previewRoomTitle(PreviewRoomTitleReq request) {
+    Topic topic = topicRepository.findByIdAndStatus(request.topicId(), TopicStatus.APPROVED)
+        .orElseThrow(() -> new CustomException(ErrorCode.TOPIC_NOT_FOUND));
+
+    if (roomRepository.existsByTopicId(topic.getId())) {
+      throw new CustomException(ErrorCode.ROOM_ALREADY_EXISTS);
+    }
+
+    String debateTitle = roomTopicGenerator.generate(topic);
+
+    return new PreviewRoomTitleRes(topic.getId(), debateTitle);
   }
 
   // 관리자 방 수정
