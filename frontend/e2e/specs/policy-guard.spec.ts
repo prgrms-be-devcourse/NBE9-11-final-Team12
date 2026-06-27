@@ -11,8 +11,8 @@ test.describe("예외·제한 정책과 시각 표시", () => {
 
   test("잘못된 로그인 정보는 에러 메시지를 표시한다", async ({ page }) => {
     await page.goto("/login")
-    await page.getByLabel("이메일").fill("not-found@example.com")
-    await page.getByLabel("비밀번호").fill("wrong-password")
+    await page.locator("#email").fill("not-found@example.com")
+    await page.locator("#password").fill("wrong-password")
     await page.getByRole("button", { name: /^로그인$/ }).click()
 
     await expect(page.getByText(/로그인에 실패|인증|일치/)).toBeVisible()

@@ -20,6 +20,13 @@ function idOf(data, ...keys) {
   throw new Error(`응답에서 ID를 찾지 못했습니다. keys=${keys.join(",")}`)
 }
 
+function localDateTimeAfter(minutes) {
+  const date = new Date(Date.now() + minutes * 60 * 1000)
+  const pad = (value) => String(value).padStart(2, "0")
+
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
 const admin = new E2eApiClient()
 await login(admin, adminEmail, adminPassword)
 
@@ -57,6 +64,12 @@ const room = await admin.post("/api/v1/admin/rooms", {
 })
 const roomId = idOf(room, "roomId", "id")
 
+await admin.patch(`/api/v1/admin/rooms/${roomId}`, {
+  startedAt: localDateTimeAfter(-1),
+  endedAt: localDateTimeAfter(60),
+  maxParticipants: 20,
+})
+
 await speakerClient.post(`/api/v1/rooms/${roomId}/participants`)
 await speakerClient.post(`/api/v1/rooms/${roomId}/stage/requests`, { stance: "PRO" })
 
@@ -74,9 +87,16 @@ const secondSpeech = await speakerClient.post(`/api/v1/rooms/${roomId}/speeches`
 })
 const secondSpeechId = idOf(secondSpeech, "speechId", "id")
 
+const reportedSpeechContent = `E2E 신고 대상 의견 ${runId}`
+const reportedSpeech = await speakerClient.post(`/api/v1/rooms/${roomId}/speeches`, {
+  content: reportedSpeechContent,
+  stance: "PRO",
+})
+const reportedSpeechId = idOf(reportedSpeech, "speechId", "id")
+
 await reporterClient.post(`/api/v1/rooms/${roomId}/participants`)
 await reporterClient.post(`/api/v1/speeches/${speechId}/reactions`)
-const report = await reporterClient.post(`/api/v1/speeches/${speechId}/reports`, {
+const report = await reporterClient.post(`/api/v1/speeches/${reportedSpeechId}/reports`, {
   reason: "OFF_TOPIC",
   description: "E2E 신고 검증용 상세 설명입니다.",
 })
@@ -113,6 +133,8 @@ const state = {
   },
   report: {
     reportId,
+    speechId: reportedSpeechId,
+    speechContent: reportedSpeechContent,
     description: "E2E 신고 검증용 상세 설명입니다.",
   },
 }

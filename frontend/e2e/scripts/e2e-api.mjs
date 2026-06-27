@@ -99,7 +99,8 @@ export async function login(client, email, password) {
 
 export async function signupOrLogin(client, { email, password, nickname }) {
   try {
-    return await client.post("/api/v1/auth/signup", { email, password, nickname })
+    await client.post("/api/v1/auth/signup", { email, password, nickname })
+    return login(client, email, password)
   } catch (error) {
     if (error instanceof E2eApiError && error.status === 409) {
       return login(client, email, password)

@@ -39,6 +39,8 @@ export type E2eState = {
   }
   report: {
     reportId: number
+    speechId: number
+    speechContent: string
     description: string
   }
 }
@@ -50,8 +52,8 @@ export function loadE2eState(): E2eState {
 
 export async function loginByUi(page: Page, email: string, password: string) {
   await page.goto("/login")
-  await page.getByLabel("이메일").fill(email)
-  await page.getByLabel("비밀번호").fill(password)
+  await page.locator("#email").fill(email)
+  await page.locator("#password").fill(password)
   await page.getByRole("button", { name: /^로그인$/ }).click()
   await page.getByText("로그아웃").waitFor()
 }
