@@ -22,11 +22,10 @@ import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import java.time.LocalDateTime;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -171,14 +170,19 @@ public class ChatReportService {
     }
 
     private Set<Long> extractUserIds(Collection<ChatReport> reports) {
-        return reports.stream()
-                .flatMap(report -> Stream.of(
-                        report.getReportedUserId(),
-                        report.getReporterUserId(),
-                        report.getReviewedBy()
-                ))
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
+        Set<Long> userIds = new HashSet<>();
+        for (ChatReport report : reports) {
+            addIfNotNull(userIds, report.getReportedUserId());
+            addIfNotNull(userIds, report.getReporterUserId());
+            addIfNotNull(userIds, report.getReviewedBy());
+        }
+        return userIds;
+    }
+
+    private void addIfNotNull(Set<Long> userIds, Long userId) {
+        if (userId != null) {
+            userIds.add(userId);
+        }
     }
 
     private Map<Long, String> findNicknames(Set<Long> userIds) {
