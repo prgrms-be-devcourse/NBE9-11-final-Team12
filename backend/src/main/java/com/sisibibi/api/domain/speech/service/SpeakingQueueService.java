@@ -158,9 +158,37 @@ public class SpeakingQueueService {
         SpeakingQueueRoomCloseResult closeResult =
                 speakingQueuePersistenceService.closeActiveRequestsByRoomId(roomId, closedAt);
 
+        synchronizeRoomClosedSpeakingQueuesAfterCommit(closeResult);
+        logRoomClosedSpeakingQueues(roomId, closeResult);
+    }
+
+    private void synchronizeRoomClosedSpeakingQueuesAfterCommit(
+            SpeakingQueueRoomCloseResult closeResult
+    ) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            synchronizeRoomClosedSpeakingQueues(closeResult);
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        synchronizeRoomClosedSpeakingQueues(closeResult);
+                    }
+                }
+        );
+    }
+
+    private void synchronizeRoomClosedSpeakingQueues(SpeakingQueueRoomCloseResult closeResult) {
         closeResult.canceledRequests().forEach(this::synchronizeCanceledRedisProjection);
         closeResult.completedRequests().forEach(this::synchronizeCompletedRedisProjection);
+    }
 
+    private void logRoomClosedSpeakingQueues(
+            Long roomId,
+            SpeakingQueueRoomCloseResult closeResult
+    ) {
         if (!closeResult.canceledRequests().isEmpty()
                 || !closeResult.completedRequests().isEmpty()) {
             log.info(

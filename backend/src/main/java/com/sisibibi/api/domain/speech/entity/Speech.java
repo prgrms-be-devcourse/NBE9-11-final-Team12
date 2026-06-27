@@ -75,6 +75,10 @@ public class Speech {
     @Column(name = "is_deleted", nullable = false)
     private boolean deleted;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "delete_reason", length = 30)
+    private SpeechDeleteReason deleteReason;
+
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
@@ -83,7 +87,7 @@ public class Speech {
         this.userId = userId;
         this.content = content;
         this.stance = stance;
-        this.status = SpeechStatus.READY;
+        this.status = SpeechStatus.SPEAKING;
         this.deleted = false;
     }
 
@@ -94,6 +98,18 @@ public class Speech {
             SpeechStance stance
     ) {
         return new Speech(roomId, userId, content, stance);
+    }
+
+    public static Speech createMainOpinion(
+            Long roomId,
+            Long userId,
+            String content,
+            SpeechStance stance,
+            LocalDateTime startedAt
+    ) {
+        Speech speech = new Speech(roomId, userId, content, stance);
+        speech.startedAt = startedAt;
+        return speech;
     }
 
     public void updateMainOpinion(String content, SpeechStance stance) {
@@ -110,11 +126,23 @@ public class Speech {
     }
 
     public void softDelete(LocalDateTime deletedAt) {
+        softDelete(SpeechDeleteReason.USER_DELETED, deletedAt);
+    }
+
+    public void softDeleteByModerator(SpeechDeleteReason reason, LocalDateTime deletedAt) {
+        if (reason == null || reason == SpeechDeleteReason.USER_DELETED) {
+            throw new IllegalArgumentException("Moderator delete reason is required.");
+        }
+        softDelete(reason, deletedAt);
+    }
+
+    private void softDelete(SpeechDeleteReason reason, LocalDateTime deletedAt) {
         if (this.deleted) {
             return;
         }
 
         this.deleted = true;
+        this.deleteReason = reason;
         this.deletedAt = deletedAt;
     }
 }

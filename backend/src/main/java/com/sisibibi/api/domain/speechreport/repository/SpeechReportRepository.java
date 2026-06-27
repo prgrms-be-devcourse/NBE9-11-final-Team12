@@ -18,6 +18,8 @@ public interface SpeechReportRepository extends JpaRepository<SpeechReport, Long
 
     boolean existsBySpeechIdAndReporterUserId(Long speechId, Long reporterUserId);
 
+    int countBySpeechIdAndReason(Long speechId, SpeechReportReason reason);
+
     @Query("""
             select report
             from SpeechReport report

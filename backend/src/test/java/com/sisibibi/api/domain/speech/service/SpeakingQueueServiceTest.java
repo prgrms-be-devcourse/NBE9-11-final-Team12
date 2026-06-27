@@ -40,6 +40,8 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @ExtendWith(MockitoExtension.class)
 class SpeakingQueueServiceTest {
@@ -844,6 +846,45 @@ class SpeakingQueueServiceTest {
         speakingQueueService.closeSpeakingQueuesWhenRoomClosed(1L, closedAt);
 
         verify(speakingQueuePersistenceService).closeActiveRequestsByRoomId(1L, closedAt);
+        verify(redisSpeakingQueueRepository).remove(1L, 7L);
+        verify(redisSpeakingQueueRepository).removeCurrentSpeaker(1L, 8L);
+        verify(speakingQueuePersistenceService, never()).assignNextSpeaker(
+                eq(1L),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        );
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void closeSpeakingQueuesWhenRoomClosed_defersRedisCleanupUntilTransactionCommit() {
+        LocalDateTime closedAt = LocalDateTime.of(2026, 6, 24, 12, 0);
+        SpeakingQueue canceled = persistedWaitingRequest(1L, 7L, 15);
+        canceled.cancel(closedAt);
+        SpeakingQueue completed = completedRequest(1L, 8L, 16);
+        given(speakingQueuePersistenceService.closeActiveRequestsByRoomId(1L, closedAt))
+                .willReturn(SpeakingQueueRoomCloseResult.of(
+                        List.of(canceled),
+                        List.of(completed)
+                ));
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            speakingQueueService.closeSpeakingQueuesWhenRoomClosed(1L, closedAt);
+
+            verify(speakingQueuePersistenceService).closeActiveRequestsByRoomId(1L, closedAt);
+            verify(redisSpeakingQueueRepository, never()).remove(1L, 7L);
+            verify(redisSpeakingQueueRepository, never()).removeCurrentSpeaker(1L, 8L);
+
+            List<TransactionSynchronization> synchronizations =
+                    TransactionSynchronizationManager.getSynchronizations();
+            assertThat(synchronizations).hasSize(1);
+
+            synchronizations.forEach(TransactionSynchronization::afterCommit);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
         verify(redisSpeakingQueueRepository).remove(1L, 7L);
         verify(redisSpeakingQueueRepository).removeCurrentSpeaker(1L, 8L);
         verify(speakingQueuePersistenceService, never()).assignNextSpeaker(

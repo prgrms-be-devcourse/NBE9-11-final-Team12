@@ -10,6 +10,7 @@ import com.sisibibi.api.domain.speech.dto.event.SpeechChangedEvent;
 import com.sisibibi.api.domain.speech.dto.event.SpeechEventPayload;
 import com.sisibibi.api.domain.speech.dto.event.SpeechEventType;
 import com.sisibibi.api.domain.speech.dto.response.*;
+import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.Speech;
 import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
@@ -73,12 +74,15 @@ public class SpeechService {
         }
 
         validateContent(command.content(), "create", roomId, userId, null);
+        SpeakingQueue currentSpeaker =
+                speakingQueuePersistenceService.validateCurrentSpeaker(roomId, userId);
 
         Speech speech = Speech.createMainOpinion(
                 roomId,
                 userId,
                 command.content(),
-                command.stance()
+                command.stance(),
+                currentSpeaker.getAssignedAt()
         );
 
         Speech savedSpeech = speechRepository.save(speech);
@@ -97,7 +101,7 @@ public class SpeechService {
             throw new CustomException(ErrorCode.ROOM_NOT_FOUND);
         }
 
-        List<Speech> speeches = speechRepository.findByRoomIdBeforeCursor(
+        List<Speech> speeches = speechRepository.findByRoomIdBeforeCursorIncludingDeleted(
                 roomId,
                 cursor,
                 PageRequest.of(0, size + 1)
