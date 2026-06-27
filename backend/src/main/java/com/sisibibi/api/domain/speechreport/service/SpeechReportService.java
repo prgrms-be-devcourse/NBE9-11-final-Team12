@@ -74,9 +74,9 @@ public class SpeechReportService {
 
         return SpeechReportDetailRes.from(
                 report,
-                nicknames.get(report.getReportedUserId()),
-                nicknames.get(report.getReporterUserId()),
-                nicknames.get(report.getReviewedBy()),
+                nicknameOf(nicknames, report.getReportedUserId()),
+                nicknameOf(nicknames, report.getReporterUserId()),
+                nicknameOf(nicknames, report.getReviewedBy()),
                 review
         );
     }
@@ -105,7 +105,7 @@ public class SpeechReportService {
         );
 
         Map<Long, String> nicknames = userNicknameProvider.findNicknamesByIds(Set.of(reviewerUserId));
-        return SpeechReportReviewRes.from(report, nicknames.get(reviewerUserId));
+        return SpeechReportReviewRes.from(report, nicknameOf(nicknames, reviewerUserId));
     }
 
     @Transactional
@@ -230,5 +230,9 @@ public class SpeechReportService {
             userIds.add(report.getReviewedBy());
         }
         return userIds;
+    }
+
+    private String nicknameOf(Map<Long, String> nicknames, Long userId) {
+        return userId == null ? null : nicknames.get(userId);
     }
 }

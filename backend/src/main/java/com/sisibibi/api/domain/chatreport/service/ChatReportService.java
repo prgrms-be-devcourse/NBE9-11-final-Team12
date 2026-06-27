@@ -68,9 +68,9 @@ public class ChatReportService {
 
         return ChatReportDetailRes.from(
                 report,
-                nicknames.get(report.getReportedUserId()),
-                nicknames.get(report.getReporterUserId()),
-                nicknames.get(report.getReviewedBy())
+                nicknameOf(nicknames, report.getReportedUserId()),
+                nicknameOf(nicknames, report.getReporterUserId()),
+                nicknameOf(nicknames, report.getReviewedBy())
         );
     }
 
@@ -96,7 +96,7 @@ public class ChatReportService {
         );
 
         Map<Long, String> nicknames = userNicknameProvider.findNicknamesByIds(Set.of(reviewerUserId));
-        return ChatReportReviewRes.from(report, nicknames.get(reviewerUserId));
+        return ChatReportReviewRes.from(report, nicknameOf(nicknames, reviewerUserId));
     }
 
     @Transactional
@@ -177,6 +177,10 @@ public class ChatReportService {
             addIfNotNull(userIds, report.getReviewedBy());
         }
         return userIds;
+    }
+
+    private String nicknameOf(Map<Long, String> nicknames, Long userId) {
+        return userId == null ? null : nicknames.get(userId);
     }
 
     private void addIfNotNull(Set<Long> userIds, Long userId) {
