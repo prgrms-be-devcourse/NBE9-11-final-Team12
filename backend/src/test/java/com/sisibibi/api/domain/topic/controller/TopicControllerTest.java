@@ -86,38 +86,6 @@ class TopicControllerTest {
   }
 
   @Test
-  void createIssue_returnsIssueCandidates() throws Exception {
-    given(topicIssueService.createIssue())
-        .willReturn(List.of(
-            new IssueCandidateRes(
-                "AI",
-                1000L,
-                20,
-                List.of(
-                    new IssueNewsRes(
-                        "AI news",
-                        "https://original.example.com",
-                        "https://news.example.com",
-                        "description",
-                        "Tue, 16 Jun 2026 10:00:00 +0900"
-                    )
-                )
-            )
-        ));
-
-    mockMvc.perform(get("/api/v1/topics/issues/candidates"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.status").value(200))
-        .andExpect(jsonPath("$.code").value("SUCCESS"))
-        .andExpect(jsonPath("$.data[0].keyword").value("AI"))
-        .andExpect(jsonPath("$.data[0].searchVolume").value(1000))
-        .andExpect(jsonPath("$.data[0].increasePercentage").value(20))
-        .andExpect(jsonPath("$.data[0].news[0].title").value("AI news"));
-
-    verify(topicIssueService).createIssue();
-  }
-
-  @Test
   void getApprovedTopics_returnsPagedTopics() throws Exception {
     given(topicService.getApprovedTopics(org.mockito.ArgumentMatchers.any()))
         .willReturn(new PageImpl<>(

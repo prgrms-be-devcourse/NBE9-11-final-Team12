@@ -9,17 +9,18 @@ import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAuth } from "@/components/auth-provider"
 import { ApiError } from "@/lib/api/client"
-import { adminApi, topicApi } from "@/lib/api/services"
 import type {
   ClassifiedIssueCandidate,
   ClassifiedIssueNews,
   OffTopicAiReview,
+  RoomSummary,
   SpeechReportDetail,
   SpeechReportStatus,
   SpeechReportSummary,
   TopicSummary,
   ViolationSeverity,
 } from "@/lib/api/types"
+import { adminApi, roomApi, topicApi } from "@/lib/api/services"
 import {
   AlertTriangle,
   CheckCircle2,
@@ -27,6 +28,7 @@ import {
   FileText,
   Loader2,
   Pencil,
+  Power,
   RefreshCw,
   Shield,
   Sparkles,
@@ -156,6 +158,10 @@ export default function AdminDashboardPage() {
   const [topicsLoading, setTopicsLoading] = useState(false)
   const [topicsError, setTopicsError] = useState("")
   const [topicMessage, setTopicMessage] = useState("")
+  const [rooms, setRooms] = useState<RoomSummary[]>([])
+  const [roomsLoading, setRoomsLoading] = useState(false)
+  const [roomsError, setRoomsError] = useState("")
+  const [roomMessage, setRoomMessage] = useState("")
   const [manualDraft, setManualDraft] = useState<TopicDraft>(emptyDraft)
   const [editDraft, setEditDraft] = useState<TopicEditDraft | null>(null)
   const [roomDraft, setRoomDraft] = useState<RoomDraft | null>(null)
@@ -174,6 +180,7 @@ export default function AdminDashboardPage() {
 
   const isAdmin = user?.role === "ADMIN"
   const candidateCountLabel = useMemo(() => `${candidates.length.toLocaleString()}개`, [candidates.length])
+  const openRoomCount = useMemo(() => rooms.filter((room) => room.status === "OPEN").length, [rooms])
 
   const loadCandidates = async () => {
     setCandidatesLoading(true)
@@ -217,6 +224,19 @@ export default function AdminDashboardPage() {
     }
   }
 
+  const loadRooms = async () => {
+    setRoomsLoading(true)
+    setRoomsError("")
+    setRoomMessage("")
+    try {
+      setRooms(await roomApi.list())
+    } catch (error) {
+      setRoomsError(messageOf(error, "토론방 목록을 불러오지 못했습니다."))
+    } finally {
+      setRoomsLoading(false)
+    }
+  }
+
   const loadReports = async () => {
     setReportsLoading(true)
     setReportsError("")
@@ -256,6 +276,7 @@ export default function AdminDashboardPage() {
     if (!loading && isAdmin) {
       void loadCandidates()
       void loadTopics()
+      void loadRooms()
     }
   }, [loading, isAdmin])
 
@@ -378,8 +399,28 @@ export default function AdminDashboardPage() {
       })
       setRoomDraft(null)
       setTopicMessage(`토론방 #${room.roomId}이 생성되었습니다.`)
+      await loadRooms()
     } catch (error) {
       setTopicsError(messageOf(error, "토론방 생성에 실패했습니다. 제목이나 정원 값을 확인해주세요."))
+    } finally {
+      setMutatingKey("")
+    }
+  }
+
+  const closeRoom = async (room: RoomSummary) => {
+    if (room.status === "CLOSED") return
+    const confirmed = window.confirm(`'${room.title}' 토론방을 강제 종료할까요?`)
+    if (!confirmed) return
+
+    setMutatingKey(`room-close-${room.roomId}`)
+    setRoomsError("")
+    setRoomMessage("")
+    try {
+      await adminApi.deleteRoom(room.roomId)
+      setRoomMessage(`토론방 #${room.roomId}을 강제 종료했습니다.`)
+      await loadRooms()
+    } catch (error) {
+      setRoomsError(messageOf(error, "토론방 강제 종료에 실패했습니다."))
     } finally {
       setMutatingKey("")
     }
@@ -491,7 +532,7 @@ export default function AdminDashboardPage() {
         <div className="mb-6">
           <h1 className="text-xl font-bold text-foreground">관리자 대시보드</h1>
           <p className="text-sm text-muted-foreground">
-            토픽과 토론방을 운영하고, 신고된 의견을 검토합니다.
+            이슈 후보를 승인된 토픽으로 등록하고, 토론방 생성과 강제 종료를 관리합니다.
           </p>
         </div>
 
@@ -500,6 +541,7 @@ export default function AdminDashboardPage() {
             <TabsTrigger value="candidates">이슈 후보</TabsTrigger>
             <TabsTrigger value="topics">승인된 토픽</TabsTrigger>
             <TabsTrigger value="reports">신고 관리</TabsTrigger>
+            <TabsTrigger value="rooms">토론방 관리</TabsTrigger>
           </TabsList>
 
           <TabsContent value="candidates" className="space-y-5">
@@ -761,6 +803,82 @@ export default function AdminDashboardPage() {
                 </CardContent>
               </Card>
             )}
+          </TabsContent>
+
+          <TabsContent value="rooms" className="space-y-5">
+            <Card>
+              <CardHeader>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-sm">
+                      <Power className="size-4 text-primary" />
+                      토론방 관리
+                    </CardTitle>
+                    <CardDescription>
+                      진행 중인 토론방을 관리자 권한으로 강제 종료할 수 있습니다.
+                    </CardDescription>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="outline">진행 중 {openRoomCount.toLocaleString()}개</Badge>
+                    <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={loadRooms} disabled={roomsLoading}>
+                      <RefreshCw className="size-3.5" />
+                      새로고침
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {roomMessage && <StatusMessage tone="success" message={roomMessage} />}
+                {roomsError && <StatusMessage tone="error" message={roomsError} />}
+                {roomsLoading ? (
+                  <LoadingBox message="토론방 목록을 불러오는 중입니다." />
+                ) : rooms.length === 0 ? (
+                  <EmptyBox message="생성된 토론방이 없습니다." />
+                ) : (
+                  <div className="grid gap-3">
+                    {rooms.map((room) => (
+                      <div key={room.roomId} className="rounded-lg border border-border/60 bg-card p-4">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                          <div className="min-w-0">
+                            <div className="mb-2 flex flex-wrap items-center gap-2">
+                              <Badge
+                                variant={room.status === "OPEN" ? "default" : "outline"}
+                                className="text-[10px]"
+                              >
+                                {room.status === "OPEN" ? "진행 중" : "종료"}
+                              </Badge>
+                              <span className="text-[11px] text-muted-foreground">방 #{room.roomId}</span>
+                              <span className="text-[11px] text-muted-foreground">토픽 #{room.topicId}</span>
+                            </div>
+                            <p className="line-clamp-2 text-sm font-semibold text-foreground">{room.title}</p>
+                            <p className="mt-1 text-[11px] text-muted-foreground">
+                              시작: {room.startedAt ? new Date(room.startedAt).toLocaleString("ko-KR") : "-"}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 flex-wrap gap-2">
+                            <Link href={`/rooms/${room.roomId}`}>
+                              <Button variant="outline" size="sm" className="gap-1.5 text-xs">
+                                보기
+                              </Button>
+                            </Link>
+                            <Button
+                              variant={room.status === "OPEN" ? "destructive" : "outline"}
+                              size="sm"
+                              className="gap-1.5 text-xs"
+                              disabled={room.status === "CLOSED" || mutatingKey === `room-close-${room.roomId}`}
+                              onClick={() => closeRoom(room)}
+                            >
+                              {mutatingKey === `room-close-${room.roomId}` ? <Loader2 className="size-3.5 animate-spin" /> : <Power className="size-3.5" />}
+                              강제 종료
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="reports" className="space-y-5">

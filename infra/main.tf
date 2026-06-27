@@ -320,6 +320,71 @@ resource "aws_iam_role_policy_attachment" "speech_image_s3_policy" {
 output "speech_image_bucket_name" {
   value = aws_s3_bucket.speech_images.bucket
 }
+# SQS 설정 시작
+
+resource "aws_sqs_queue" "speech_event_dlq" {
+  name                      = "${var.prefix}-speech-event-dlq"
+  message_retention_seconds = 1209600 # 14일
+
+  tags = {
+    Name = "${var.prefix}-speech-event-dlq"
+  }
+}
+
+resource "aws_sqs_queue" "speech_event_queue" {
+  name                       = "${var.prefix}-speech-event-queue"
+  visibility_timeout_seconds = 30
+  message_retention_seconds  = 345600 # 4일
+
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.speech_event_dlq.arn
+    maxReceiveCount     = 3
+  })
+
+  tags = {
+    Name = "${var.prefix}-speech-event-queue"
+  }
+}
+
+resource "aws_iam_policy" "speech_event_sqs_policy" {
+  name = "${var.prefix}-speech-event-sqs-policy"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "sqs:SendMessage",
+          "sqs:ReceiveMessage",
+          "sqs:DeleteMessage",
+          "sqs:GetQueueAttributes",
+          "sqs:GetQueueUrl",
+          "sqs:ChangeMessageVisibility"
+        ]
+        Resource = [
+          aws_sqs_queue.speech_event_queue.arn,
+          aws_sqs_queue.speech_event_dlq.arn
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "speech_event_sqs_policy" {
+  role       = data.aws_iam_role.ec2_role_1.name
+  policy_arn = aws_iam_policy.speech_event_sqs_policy.arn
+}
+
+output "speech_event_queue_url" {
+  value = aws_sqs_queue.speech_event_queue.url
+}
+
+output "speech_event_dlq_url" {
+  value = aws_sqs_queue.speech_event_dlq.url
+}
+
+# SQS 설정 끝
 
 locals {
   ec2_user_data_base = <<-END_OF_FILE
@@ -330,6 +395,8 @@ PASSWORD_1=${var.password_1}
 NPM_PASSWORD=${var.npm_password}
 APP_1_DOMAIN=${var.app_1_domain}
 NPM_EMAIL=${var.npm_email}
+SQS_SPEECH_EVENT_QUEUE_URL=${aws_sqs_queue.speech_event_queue.url}
+SQS_SPEECH_EVENT_DLQ_URL=${aws_sqs_queue.speech_event_dlq.url}
 EOF
 
 # 가상 메모리 4GB 설정

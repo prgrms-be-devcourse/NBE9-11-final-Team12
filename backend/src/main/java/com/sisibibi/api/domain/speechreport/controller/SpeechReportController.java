@@ -5,6 +5,8 @@ import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportCreateRes;
 import com.sisibibi.api.domain.speechreport.service.SpeechReportService;
 import com.sisibibi.api.global.response.ApiResponse;
 import com.sisibibi.api.global.security.AuthPrincipal;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "의견 신고", description = "의견 신고 접수 API")
 @Validated
 @RestController
 @RequiredArgsConstructor
@@ -26,6 +29,10 @@ public class SpeechReportController {
 
     private final SpeechReportService speechReportService;
 
+    @Operation(
+        summary = "의견 신고 접수",
+        description = "현재 로그인 사용자가 지정한 의견을 신고합니다."
+    )
     @PostMapping("/{speechId}/reports")
     public ResponseEntity<ApiResponse<SpeechReportCreateRes>> createReport(
             @PathVariable @Positive Long speechId,

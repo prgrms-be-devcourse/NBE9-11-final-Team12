@@ -8,6 +8,8 @@ import com.sisibibi.api.domain.topic.service.TopicIssueService;
 import com.sisibibi.api.domain.topic.service.TopicKeywordService;
 import com.sisibibi.api.domain.topic.service.TopicService;
 import com.sisibibi.api.global.response.ApiResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+@Tag(name = "토픽", description = "토픽 조회 API")
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/topics/issues")
@@ -30,6 +33,10 @@ public class TopicController {
   private final TopicKeywordService topicKeywordService;
   private final TopicService topicService;
 
+  @Operation(
+      summary = "토픽 상세 조회",
+      description = "승인된 토픽의 상세 정보를 조회합니다."
+  )
   @GetMapping("/{topicId}")
   public ResponseEntity<ApiResponse<TopicDetailRes>> getTopicDetail(
       @PathVariable Long topicId
@@ -39,6 +46,10 @@ public class TopicController {
     return ResponseEntity.ok(ApiResponse.ok("토픽 상세 조회가 완료되었습니다.", result));
   }
 
+  @Operation(
+      summary = "승인된 토픽 목록 조회",
+      description = "승인된 토픽 목록을 페이지 단위로 조회합니다."
+  )
   @GetMapping
   public ResponseEntity<ApiResponse<Page<TopicSummaryRes>>> getApprovedTopics(
       @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC)
@@ -48,23 +59,5 @@ public class TopicController {
 
     return ResponseEntity.ok(ApiResponse.ok("승인된 토픽 목록 조회가 완료되었습니다.", result));
   }
-
-  // 테스트용
-  @GetMapping("/candidates/classified")
-  public ResponseEntity<ApiResponse<List<ClassifiedIssueCandidateRes>>> createClassifiedIssue() {
-    List<IssueCandidateRes> candidates = topicIssueService.createIssue();
-    List<ClassifiedIssueCandidateRes> result = topicKeywordService.classify(candidates);
-
-    return ResponseEntity.ok(ApiResponse.ok("뉴스별 키워드 분류가 완료되었습니다.", result));
-  }
-
-  // ai 분류 없는 토픽후보 모음
-  @GetMapping("/candidates")
-  public ResponseEntity<ApiResponse<List<IssueCandidateRes>>> createIssue() {
-    List<IssueCandidateRes> result = topicIssueService.createIssue();
-
-    return ResponseEntity.ok(ApiResponse.ok("실시간 이슈 후보 생성이 완료되었습니다.", result));
-  }
-
 
 }

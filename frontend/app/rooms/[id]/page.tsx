@@ -59,6 +59,7 @@ export default function RoomDetailPage() {
   const [stompConnected, setStompConnected] = useState(false)
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>("disconnected")
   const [recoveryKey, setRecoveryKey] = useState(0)
+  const [roomClosedMessage, setRoomClosedMessage] = useState("")
   const connectedOnceRef = useRef(false)
   const roomRequestSeqRef = useRef(0)
   const participantRequestSeqRef = useRef(0)
@@ -235,6 +236,8 @@ export default function RoomDetailPage() {
       (event) => {
         if (!rememberEvent(event.eventId)) return
         if (event.eventType !== "ROOM_CLOSED") return
+        setRoomClosedMessage(event.data.message || "토론방이 종료되었습니다.")
+        setRoomView((current) => current ? { ...current, status: "CLOSED", isLive: false } : current)
         scheduleRoomRecovery()
       },
       setJoinError,
@@ -357,6 +360,11 @@ export default function RoomDetailPage() {
           )}
           {realtimeMessage && (
             <p className="mb-3 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">{realtimeMessage}</p>
+          )}
+          {roomClosedMessage && (
+            <p className="mb-3 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs font-medium text-primary">
+              {roomClosedMessage}
+            </p>
           )}
 
           {/* 3-column layout on desktop */}

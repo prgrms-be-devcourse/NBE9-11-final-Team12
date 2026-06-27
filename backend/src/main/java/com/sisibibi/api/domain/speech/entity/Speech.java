@@ -87,7 +87,7 @@ public class Speech {
         this.userId = userId;
         this.content = content;
         this.stance = stance;
-        this.status = SpeechStatus.READY;
+        this.status = SpeechStatus.SPEAKING;
         this.deleted = false;
     }
 
@@ -98,6 +98,18 @@ public class Speech {
             SpeechStance stance
     ) {
         return new Speech(roomId, userId, content, stance);
+    }
+
+    public static Speech createMainOpinion(
+            Long roomId,
+            Long userId,
+            String content,
+            SpeechStance stance,
+            LocalDateTime startedAt
+    ) {
+        Speech speech = new Speech(roomId, userId, content, stance);
+        speech.startedAt = startedAt;
+        return speech;
     }
 
     public void updateMainOpinion(String content, SpeechStance stance) {

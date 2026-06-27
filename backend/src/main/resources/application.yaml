@@ -19,58 +19,58 @@ spring:
     # backend 디렉토리가 아닌 루트 디렉토리에서 .env 가져옴
     import: optional:file:../.env[.properties]
 
-#  # Database 설정 (MySQL)
-#  datasource:
-#    driver-class-name: com.mysql.cj.jdbc.Driver
-#    url: jdbc:mysql://localhost:23306/sisibibi?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
-#    username: root
-#    password: ${DB_PASSWORD:root}
-#
-#  # Redis 설정
-#  data:
-#    redis:
-#      host: localhost
-#      port: 26379
-#      timeout: 2000ms # Redis 응답 지연 시 서버 멈춤 방지 (2초)
-
-#  datasource:
-#    driver-class-name: com.mysql.cj.jdbc.Driver
-#    url: jdbc:mysql://${DB_HOST:mysql_1}:${DB_PORT:3306}/${DB_NAME:sisibibi}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
-#    username: ${DB_USERNAME:sisibibi}
-#    password: ${DB_PASSWORD}
-#
-#  data:
-#    redis:
-#      host: ${REDIS_HOST:redis_1}
-#      port: ${REDIS_PORT:6379}
-#      password: ${REDIS_PASSWORD:}
-#      timeout: 2000ms
-
-#  datasource:
-#    driver-class-name: com.mysql.cj.jdbc.Driver
-#    url: jdbc:mysql://${DB_HOST:mysql_1}:${DB_PORT:3306}/${DB_NAME:sisibibi}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
-#    username: ${DB_USERNAME:sisibibi}
-#    password: ${DB_PASSWORD}
-#
-#  data:
-#    redis:
-#      host: ${REDIS_HOST:redis_1}
-#      port: ${REDIS_PORT:6379}
-#      password: ${REDIS_PASSWORD:}
-#      timeout: 2000ms
-
+  # Database 설정 (MySQL)
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://${DB_HOST:mysql_1}:${DB_PORT:3306}/${DB_NAME:sisibibi}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
-    username: ${DB_USERNAME:sisibibi}
-    password: ${DB_PASSWORD}
+    url: jdbc:mysql://localhost:23306/sisibibi?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    username: root
+    password: ${DB_PASSWORD:root}
 
+  # Redis 설정
   data:
     redis:
-      host: ${REDIS_HOST:redis_1}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
-      timeout: 2000ms
+      host: localhost
+      port: 26379
+      timeout: 2000ms # Redis 응답 지연 시 서버 멈춤 방지 (2초)
+
+#  datasource:
+#    driver-class-name: com.mysql.cj.jdbc.Driver
+#    url: jdbc:mysql://${DB_HOST:mysql_1}:${DB_PORT:3306}/${DB_NAME:sisibibi}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+#    username: ${DB_USERNAME:sisibibi}
+#    password: ${DB_PASSWORD}
+#
+#  data:
+#    redis:
+#      host: ${REDIS_HOST:redis_1}
+#      port: ${REDIS_PORT:6379}
+#      password: ${REDIS_PASSWORD:}
+#      timeout: 2000ms
+
+#  datasource:
+#    driver-class-name: com.mysql.cj.jdbc.Driver
+#    url: jdbc:mysql://${DB_HOST:mysql_1}:${DB_PORT:3306}/${DB_NAME:sisibibi}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+#    username: ${DB_USERNAME:sisibibi}
+#    password: ${DB_PASSWORD}
+#
+#  data:
+#    redis:
+#      host: ${REDIS_HOST:redis_1}
+#      port: ${REDIS_PORT:6379}
+#      password: ${REDIS_PASSWORD:}
+#      timeout: 2000ms
+
+#  datasource:
+#    driver-class-name: com.mysql.cj.jdbc.Driver
+#    url: jdbc:mysql://${DB_HOST:mysql_1}:${DB_PORT:3306}/${DB_NAME:sisibibi}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+#    username: ${DB_USERNAME:sisibibi}
+#    password: ${DB_PASSWORD}
+#
+#  data:
+#    redis:
+#      host: ${REDIS_HOST:redis_1}
+#      port: ${REDIS_PORT:6379}
+#      password: ${REDIS_PASSWORD:}
+#      timeout: 2000ms
 
   # JPA/Hibernate 설정
   jpa:
@@ -154,6 +154,17 @@ naver:
     news-url: ${NAVER_NEWS_SEARCH_URL:https://openapi.naver.com/v1/search/news.json}
     client-id: ${NAVER_CLIENT_ID:}
     client-secret: ${NAVER_CLIENT_SECRET:}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    csrf:
+      enabled: true
+    operations-sorter: alpha
+    tags-sorter: alpha
+    disable-swagger-default-url: true
 
 serpapi:
   base-url: ${SERPAPI_BASE_URL:https://serpapi.com/search.json}
