@@ -9,8 +9,15 @@ import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAuth } from "@/components/auth-provider"
 import { ApiError } from "@/lib/api/client"
-import { adminApi, topicApi } from "@/lib/api/services"
-import type { ChatReportDetail, ClassifiedIssueCandidate, ClassifiedIssueNews, TopicSummary } from "@/lib/api/types"
+import { adminApi, roomApi, topicApi } from "@/lib/api/services"
+import type {
+  ChatReportDetail,
+  ClassifiedIssueCandidate,
+  ClassifiedIssueNews,
+  OffTopicAiReview,
+  RoomSummary,
+  TopicSummary,
+} from "@/lib/api/types"
 import type {
   AdminUser,
   AdminUserRole,
@@ -31,6 +38,7 @@ import {
   Gavel,
   Loader2,
   Pencil,
+  Power,
   RefreshCw,
   Shield,
   Sparkles,
@@ -233,6 +241,36 @@ function messageOf(error: unknown, fallback: string) {
   return error instanceof ApiError ? error.message : fallback
 }
 
+function formatPercent(value: number | null) {
+  if (value === null) return null
+  const normalized = value <= 1 ? value * 100 : value
+  return `${Math.round(normalized)}%`
+}
+
+function aiReviewLabel(review: OffTopicAiReview | null | undefined) {
+  if (!review) return "AI 검토 없음"
+  if (review.status === "PENDING") return "AI 검토 중"
+  if (review.status === "FAILED") return "AI 검토 실패"
+  if (review.confidence !== null && review.confidence < 0.3) {
+    return "AI 검토 완료 · 논점 이탈 가능성 있음"
+  }
+  if (review.confidence !== null && review.confidence < 0.6) {
+    return "AI 검토 완료 · 논점 이탈 의심"
+  }
+  return "AI 검토 완료 · 정상 범위"
+}
+
+function aiReviewTextClass(review: OffTopicAiReview | null | undefined) {
+  return review?.status === "COMPLETED" && review.confidence !== null && review.confidence < 0.3
+    ? "text-destructive"
+    : "text-foreground"
+}
+
+function relationScoreLabel(value: number | null) {
+  const percent = formatPercent(value)
+  return percent ? `연관성 점수 ${percent}` : ""
+}
+
 function categoryOf(candidate: ClassifiedIssueCandidate) {
   return candidate.news.find((item) => item.category)?.category ?? "기타"
 }
@@ -289,6 +327,10 @@ export default function AdminDashboardPage() {
   const [manualDraft, setManualDraft] = useState<TopicDraft>(emptyDraft)
   const [editDraft, setEditDraft] = useState<TopicEditDraft | null>(null)
   const [roomDraft, setRoomDraft] = useState<RoomDraft | null>(null)
+  const [rooms, setRooms] = useState<RoomSummary[]>([])
+  const [roomsLoading, setRoomsLoading] = useState(false)
+  const [roomsError, setRoomsError] = useState("")
+  const [roomMessage, setRoomMessage] = useState("")
   const [mutatingKey, setMutatingKey] = useState("")
   const [reportKind, setReportKind] = useState<ReportKind>("speech")
   const [reportStatusFilter, setReportStatusFilter] = useState<SpeechReportStatus | "">("")
@@ -322,6 +364,7 @@ export default function AdminDashboardPage() {
 
   const isAdmin = user?.role === "ADMIN"
   const candidateCountLabel = useMemo(() => `${candidates.length.toLocaleString()}개`, [candidates.length])
+  const openRoomCount = useMemo(() => rooms.filter((room) => room.status === "OPEN").length, [rooms])
   const selectedSanctionType = SANCTION_TYPES.find((type) => type.value === manualSanctionType)
   const blocksDuplicateRecommendedSanction =
     Boolean(recommendation?.activeSameTypeSanction && manualSanctionType === recommendation.recommendedType)
@@ -367,6 +410,19 @@ export default function AdminDashboardPage() {
       setTopicsError(messageOf(error, "승인된 토픽 목록을 불러오지 못했습니다."))
     } finally {
       setTopicsLoading(false)
+    }
+  }
+
+  const loadRooms = async () => {
+    setRoomsLoading(true)
+    setRoomsError("")
+    setRoomMessage("")
+    try {
+      setRooms(await roomApi.list())
+    } catch (error) {
+      setRoomsError(messageOf(error, "토론방 목록을 불러오지 못했습니다."))
+    } finally {
+      setRoomsLoading(false)
     }
   }
 
@@ -681,15 +737,6 @@ export default function AdminDashboardPage() {
     }
   }
 
-  useEffect(() => {
-    if (!loading && isAdmin) {
-      void loadCandidates()
-      void loadTopics()
-      void loadReports()
-      void loadAdminUsers()
-    }
-  }, [loading, isAdmin])
-
   const createTopic = async (draft: TopicDraft, key: string) => {
     if (!draft.title.trim() || !draft.category.trim()) return false
 
@@ -717,6 +764,16 @@ export default function AdminDashboardPage() {
       setMutatingKey("")
     }
   }
+
+  useEffect(() => {
+    if (!loading && isAdmin) {
+      void loadCandidates()
+      void loadTopics()
+      void loadRooms()
+      void loadReports()
+      void loadAdminUsers()
+    }
+  }, [loading, isAdmin])
 
   const createManualTopic = async (event: FormEvent) => {
     event.preventDefault()
@@ -810,6 +867,25 @@ export default function AdminDashboardPage() {
     }
   }
 
+  const closeRoom = async (room: RoomSummary) => {
+    if (room.status === "CLOSED") return
+    const confirmed = window.confirm(`'${room.title}' 토론방을 강제 종료할까요?`)
+    if (!confirmed) return
+
+    setMutatingKey(`room-close-${room.roomId}`)
+    setRoomsError("")
+    setRoomMessage("")
+    try {
+      await adminApi.deleteRoom(room.roomId)
+      setRoomMessage(`토론방 #${room.roomId}을 강제 종료했습니다.`)
+      await loadRooms()
+    } catch (error) {
+      setRoomsError(messageOf(error, "토론방 강제 종료에 실패했습니다."))
+    } finally {
+      setMutatingKey("")
+    }
+  }
+
   const startEdit = async (topic: TopicSummary) => {
     setTopicsError("")
     try {
@@ -879,6 +955,7 @@ export default function AdminDashboardPage() {
         <Tabs defaultValue="topic-management" className="gap-5">
           <TabsList className="w-full justify-start sm:w-fit">
             <TabsTrigger value="topic-management">토픽 관리</TabsTrigger>
+            <TabsTrigger value="rooms">토론방 관리</TabsTrigger>
             <TabsTrigger value="reports">신고/제재 관리</TabsTrigger>
             <TabsTrigger value="users">사용자 관리</TabsTrigger>
           </TabsList>
@@ -1153,6 +1230,82 @@ export default function AdminDashboardPage() {
             </Tabs>
           </TabsContent>
 
+          <TabsContent value="rooms" className="space-y-5">
+            <Card>
+              <CardHeader>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-sm">
+                      <Power className="size-4 text-primary" />
+                      토론방 관리
+                    </CardTitle>
+                    <CardDescription>
+                      진행 중인 토론방을 관리자 권한으로 강제 종료할 수 있습니다.
+                    </CardDescription>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="outline">진행 중 {openRoomCount.toLocaleString()}개</Badge>
+                    <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={loadRooms} disabled={roomsLoading}>
+                      <RefreshCw className="size-3.5" />
+                      새로고침
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {roomMessage && <StatusMessage tone="success" message={roomMessage} />}
+                {roomsError && <StatusMessage tone="error" message={roomsError} />}
+                {roomsLoading ? (
+                  <LoadingBox message="토론방 목록을 불러오는 중입니다." />
+                ) : rooms.length === 0 ? (
+                  <EmptyBox message="생성된 토론방이 없습니다." />
+                ) : (
+                  <div className="grid gap-3">
+                    {rooms.map((room) => (
+                      <div key={room.roomId} className="rounded-lg border border-border/60 bg-card p-4">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                          <div className="min-w-0">
+                            <div className="mb-2 flex flex-wrap items-center gap-2">
+                              <Badge
+                                variant={room.status === "OPEN" ? "default" : "outline"}
+                                className="text-[10px]"
+                              >
+                                {room.status === "OPEN" ? "진행 중" : "종료"}
+                              </Badge>
+                              <span className="text-[11px] text-muted-foreground">방 #{room.roomId}</span>
+                              <span className="text-[11px] text-muted-foreground">토픽 #{room.topicId}</span>
+                            </div>
+                            <p className="line-clamp-2 text-sm font-semibold text-foreground">{room.title}</p>
+                            <p className="mt-1 text-[11px] text-muted-foreground">
+                              시작: {room.startedAt ? new Date(room.startedAt).toLocaleString("ko-KR") : "-"}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 flex-wrap gap-2">
+                            <Link href={`/rooms/${room.roomId}`}>
+                              <Button variant="outline" size="sm" className="gap-1.5 text-xs">
+                                보기
+                              </Button>
+                            </Link>
+                            <Button
+                              variant={room.status === "OPEN" ? "destructive" : "outline"}
+                              size="sm"
+                              className="gap-1.5 text-xs"
+                              disabled={room.status === "CLOSED" || mutatingKey === `room-close-${room.roomId}`}
+                              onClick={() => closeRoom(room)}
+                            >
+                              {mutatingKey === `room-close-${room.roomId}` ? <Loader2 className="size-3.5 animate-spin" /> : <Power className="size-3.5" />}
+                              강제 종료
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           <TabsContent value="reports" className="space-y-5">
             <Card>
               <CardHeader>
@@ -1298,6 +1451,21 @@ export default function AdminDashboardPage() {
                             <span>대상: {userLabel(report.reportedUserId, report.reportedUserNickname)}</span>
                             <span>신고자: {userLabel(report.reporterUserId, report.reporterUserNickname)}</span>
                           </div>
+                          {reportKind === "speech" && "offTopicAiReview" in report && (
+                            <div className="mt-2 rounded-lg bg-muted/40 px-3 py-2">
+                              <p className={`text-xs font-medium ${aiReviewTextClass(report.offTopicAiReview)}`}>
+                                {aiReviewLabel(report.offTopicAiReview)}
+                                {relationScoreLabel(report.offTopicAiReview?.confidence ?? null)
+                                  ? ` · ${relationScoreLabel(report.offTopicAiReview?.confidence ?? null)}`
+                                  : ""}
+                              </p>
+                              {report.offTopicAiReview && (
+                                <p className="mt-1 text-[11px] text-muted-foreground">
+                                  신고 {report.offTopicAiReview.reportCount} / 기준 {report.offTopicAiReview.threshold} · 현재 참여자 {report.offTopicAiReview.participantCount}명
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </button>
                       ))}
                     </div>
@@ -1320,6 +1488,9 @@ export default function AdminDashboardPage() {
                                 <p className="rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
                                   상세 설명: {selectedReport.description}
                                 </p>
+                              )}
+                              {reportKind === "speech" && "offTopicAiReview" in selectedReport && (
+                                <AiReviewBox review={selectedReport.offTopicAiReview} />
                               )}
                               <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
                                 <span>상태: {reportStatusLabel(selectedReport.status)}</span>
@@ -1758,6 +1929,7 @@ export default function AdminDashboardPage() {
               </CardContent>
             </Card>
           </TabsContent>
+
         </Tabs>
       </main>
     </div>
@@ -1858,6 +2030,46 @@ function RoomForm({
         </Button>
       </div>
     </form>
+  )
+}
+
+function InfoBox({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+      <p className="text-[11px] text-muted-foreground">{label}</p>
+      <p className="mt-1 text-sm font-medium text-foreground">{value}</p>
+    </div>
+  )
+}
+
+function AiReviewBox({ review }: { review: OffTopicAiReview | null | undefined }) {
+  const relationScore = relationScoreLabel(review?.confidence ?? null)
+
+  return (
+    <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant={review?.status === "COMPLETED" ? "secondary" : "outline"} className="text-[10px]">
+          AI 검토 보조 결과
+        </Badge>
+        <p className={`text-xs font-medium ${aiReviewTextClass(review)}`}>
+          {aiReviewLabel(review)}
+          {relationScore ? ` · ${relationScore}` : ""}
+        </p>
+      </div>
+      {review ? (
+        <>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            신고 {review.reportCount} / 기준 {review.threshold} · 현재 참여자 {review.participantCount}명
+            {review.completedAt ? ` · 완료 ${new Date(review.completedAt).toLocaleString("ko-KR")}` : ""}
+          </p>
+          {review.reason && (
+            <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground">{review.reason}</p>
+          )}
+        </>
+      ) : (
+        <p className="mt-2 text-xs text-muted-foreground">이 신고에는 AI 검토 보조 결과가 없습니다.</p>
+      )}
+    </div>
   )
 }
 

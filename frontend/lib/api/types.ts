@@ -74,6 +74,39 @@ export type RoomTitlePreview = {
   title: string
 }
 
+export type AiReportStatus = "PENDING" | "COMPLETED" | "FAILED"
+
+export type AiReportCustomPrompt = {
+  label?: string
+  prompt: string
+}
+
+export type AiReportGenerateRequest = {
+  customPrompts?: AiReportCustomPrompt[]
+}
+
+export type AiReportCustomReport = {
+  requestLabel: string
+  prompt: string
+  label: string
+  content: string
+}
+
+export type AiReport = {
+  reportId: number
+  roomId: number
+  status: AiReportStatus
+  coreLine: string | null
+  keyIssues: string[]
+  aiSummary: string | null
+  commonGround: string | null
+  aiOpinion: string | null
+  customReports: AiReportCustomReport[]
+  errorMessage: string | null
+  requestedAt: string | null
+  completedAt: string | null
+}
+
 export type RoomParticipantStatus = "JOINED" | "LEFT"
 
 export type RoomParticipant = {
@@ -101,6 +134,7 @@ export type SpringPage<T> = {
 
 export type SpeechStance = "PRO" | "CON"
 export type SpeechStatus = "READY" | "SPEAKING" | "COMPLETED"
+export type SpeechDeleteReason = "USER_DELETED" | "OFF_TOPIC"
 
 export type SpeechSummary = {
   speechId: number
@@ -110,6 +144,9 @@ export type SpeechSummary = {
   stance: SpeechStance | null
   status: SpeechStatus
   imageUrl: string | null
+  deleted: boolean
+  deleteReason: SpeechDeleteReason | null
+  deletedAt?: string | null
   reactionCount: number
   reactedByMe: boolean
   createdAt: string
@@ -123,14 +160,10 @@ export type SpeechDetail = SpeechSummary & {
   updatedAt: string
 }
 
-export type SpeechCreateResponse = {
-  speechId: number
-  roomId: number
-  userId: number
-  content: string
-  stance: SpeechStance | null
-  status: SpeechStatus
-}
+export type SpeechCreateResponse = Omit<
+  SpeechSummary,
+  "createdAt" | "imageUrl" | "deleted" | "deleteReason" | "deletedAt" | "reactionCount" | "reactedByMe"
+>
 
 export type SpeechImageUploadUrl = {
   uploadUrl: string
@@ -177,7 +210,7 @@ export type SpeechReportCreateResponse = {
   reportId: number
   speechId: number
   reason: SpeechReportReason
-  status: "PENDING" | "REVIEWING" | "RESOLVED" | "REJECTED"
+  status: SpeechReportStatus
   createdAt: string
 }
 
@@ -190,6 +223,20 @@ export type ChatReportCreateResponse = {
   reason: ChatReportReason
   status: "PENDING" | "REVIEWING" | "RESOLVED" | "REJECTED"
   createdAt: string
+}
+
+export type OffTopicAiReviewStatus = "PENDING" | "COMPLETED" | "FAILED"
+
+export type OffTopicAiReview = {
+  reviewId: number
+  status: OffTopicAiReviewStatus
+  offTopic: boolean | null
+  confidence: number | null
+  reason: string | null
+  reportCount: number
+  threshold: number
+  participantCount: number
+  completedAt: string | null
 }
 
 export type ChatMessage = {
@@ -270,6 +317,30 @@ export type StageRequestStatus = {
   expiresAt: string | null
 }
 
+export type StageSummaryStatus = "PENDING" | "COMPLETED" | "FAILED"
+
+export type StageSummary = {
+  summaryId: number
+  roomId: number
+  status: StageSummaryStatus
+  moderatorSummary: string | null
+  keyPoints: string[]
+  speechCount: number
+  completedSpeakerCount: number
+  triggeredAt: string
+  completedAt: string | null
+}
+
+export type AiCounterIssue = {
+  issueId: number
+  roomId: number
+  triggerQueueId: number
+  targetStance: SpeechStance
+  content: string
+  createdAt: string
+  completedAt: string | null
+}
+
 export type WebSocketEventEnvelope<TData, TEventType extends string = string> = {
   eventId: string
   eventType: TEventType
@@ -300,6 +371,27 @@ export type StageEvent = WebSocketEventEnvelope<
     occurredAt: string
   },
   "SPEAKING_REQUESTED" | "SPEAKING_CANCELED" | "SPEAKER_ASSIGNED" | "SPEAKER_COMPLETED" | "SPEAKER_EXPIRED"
+>
+
+export type StageSummaryEvent = WebSocketEventEnvelope<
+  {
+    summaryId: number
+    roomId: number
+  },
+  "STAGE_SUMMARY_COMPLETED"
+>
+
+export type AiCounterIssueEvent = WebSocketEventEnvelope<
+  {
+    issueId: number
+    roomId: number
+    triggerQueueId: number
+    targetStance: SpeechStance
+    createdAt: string
+    completedAt: string | null
+    occurredAt: string
+  },
+  "AI_COUNTER_ISSUE_SUGGESTED"
 >
 
 export type RoomEvent = WebSocketEventEnvelope<
@@ -408,6 +500,7 @@ export type SpeechReportSummary = {
   reason: SpeechReportReason
   status: SpeechReportStatus
   createdAt: string
+  offTopicAiReview?: OffTopicAiReview | null
 }
 
 export type SpeechReportDetail = SpeechReportSummary & {

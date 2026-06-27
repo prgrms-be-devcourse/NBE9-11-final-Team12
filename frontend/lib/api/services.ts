@@ -4,6 +4,9 @@ import type {
   AdminUser,
   AdminUserRole,
   AdminUserStatus,
+  AiCounterIssue,
+  AiReport,
+  AiReportGenerateRequest,
   AuthUser,
   BestSpeech,
   ChatReportCreateResponse,
@@ -27,8 +30,8 @@ import type {
   SpeechImageUploadUrl,
   SpeechReactionCreateResponse,
   SpeechReportCreateResponse,
-  SpeechReportReason,
   SpeechReportDetail,
+  SpeechReportReason,
   SpeechReportReviewAction,
   SpeechReportReviewResponse,
   SpeechReportStatus,
@@ -39,6 +42,7 @@ import type {
   StageQueue,
   StageRequest,
   StageRequestStatus,
+  StageSummary,
   TopicDetail,
   TopicCreateResponse,
   TopicSummary,
@@ -212,4 +216,22 @@ export const stageApi = {
   cancelMyRequest: (roomId: number) =>
     api.delete<void>(`/api/v1/rooms/${roomId}/stage/requests/me`),
   completeTurn: (roomId: number) => api.post<void>(`/api/v1/rooms/${roomId}/stage/complete`),
+}
+
+export const stageSummaryApi = {
+  get: (roomId: number) => api.get<StageSummary>(`/api/v1/rooms/${roomId}/stage-summary`),
+}
+
+export const aiCounterIssueApi = {
+  recent: (roomId: number) =>
+    api.get<AiCounterIssue[]>(`/api/v1/rooms/${roomId}/ai-counter-issues/recent`),
+}
+
+export const aiReportApi = {
+  get: (roomId: number) => api.get<AiReport>(`/api/v1/rooms/${roomId}/ai-report`),
+  generate: (roomId: number, body?: AiReportGenerateRequest) =>
+    api.post<AiReport>(
+      `/api/v1/rooms/${roomId}/ai-report`,
+      body ?? { customPrompts: [] },
+    ),
 }

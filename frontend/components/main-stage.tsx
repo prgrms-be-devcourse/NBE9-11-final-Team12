@@ -6,6 +6,7 @@ import {
   Flag,
   History,
   ImageIcon,
+  Lightbulb,
   Loader2,
   MessageSquarePlus,
   Mic,
@@ -15,10 +16,12 @@ import {
   X,
 } from "lucide-react"
 import { ApiError } from "@/lib/api/client"
-import { speechApi, stageApi } from "@/lib/api/services"
+import { aiCounterIssueApi, speechApi, stageApi, stageSummaryApi } from "@/lib/api/services"
 import type { RoomStompConnection } from "@/lib/api/stomp"
 import { useAuth } from "@/components/auth-provider"
 import type {
+  AiCounterIssue,
+  AiCounterIssueEvent,
   BestSpeech,
   SpeechEvent,
   SpeechReactionEvent,
@@ -29,6 +32,8 @@ import type {
   StageEvent,
   StageQueue,
   StageRequestStatus,
+  StageSummary,
+  StageSummaryEvent,
 } from "@/lib/api/types"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -49,15 +54,6 @@ const REPORT_REASONS: { value: SpeechReportReason; label: string }[] = [
 
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"]
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024
-
-type SpeechGroup = {
-  key: string
-  userId: number
-  stance: SpeechStance | null
-  status: string
-  createdAt: string
-  speeches: SpeechSummary[]
-}
 
 function messageOf(error: unknown) {
   return error instanceof ApiError ? error.message : "요청 처리 중 오류가 발생했습니다."
@@ -120,6 +116,11 @@ export function MainStage({
   const [currentSpeaker, setCurrentSpeaker] = useState<StageCurrentSpeaker | null>(null)
   const [queueSummary, setQueueSummary] = useState<StageQueue | null>(null)
   const [requestStatus, setRequestStatus] = useState<StageRequestStatus | null>(null)
+  const [stageSummary, setStageSummary] = useState<StageSummary | null>(null)
+  const [summaryLoading, setSummaryLoading] = useState(false)
+  const [summaryError, setSummaryError] = useState("")
+  const [counterIssues, setCounterIssues] = useState<AiCounterIssue[]>([])
+  const [counterIssueError, setCounterIssueError] = useState("")
   const [createOpen, setCreateOpen] = useState(false)
   const [content, setContent] = useState("")
   const [stance, setStance] = useState<SpeechStance>("PRO")
@@ -135,6 +136,12 @@ export function MainStage({
   const [nowTimestamp, setNowTimestamp] = useState(() => Date.now())
   const speechesRequestSeqRef = useRef(0)
   const stageRequestSeqRef = useRef(0)
+  const summaryRequestSeqRef = useRef(0)
+  const counterIssueRequestSeqRef = useRef(0)
+  const summaryInFlightRoomIdRef = useRef<number | null>(null)
+  const counterIssueInFlightRoomIdRef = useRef<number | null>(null)
+  const counterIssueReloadPendingRef = useRef(false)
+  const mountedRef = useRef(true)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
   const handledEventIdsRef = useRef<string[]>([])
   const speechesRecoveryTimerRef = useRef<number | null>(null)
@@ -148,31 +155,6 @@ export function MainStage({
     if (!expiresAt) return null
     return Math.ceil((new Date(expiresAt).getTime() - nowTimestamp) / 1000)
   }, [currentSpeaker, nowTimestamp])
-
-  const speechGroups = useMemo(() => {
-    return speeches.reduce<SpeechGroup[]>((groups, speech) => {
-      const previous = groups[groups.length - 1]
-      if (
-        previous
-        && previous.userId === speech.userId
-        && previous.stance === speech.stance
-        && previous.status === speech.status
-      ) {
-        previous.speeches.push(speech)
-        return groups
-      }
-
-      groups.push({
-        key: String(speech.speechId),
-        userId: speech.userId,
-        stance: speech.stance,
-        status: speech.status,
-        createdAt: speech.createdAt,
-        speeches: [speech],
-      })
-      return groups
-    }, [])
-  }, [speeches])
 
   const rememberEvent = useCallback((eventId: string) => {
     if (handledEventIdsRef.current.includes(eventId)) return false
@@ -238,6 +220,79 @@ export function MainStage({
     if (requestSeq === stageRequestSeqRef.current) setStageLoading(false)
   }, [liveEnabled, roomId])
 
+  const loadStageSummary = useCallback(async (showLoading = true) => {
+    if (!liveEnabled) {
+      setStageSummary(null)
+      setSummaryLoading(false)
+      setSummaryError("")
+      return
+    }
+
+    if (summaryInFlightRoomIdRef.current === roomId) return
+    summaryInFlightRoomIdRef.current = roomId
+    const requestSeq = ++summaryRequestSeqRef.current
+
+    if (showLoading) setSummaryLoading(true)
+    setSummaryError("")
+    try {
+      const response = await stageSummaryApi.get(roomId)
+      if (!mountedRef.current || requestSeq !== summaryRequestSeqRef.current) return
+      setStageSummary(response)
+    } catch (requestError) {
+      if (!mountedRef.current || requestSeq !== summaryRequestSeqRef.current) return
+      if (requestError instanceof ApiError && requestError.code === "STAGE_SUMMARY_NOT_FOUND") {
+        setStageSummary(null)
+        return
+      }
+      setSummaryError(messageOf(requestError))
+    } finally {
+      if (summaryInFlightRoomIdRef.current === roomId) {
+        summaryInFlightRoomIdRef.current = null
+      }
+      if (mountedRef.current && requestSeq === summaryRequestSeqRef.current) {
+        setSummaryLoading(false)
+      }
+    }
+  }, [liveEnabled, roomId])
+
+  const loadCounterIssues = useCallback(async () => {
+    if (!liveEnabled) {
+      setCounterIssues([])
+      setCounterIssueError("")
+      return
+    }
+
+    if (counterIssueInFlightRoomIdRef.current === roomId) {
+      counterIssueReloadPendingRef.current = true
+      return
+    }
+    counterIssueInFlightRoomIdRef.current = roomId
+    counterIssueReloadPendingRef.current = false
+    const requestSeq = ++counterIssueRequestSeqRef.current
+
+    setCounterIssueError("")
+    try {
+      const response = await aiCounterIssueApi.recent(roomId)
+      if (!mountedRef.current || requestSeq !== counterIssueRequestSeqRef.current) return
+      setCounterIssues(response.filter((issue) => issue.content.trim()))
+    } catch (requestError) {
+      if (!mountedRef.current || requestSeq !== counterIssueRequestSeqRef.current) return
+      if (requestError instanceof ApiError && requestError.status === 404) {
+        setCounterIssues([])
+        return
+      }
+      setCounterIssueError(messageOf(requestError))
+    } finally {
+      if (counterIssueInFlightRoomIdRef.current === roomId) {
+        counterIssueInFlightRoomIdRef.current = null
+      }
+      if (mountedRef.current && counterIssueReloadPendingRef.current) {
+        counterIssueReloadPendingRef.current = false
+        void loadCounterIssues()
+      }
+    }
+  }, [liveEnabled, roomId])
+
   const refreshSpeeches = useCallback(async () => {
     await loadSpeeches()
   }, [loadSpeeches])
@@ -263,12 +318,32 @@ export function MainStage({
   }, [loadStage])
 
   useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      summaryRequestSeqRef.current += 1
+      counterIssueRequestSeqRef.current += 1
+      summaryInFlightRoomIdRef.current = null
+      counterIssueInFlightRoomIdRef.current = null
+      counterIssueReloadPendingRef.current = false
+    }
+  }, [])
+
+  useEffect(() => {
     void loadSpeeches()
   }, [loadSpeeches])
 
   useEffect(() => {
     void loadStage()
   }, [loadStage])
+
+  useEffect(() => {
+    void loadStageSummary()
+  }, [loadStageSummary])
+
+  useEffect(() => {
+    void loadCounterIssues()
+  }, [loadCounterIssues])
 
   useEffect(() => {
     handledEventIdsRef.current = []
@@ -286,7 +361,9 @@ export function MainStage({
     if (recoveryKey === 0) return
     void loadSpeeches()
     void loadStage()
-  }, [loadSpeeches, loadStage, recoveryKey])
+    void loadStageSummary(false)
+    void loadCounterIssues()
+  }, [loadCounterIssues, loadSpeeches, loadStage, loadStageSummary, recoveryKey])
 
   useEffect(() => {
     if (!selectedImage) {
@@ -351,6 +428,36 @@ export function MainStage({
 
     return unsubscribe
   }, [liveEnabled, rememberEvent, roomId, scheduleSpeechesRecovery, stompConnection])
+
+  useEffect(() => {
+    if (!liveEnabled || !stompConnection) return
+
+    const unsubscribe = stompConnection.subscribe<StageSummaryEvent>(
+      `/topic/rooms/${roomId}/stage-summary/events`,
+      (event) => {
+        if (!rememberEvent(event.eventId)) return
+        void loadStageSummary(false)
+      },
+      setSummaryError,
+    )
+
+    return unsubscribe
+  }, [liveEnabled, loadStageSummary, rememberEvent, roomId, stompConnection])
+
+  useEffect(() => {
+    if (!liveEnabled || !stompConnection) return
+
+    const unsubscribe = stompConnection.subscribe<AiCounterIssueEvent>(
+      `/topic/rooms/${roomId}/ai-counter-issues/events`,
+      (event) => {
+        if (!rememberEvent(event.eventId)) return
+        void loadCounterIssues()
+      },
+      setCounterIssueError,
+    )
+
+    return unsubscribe
+  }, [liveEnabled, loadCounterIssues, rememberEvent, roomId, stompConnection])
 
   useEffect(() => {
     if (!liveEnabled || !stompConnection) return
@@ -546,6 +653,28 @@ export function MainStage({
     setCreateOpen(true)
   }
 
+  const summaryKeyPoints = stageSummary?.keyPoints.filter((point) => point.trim()) ?? []
+  const hasCompletedSummary = Boolean(
+    stageSummary?.status === "COMPLETED" && (stageSummary.moderatorSummary?.trim() || summaryKeyPoints.length > 0),
+  )
+  const summaryOccurredAt = stageSummary?.completedAt ?? stageSummary?.triggeredAt ?? ""
+  const timelineItems = [
+    ...speeches.map((speech) => ({
+      type: "speech" as const,
+      key: `speech-${speech.speechId}`,
+      occurredAt: speech.createdAt,
+      speech,
+    })),
+    ...(hasCompletedSummary && summaryOccurredAt
+      ? [{
+          type: "summary" as const,
+          key: `stage-summary-${stageSummary?.summaryId ?? summaryOccurredAt}`,
+          occurredAt: summaryOccurredAt,
+        }]
+      : []),
+  ].sort((left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime())
+  const latestCounterIssue = counterIssues[0] ?? null
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center justify-between border-b border-border/50 px-4 py-3">
@@ -565,6 +694,7 @@ export function MainStage({
 
       <div className="border-b border-border/50 bg-muted/20 px-4 py-3">
         {stageError && <p className="mb-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{stageError}</p>}
+        {counterIssueError && <p className="mb-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{counterIssueError}</p>}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0 flex flex-col gap-1">
             <div className="flex items-center gap-2">
@@ -623,13 +753,32 @@ export function MainStage({
             )}
           </div>
         </div>
+        {latestCounterIssue && (
+          <div className="mt-3 rounded-lg border border-border/60 bg-background/70 px-3 py-2">
+            <div className="mb-1.5 flex flex-wrap items-center gap-2">
+              <span className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground">
+                <Lightbulb className="size-3.5 text-primary" />
+                AI가 제안한 반대 쟁점
+              </span>
+              <Badge variant="outline" className="text-[10px]">
+                {latestCounterIssue.targetStance === "PRO" ? "찬성 입장 대상" : "반대 입장 대상"}
+              </Badge>
+            </div>
+            <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
+              {latestCounterIssue.content}
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        {summaryError && (
+          <p className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{summaryError}</p>
+        )}
         {error && <p className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
         {loading ? (
           <div className="flex h-40 items-center justify-center"><Loader2 className="size-5 animate-spin text-primary" /></div>
-        ) : speeches.length === 0 ? (
+        ) : timelineItems.length === 0 ? (
           <div className="flex h-40 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
             <History className="size-6" />
             <p className="text-sm">아직 등록된 의견이 없습니다.</p>
@@ -651,57 +800,120 @@ export function MainStage({
                 <p className="line-clamp-3 whitespace-pre-wrap text-sm leading-relaxed">{bestSpeech.content}</p>
               </div>
             )}
-            {speechGroups.map((group) => (
-              <article key={group.key} className="rounded-xl border border-border/50 bg-card p-4">
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Avatar className="size-7"><AvatarFallback className="text-[10px]">U{group.userId}</AvatarFallback></Avatar>
-                    <div>
-                      <p className="text-xs font-semibold">사용자 #{group.userId}</p>
-                      <p className="text-[10px] text-muted-foreground">{new Date(group.createdAt).toLocaleString("ko-KR")}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {group.speeches.length > 1 && <Badge variant="outline" className="text-[10px]">{group.speeches.length}개 묶음</Badge>}
-                    {group.stance && <Badge variant="outline" className="text-[10px]">{group.stance === "PRO" ? "찬성" : "반대"}</Badge>}
-                    <Badge variant="secondary" className="text-[10px]">{speechStatusLabel(group.status)}</Badge>
-                  </div>
-                </div>
-                <div className="flex flex-col gap-3">
-                  {group.speeches.map((speech, index) => (
-                    <div key={speech.speechId} className={index > 0 ? "border-t border-border/50 pt-3" : ""}>
-                      <p className="whitespace-pre-wrap text-sm leading-relaxed">{speech.content}</p>
-                      {speech.imageUrl && (
-                        <a
-                          href={speech.imageUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-3 block overflow-hidden rounded-lg border border-border/60"
-                        >
-                          <img src={speech.imageUrl} alt="첨부 이미지" className="max-h-80 w-full object-cover" />
-                        </a>
-                      )}
-                      <div className="mt-3 flex items-center justify-between gap-2">
-                        <Button
-                          variant={speech.reactedByMe ? "default" : "outline"}
-                          size="sm"
-                          className="gap-1.5 text-xs"
-                          disabled={submitting || speech.userId === user?.userId}
-                          onClick={() => toggleReaction(speech)}
-                        >
-                          <ThumbsUp className="size-3.5" />
-                          {speech.reactionCount.toLocaleString()}
-                          <span className="hidden sm:inline">{speech.reactedByMe ? "공감 취소" : "공감"}</span>
-                        </Button>
-                        <Button variant="ghost" size="sm" className="gap-1 text-xs text-muted-foreground hover:text-destructive" onClick={() => openReport(speech)}>
-                          <Flag className="size-3" /> 신고
-                        </Button>
+            {timelineItems.map((item) => {
+              if (item.type === "summary") {
+                return (
+                  <article key={item.key} className="rounded-xl border border-sky-200/70 bg-sky-50/70 p-4 text-sky-950 dark:border-sky-900/50 dark:bg-sky-950/25 dark:text-sky-50">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Avatar className="size-7 border border-sky-200 bg-sky-100 dark:border-sky-800 dark:bg-sky-900">
+                          <AvatarFallback className="bg-transparent text-[10px] font-semibold text-sky-700 dark:text-sky-200">AI</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="text-xs font-semibold">AI 중간 요약</p>
+                          <p className="text-[10px] text-sky-700/80 dark:text-sky-200/75">{new Date(item.occurredAt).toLocaleString("ko-KR")}</p>
+                        </div>
                       </div>
+                      <Badge variant="outline" className="border-sky-300 bg-white/60 text-[10px] text-sky-700 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-200">
+                        요약
+                      </Badge>
                     </div>
-                  ))}
-                </div>
-              </article>
-            ))}
+                    {stageSummary?.moderatorSummary?.trim() && (
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                        <span className="font-semibold">[AI 중간 요약]</span>{" "}
+                        {stageSummary.moderatorSummary}
+                      </p>
+                    )}
+                    {summaryKeyPoints.length > 0 && (
+                      <ul className={stageSummary?.moderatorSummary?.trim() ? "mt-3 space-y-2" : "space-y-2"}>
+                        {summaryKeyPoints.map((point) => (
+                          <li key={point} className="flex gap-2 text-sm leading-relaxed">
+                            <span className="mt-2 size-1.5 shrink-0 rounded-full bg-sky-500" />
+                            <span className="min-w-0 break-words">{point}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <p className="mt-3 text-[11px] text-sky-700/75 dark:text-sky-200/70">
+                      의견 {stageSummary?.speechCount ?? 0}개 · 완료 발언자 {stageSummary?.completedSpeakerCount ?? 0}명 기준
+                    </p>
+                  </article>
+                )
+              }
+
+              const speech = item.speech
+              const isDeleted = speech.deleted
+              const isOffTopicDeleted = speech.deleteReason === "OFF_TOPIC"
+
+              return (
+                <article
+                  key={speech.speechId}
+                  className={
+                    isDeleted
+                      ? "rounded-xl border border-dashed border-border/70 bg-muted/30 p-4 text-muted-foreground"
+                      : "rounded-xl border border-border/50 bg-card p-4"
+                  }
+                >
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    {isDeleted ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="secondary" className="text-[10px]">
+                          {isOffTopicDeleted ? "논점 이탈 삭제" : "삭제됨"}
+                        </Badge>
+                        <span className="text-[10px] text-muted-foreground">
+                          {new Date(speech.createdAt).toLocaleString("ko-KR")}
+                        </span>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <Avatar className="size-7"><AvatarFallback className="text-[10px]">U{speech.userId}</AvatarFallback></Avatar>
+                          <div>
+                            <p className="text-xs font-semibold">사용자 #{speech.userId}</p>
+                            <p className="text-[10px] text-muted-foreground">{new Date(speech.createdAt).toLocaleString("ko-KR")}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {speech.stance && <Badge variant="outline" className="text-[10px]">{speech.stance === "PRO" ? "찬성" : "반대"}</Badge>}
+                          <Badge variant="secondary" className="text-[10px]">{speechStatusLabel(speech.status)}</Badge>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <p className={isDeleted ? "whitespace-pre-wrap text-sm leading-relaxed italic" : "whitespace-pre-wrap text-sm leading-relaxed"}>
+                    {speech.content}
+                  </p>
+                  {!isDeleted && speech.imageUrl && (
+                    <a
+                      href={speech.imageUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-3 block overflow-hidden rounded-lg border border-border/60"
+                    >
+                      <img src={speech.imageUrl} alt="첨부 이미지" className="max-h-80 w-full object-cover" />
+                    </a>
+                  )}
+                  {!isDeleted && (
+                    <div className="mt-3 flex items-center justify-between gap-2">
+                      <Button
+                        variant={speech.reactedByMe ? "default" : "outline"}
+                        size="sm"
+                        className="gap-1.5 text-xs"
+                        disabled={submitting || speech.userId === user?.userId}
+                        onClick={() => toggleReaction(speech)}
+                      >
+                        <ThumbsUp className="size-3.5" />
+                        {speech.reactionCount.toLocaleString()}
+                        <span className="hidden sm:inline">{speech.reactedByMe ? "공감 취소" : "공감"}</span>
+                      </Button>
+                      <Button variant="ghost" size="sm" className="gap-1 text-xs text-muted-foreground hover:text-destructive" onClick={() => openReport(speech)}>
+                        <Flag className="size-3" /> 신고
+                      </Button>
+                    </div>
+                  )}
+                </article>
+              )
+            })}
           </div>
         )}
       </div>
