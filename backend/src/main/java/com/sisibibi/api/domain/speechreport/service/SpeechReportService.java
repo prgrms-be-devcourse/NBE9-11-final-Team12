@@ -16,8 +16,7 @@ import com.sisibibi.api.domain.speechreport.entity.SpeechReportStatus;
 import com.sisibibi.api.domain.speechreport.entity.ViolationSeverity;
 import com.sisibibi.api.domain.speechreport.repository.OffTopicAiReviewRepository;
 import com.sisibibi.api.domain.speechreport.repository.SpeechReportRepository;
-import com.sisibibi.api.domain.user.entity.User;
-import com.sisibibi.api.domain.user.repository.UserRepository;
+import com.sisibibi.api.domain.user.service.UserNicknameProvider;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -44,7 +43,7 @@ public class SpeechReportService {
     private final SpeechReportRepository speechReportRepository;
     private final OffTopicAiReviewRepository offTopicAiReviewRepository;
     private final OffTopicAiReviewService offTopicAiReviewService;
-    private final UserRepository userRepository;
+    private final UserNicknameProvider userNicknameProvider;
 
     @Transactional(readOnly = true)
     public Page<SpeechReportSummaryRes> getReports(
@@ -53,7 +52,7 @@ public class SpeechReportService {
             Pageable pageable
     ) {
         Page<SpeechReport> reports = speechReportRepository.findAllByFilters(status, reason, pageable);
-        Map<Long, String> nicknames = findNicknames(extractUserIds(reports));
+        Map<Long, String> nicknames = userNicknameProvider.findNicknamesByIds(extractUserIds(reports));
         Map<Long, OffTopicAiReview> reviewsBySpeechId =
                 findOffTopicAiReviewsBySpeechId(reports.getContent());
 
@@ -69,7 +68,7 @@ public class SpeechReportService {
     public SpeechReportDetailRes getReport(Long reportId) {
         SpeechReport report = speechReportRepository.findById(reportId)
                 .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_REPORT_NOT_FOUND));
-        Map<Long, String> nicknames = findNicknames(extractUserIds(report));
+        Map<Long, String> nicknames = userNicknameProvider.findNicknamesByIds(extractUserIds(report));
         OffTopicAiReview review = offTopicAiReviewRepository.findBySpeechId(report.getSpeechId())
                 .orElse(null);
 
@@ -105,7 +104,7 @@ public class SpeechReportService {
                 report.getSeverity()
         );
 
-        Map<Long, String> nicknames = findNicknames(Set.of(reviewerUserId));
+        Map<Long, String> nicknames = userNicknameProvider.findNicknamesByIds(Set.of(reviewerUserId));
         return SpeechReportReviewRes.from(report, nicknames.get(reviewerUserId));
     }
 
@@ -231,15 +230,5 @@ public class SpeechReportService {
             userIds.add(report.getReviewedBy());
         }
         return userIds;
-    }
-
-    private Map<Long, String> findNicknames(Set<Long> userIds) {
-        if (userIds.isEmpty()) {
-            return Map.of();
-        }
-
-        return userRepository.findAllById(userIds)
-                .stream()
-                .collect(Collectors.toMap(User::getId, User::getNickname, (left, right) -> left));
     }
 }

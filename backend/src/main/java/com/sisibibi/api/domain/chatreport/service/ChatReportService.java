@@ -16,8 +16,7 @@ import com.sisibibi.api.domain.chatreport.entity.ChatReportStatus;
 import com.sisibibi.api.domain.chatreport.repository.ChatReportRepository;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
-import com.sisibibi.api.domain.user.entity.User;
-import com.sisibibi.api.domain.user.repository.UserRepository;
+import com.sisibibi.api.domain.user.service.UserNicknameProvider;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import java.time.LocalDateTime;
@@ -25,7 +24,6 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -41,7 +39,7 @@ public class ChatReportService {
     private final ChatMessageRepository chatMessageRepository;
     private final ChatReportRepository chatReportRepository;
     private final RoomParticipantRepository roomParticipantRepository;
-    private final UserRepository userRepository;
+    private final UserNicknameProvider userNicknameProvider;
 
     @Transactional(readOnly = true)
     public Page<ChatReportSummaryRes> getReports(
@@ -50,7 +48,8 @@ public class ChatReportService {
             Pageable pageable
     ) {
         Page<ChatReport> reports = chatReportRepository.findAllByFilters(status, reason, pageable);
-        Map<Long, String> nicknames = findNicknames(extractUserIds(reports.getContent()));
+        Map<Long, String> nicknames =
+                userNicknameProvider.findNicknamesByIds(extractUserIds(reports.getContent()));
 
         return reports.map(report -> ChatReportSummaryRes.from(
                 report,
@@ -64,7 +63,8 @@ public class ChatReportService {
         ChatReport report = chatReportRepository.findById(reportId)
                 .orElseThrow(() -> new CustomException(ErrorCode.CHAT_REPORT_NOT_FOUND));
 
-        Map<Long, String> nicknames = findNicknames(extractUserIds(Set.of(report)));
+        Map<Long, String> nicknames =
+                userNicknameProvider.findNicknamesByIds(extractUserIds(Set.of(report)));
 
         return ChatReportDetailRes.from(
                 report,
@@ -95,7 +95,7 @@ public class ChatReportService {
                 report.getSeverity()
         );
 
-        Map<Long, String> nicknames = findNicknames(Set.of(reviewerUserId));
+        Map<Long, String> nicknames = userNicknameProvider.findNicknamesByIds(Set.of(reviewerUserId));
         return ChatReportReviewRes.from(report, nicknames.get(reviewerUserId));
     }
 
@@ -183,15 +183,5 @@ public class ChatReportService {
         if (userId != null) {
             userIds.add(userId);
         }
-    }
-
-    private Map<Long, String> findNicknames(Set<Long> userIds) {
-        if (userIds.isEmpty()) {
-            return Map.of();
-        }
-
-        return userRepository.findAllById(userIds)
-                .stream()
-                .collect(Collectors.toMap(User::getId, User::getNickname, (left, right) -> left));
     }
 }

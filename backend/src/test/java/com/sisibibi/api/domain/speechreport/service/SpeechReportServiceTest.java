@@ -18,8 +18,7 @@ import com.sisibibi.api.domain.speechreport.entity.SpeechReportReviewAction;
 import com.sisibibi.api.domain.speechreport.entity.ViolationSeverity;
 import com.sisibibi.api.domain.speechreport.repository.OffTopicAiReviewRepository;
 import com.sisibibi.api.domain.speechreport.repository.SpeechReportRepository;
-import com.sisibibi.api.domain.user.entity.User;
-import com.sisibibi.api.domain.user.repository.UserRepository;
+import com.sisibibi.api.domain.user.service.UserNicknameProvider;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import org.junit.jupiter.api.Test;
@@ -35,6 +34,7 @@ import org.springframework.data.domain.PageRequest;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -59,7 +59,7 @@ class SpeechReportServiceTest {
     private OffTopicAiReviewService offTopicAiReviewService;
 
     @Mock
-    private UserRepository userRepository;
+    private UserNicknameProvider userNicknameProvider;
 
     @InjectMocks
     private SpeechReportService speechReportService;
@@ -73,8 +73,8 @@ class SpeechReportServiceTest {
                 SpeechReportReason.SPAM,
                 pageable
         )).willReturn(new PageImpl<>(List.of(report), pageable, 1));
-        given(userRepository.findAllById(org.mockito.ArgumentMatchers.any()))
-                .willReturn(List.of(user(20L, "신고자"), user(30L, "대상자")));
+        given(userNicknameProvider.findNicknamesByIds(org.mockito.ArgumentMatchers.any()))
+                .willReturn(Map.of(20L, "신고자", 30L, "대상자"));
 
         Page<SpeechReportSummaryRes> response = speechReportService.getReports(
                 SpeechReportStatus.PENDING,
@@ -95,8 +95,8 @@ class SpeechReportServiceTest {
         given(speechReportRepository.findById(100L)).willReturn(Optional.of(report));
         given(offTopicAiReviewRepository.findBySpeechId(10L))
                 .willReturn(Optional.of(completedOffTopicAiReview()));
-        given(userRepository.findAllById(org.mockito.ArgumentMatchers.any()))
-                .willReturn(List.of(user(20L, "신고자"), user(30L, "대상자")));
+        given(userNicknameProvider.findNicknamesByIds(org.mockito.ArgumentMatchers.any()))
+                .willReturn(Map.of(20L, "신고자", 30L, "대상자"));
 
         SpeechReportDetailRes response = speechReportService.getReport(100L);
 
@@ -125,8 +125,8 @@ class SpeechReportServiceTest {
     void reviewReport_startsReview() {
         SpeechReport report = createReport(100L, SpeechReportStatus.PENDING);
         given(speechReportRepository.findByIdForUpdate(100L)).willReturn(Optional.of(report));
-        given(userRepository.findAllById(org.mockito.ArgumentMatchers.any()))
-                .willReturn(List.of(user(99L, "관리자")));
+        given(userNicknameProvider.findNicknamesByIds(org.mockito.ArgumentMatchers.any()))
+                .willReturn(Map.of(99L, "관리자"));
 
         SpeechReportReviewRes response = speechReportService.reviewReport(
                 100L,
@@ -353,11 +353,5 @@ class SpeechReportServiceTest {
         ), LocalDateTime.of(2026, 6, 21, 12, 5));
         ReflectionTestUtils.setField(review, "id", 200L);
         return review;
-    }
-
-    private User user(Long id, String nickname) {
-        User user = User.signup("user" + id + "@example.com", "password", nickname);
-        ReflectionTestUtils.setField(user, "id", id);
-        return user;
     }
 }

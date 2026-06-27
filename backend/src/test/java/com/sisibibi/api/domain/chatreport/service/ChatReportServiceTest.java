@@ -13,12 +13,12 @@ import com.sisibibi.api.domain.chatreport.entity.ChatReportStatus;
 import com.sisibibi.api.domain.chatreport.repository.ChatReportRepository;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
-import com.sisibibi.api.domain.user.entity.User;
-import com.sisibibi.api.domain.user.repository.UserRepository;
+import com.sisibibi.api.domain.user.service.UserNicknameProvider;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -50,7 +50,7 @@ class ChatReportServiceTest {
     private RoomParticipantRepository roomParticipantRepository;
 
     @Mock
-    private UserRepository userRepository;
+    private UserNicknameProvider userNicknameProvider;
 
     @InjectMocks
     private ChatReportService chatReportService;
@@ -64,8 +64,8 @@ class ChatReportServiceTest {
                 ChatReportReason.SPAM,
                 pageable
         )).willReturn(new PageImpl<>(List.of(report), pageable, 1));
-        given(userRepository.findAllById(any()))
-                .willReturn(List.of(user(20L, "신고자"), user(30L, "대상자")));
+        given(userNicknameProvider.findNicknamesByIds(any()))
+                .willReturn(Map.of(20L, "신고자", 30L, "대상자"));
 
         var response = chatReportService.getReports(
                 ChatReportStatus.PENDING,
@@ -84,8 +84,8 @@ class ChatReportServiceTest {
     void reviewReport_startsReview() {
         ChatReport report = report(100L, ChatReportStatus.PENDING);
         given(chatReportRepository.findByIdForUpdate(100L)).willReturn(Optional.of(report));
-        given(userRepository.findAllById(any()))
-                .willReturn(List.of(user(1L, "관리자")));
+        given(userNicknameProvider.findNicknamesByIds(any()))
+                .willReturn(Map.of(1L, "관리자"));
 
         var response = chatReportService.reviewReport(
                 100L,
@@ -122,8 +122,8 @@ class ChatReportServiceTest {
     void reviewReport_resolvesReviewingReport() {
         ChatReport report = report(100L, ChatReportStatus.REVIEWING);
         given(chatReportRepository.findByIdForUpdate(100L)).willReturn(Optional.of(report));
-        given(userRepository.findAllById(any()))
-                .willReturn(List.of(user(1L, "관리자")));
+        given(userNicknameProvider.findNicknamesByIds(any()))
+                .willReturn(Map.of(1L, "관리자"));
 
         var response = chatReportService.reviewReport(
                 100L,
@@ -292,11 +292,5 @@ class ChatReportServiceTest {
         ReflectionTestUtils.setField(report, "createdAt", LocalDateTime.of(2026, 6, 26, 10, 0));
         ReflectionTestUtils.setField(report, "updatedAt", LocalDateTime.of(2026, 6, 26, 10, 0));
         return report;
-    }
-
-    private User user(Long id, String nickname) {
-        User user = User.signup("user" + id + "@example.com", "password", nickname);
-        ReflectionTestUtils.setField(user, "id", id);
-        return user;
     }
 }
