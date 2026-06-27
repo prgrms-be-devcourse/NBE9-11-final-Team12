@@ -9,10 +9,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 public class UserSanctionPolicyService {
+
+    private static final List<UserSanctionType> SPEECH_AND_STAGE_RESTRICTION_TYPES = List.of(
+            UserSanctionType.SPEECH_RESTRICTION,
+            UserSanctionType.STAGE_RESTRICTION
+    );
 
     private final UserSanctionRepository userSanctionRepository;
 
@@ -27,18 +33,18 @@ public class UserSanctionPolicyService {
 
     @Transactional(readOnly = true)
     public void validateSpeechAllowed(Long userId) {
-        validateNotRestricted(
+        validateNotRestrictedIn(
                 userId,
-                UserSanctionType.SPEECH_RESTRICTION,
+                SPEECH_AND_STAGE_RESTRICTION_TYPES,
                 ErrorCode.USER_SPEECH_RESTRICTED
         );
     }
 
     @Transactional(readOnly = true)
     public void validateStageAllowed(Long userId) {
-        validateNotRestricted(
+        validateNotRestrictedIn(
                 userId,
-                UserSanctionType.STAGE_RESTRICTION,
+                SPEECH_AND_STAGE_RESTRICTION_TYPES,
                 ErrorCode.USER_STAGE_RESTRICTED
         );
     }
@@ -49,6 +55,16 @@ public class UserSanctionPolicyService {
             ErrorCode errorCode
     ) {
         if (userSanctionRepository.existsActive(userId, type, LocalDateTime.now())) {
+            throw new CustomException(errorCode);
+        }
+    }
+
+    private void validateNotRestrictedIn(
+            Long userId,
+            List<UserSanctionType> types,
+            ErrorCode errorCode
+    ) {
+        if (userSanctionRepository.existsActiveIn(userId, types, LocalDateTime.now())) {
             throw new CustomException(errorCode);
         }
     }

@@ -32,6 +32,21 @@ public interface UserSanctionRepository extends JpaRepository<UserSanction, Long
     );
 
     @Query("""
+            select count(sanction) > 0
+            from UserSanction sanction
+            where sanction.userId = :userId
+              and sanction.type in :types
+              and sanction.revokedAt is null
+              and sanction.startsAt <= :now
+              and (sanction.endsAt is null or sanction.endsAt > :now)
+            """)
+    boolean existsActiveIn(
+            @Param("userId") Long userId,
+            @Param("types") List<UserSanctionType> types,
+            @Param("now") LocalDateTime now
+    );
+
+    @Query("""
             select sanction
             from UserSanction sanction
             where sanction.userId = :userId
@@ -44,6 +59,22 @@ public interface UserSanctionRepository extends JpaRepository<UserSanction, Long
     Optional<UserSanction> findFirstActive(
             @Param("userId") Long userId,
             @Param("type") UserSanctionType type,
+            @Param("now") LocalDateTime now
+    );
+
+    @Query("""
+            select sanction
+            from UserSanction sanction
+            where sanction.userId = :userId
+              and sanction.type in :types
+              and sanction.revokedAt is null
+              and sanction.startsAt <= :now
+              and (sanction.endsAt is null or sanction.endsAt > :now)
+            order by sanction.id desc
+            """)
+    Optional<UserSanction> findFirstActiveIn(
+            @Param("userId") Long userId,
+            @Param("types") List<UserSanctionType> types,
             @Param("now") LocalDateTime now
     );
 
