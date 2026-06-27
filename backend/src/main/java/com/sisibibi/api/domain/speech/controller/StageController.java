@@ -8,6 +8,8 @@ import com.sisibibi.api.domain.speech.dto.response.StageRequestStatusRes;
 import com.sisibibi.api.domain.speech.service.SpeakingQueueService;
 import com.sisibibi.api.global.response.ApiResponse;
 import com.sisibibi.api.global.security.AuthPrincipal;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -25,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "발언 스테이지", description = "토론방 발언자, 발언권 요청, 발언 대기열 API")
 @Validated
 @RestController
 @RequiredArgsConstructor
@@ -33,6 +36,10 @@ public class StageController {
 
     private final SpeakingQueueService speakingQueueService;
 
+    @Operation(
+        summary = "현재 발언자 조회",
+        description = "지정한 토론방의 현재 발언자 정보를 조회합니다."
+    )
     @GetMapping
     public ResponseEntity<ApiResponse<StageCurrentSpeakerRes>> getCurrentSpeaker(
             @PathVariable @Positive Long roomId
@@ -43,6 +50,10 @@ public class StageController {
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
+    @Operation(
+        summary = "발언 대기열 요약 조회",
+        description = "지정한 토론방의 발언 대기열 요약 정보를 조회합니다."
+    )
     @GetMapping("/queue/summary")
     public ResponseEntity<ApiResponse<StageQueueRes>> getQueueSummary(
             @PathVariable @Positive Long roomId
@@ -52,6 +63,10 @@ public class StageController {
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
+    @Operation(
+        summary = "발언 대기열 조회",
+        description = "지정한 토론방의 발언 대기열을 offset과 size 기준으로 조회합니다."
+    )
     @GetMapping("/queue")
     public ResponseEntity<ApiResponse<StageQueueRes>> getWaitingQueue(
             @PathVariable @Positive Long roomId,
@@ -64,6 +79,10 @@ public class StageController {
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
+    @Operation(
+        summary = "발언권 신청",
+        description = "현재 로그인 사용자가 지정한 토론방에서 발언권을 신청합니다."
+    )
     @PostMapping("/requests")
     public ResponseEntity<ApiResponse<StageRequestRes>> requestSpeakingTurn(
             @PathVariable @Positive Long roomId,
@@ -83,6 +102,10 @@ public class StageController {
                 .body(ApiResponse.created("발언권 신청이 완료되었습니다.", response));
     }
 
+    @Operation(
+        summary = "내 발언권 신청 취소",
+        description = "현재 로그인 사용자의 발언권 신청을 취소합니다."
+    )
     @DeleteMapping("/requests/me")
     public ResponseEntity<ApiResponse<Void>> cancelSpeakingRequest(
             @PathVariable @Positive Long roomId,
@@ -97,6 +120,10 @@ public class StageController {
         );
     }
 
+    @Operation(
+        summary = "내 발언권 신청 상태 조회",
+        description = "현재 로그인 사용자의 발언권 신청 상태를 조회합니다."
+    )
     @GetMapping("/requests/me")
     public ResponseEntity<ApiResponse<StageRequestStatusRes>> getMySpeakingRequestStatus(
             @PathVariable @Positive Long roomId,
@@ -111,6 +138,10 @@ public class StageController {
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
+    @Operation(
+        summary = "발언 종료",
+        description = "현재 로그인 사용자의 진행 중인 발언을 종료합니다."
+    )
     @PostMapping("/complete")
     public ResponseEntity<ApiResponse<Void>> completeSpeakingTurn(
             @PathVariable @Positive Long roomId,
