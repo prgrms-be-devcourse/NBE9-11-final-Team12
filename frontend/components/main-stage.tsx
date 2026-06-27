@@ -71,6 +71,32 @@ function formatRemainingTime(totalSeconds: number | null) {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`
 }
 
+function speechStatusLabel(status: string) {
+  switch (status) {
+    case "SPEAKING":
+      return "발언 중"
+    case "COMPLETED":
+      return "발언 완료"
+    default:
+      return status
+  }
+}
+
+function stageRequestStatusLabel(status: string) {
+  switch (status) {
+    case "WAITING":
+      return "대기 중"
+    case "ASSIGNED":
+      return "발언 중"
+    case "CANCELED":
+      return "신청 취소"
+    case "COMPLETED":
+      return "발언 완료"
+    default:
+      return status
+  }
+}
+
 export function MainStage({
   roomId,
   liveEnabled = true,
@@ -565,9 +591,12 @@ export function MainStage({
               </span>
               {requestStatus?.hasRequest && (
                 <span>
-                  내 상태: {requestStatus.status === "WAITING" ? `대기 ${requestStatus.currentRank ?? "-"}순위` : requestStatus.status}
+                  내 상태: {requestStatus.status === "WAITING"
+                    ? `대기 ${requestStatus.currentRank ?? "-"}순위`
+                    : stageRequestStatusLabel(requestStatus.status ?? "")}
                 </span>
               )}
+              <span>기본 발언 시간 3분</span>
             </div>
           </div>
           <div className="flex shrink-0 gap-2">
@@ -635,7 +664,7 @@ export function MainStage({
                   <div className="flex items-center gap-2">
                     {group.speeches.length > 1 && <Badge variant="outline" className="text-[10px]">{group.speeches.length}개 묶음</Badge>}
                     {group.stance && <Badge variant="outline" className="text-[10px]">{group.stance === "PRO" ? "찬성" : "반대"}</Badge>}
-                    <Badge variant="secondary" className="text-[10px]">{group.status}</Badge>
+                    <Badge variant="secondary" className="text-[10px]">{speechStatusLabel(group.status)}</Badge>
                   </div>
                 </div>
                 <div className="flex flex-col gap-3">

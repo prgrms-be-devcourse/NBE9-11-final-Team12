@@ -142,6 +142,19 @@ function sanctionTypeLabel(type: UserSanctionType) {
   return SANCTION_TYPES.find((item) => item.value === type)?.label ?? type
 }
 
+function sanctionStateLabel(state: UserSanction["state"]) {
+  switch (state) {
+    case "ACTIVE":
+      return "적용 중"
+    case "EXPIRED":
+      return "만료"
+    case "REVOKED":
+      return "해제"
+    default:
+      return state
+  }
+}
+
 function reportKindLabel(kind: ReportKind) {
   return kind === "speech" ? "의견 신고" : "채팅 신고"
 }
@@ -382,6 +395,40 @@ export default function AdminDashboardPage() {
     }
   }
 
+  const loadReportTargetContext = async (
+    report: AdminReportDetail,
+    kind: ReportKind,
+    includeRecommendation = false,
+  ) => {
+    setRecommendation(null)
+    const [targetUser, sanctionPage] = await Promise.all([
+      adminApi.userDetail(report.reportedUserId),
+      adminApi.sanctions(report.reportedUserId),
+    ])
+    setSelectedReportTargetUser(targetUser)
+    setSanctions(sanctionPage.content)
+
+    if (!includeRecommendation) return
+
+    if (targetUser.role === "ADMIN") {
+      setReportsMessage("관리자 계정은 사용자 제재 대상이 아니므로 제재 적용을 차단했습니다.")
+      return
+    }
+
+    if (kind === "speech") {
+      const nextRecommendation = await adminApi.sanctionRecommendation(report.reportedUserId, report.reportId)
+      setRecommendation(nextRecommendation)
+      setManualSanctionType(nextRecommendation.recommendedType)
+      setManualSanctionDurationHours(nextRecommendation.recommendedDurationHours?.toString() ?? "")
+      setSanctionReason(nextRecommendation.recommendationReason)
+      return
+    }
+
+    setManualSanctionType("CHAT_RESTRICTION")
+    setManualSanctionDurationHours("24")
+    setSanctionReason("채팅 신고 검토 결과 운영 정책 위반으로 판단되었습니다.")
+  }
+
   const loadReports = async (filters: {
     kind?: ReportKind
     status?: SpeechReportStatus | ""
@@ -406,15 +453,19 @@ export default function AdminDashboardPage() {
       const details = await Promise.all(
         response.content.map((report) => detailApi(report.reportId)),
       )
+      const shouldPreserveSelection = kind === reportKind
+      const nextSelected = shouldPreserveSelection && selectedReport
+        ? details.find((report) => report.reportId === selectedReport.reportId) ?? details[0] ?? null
+        : details[0] ?? null
       setReports(details)
-      setSelectedReport((previous) => {
-        if (!previous) return details[0] ?? null
-        return details.find((report) => report.reportId === previous.reportId) ?? details[0] ?? null
-      })
+      setSelectedReport(nextSelected)
       setRecommendation(null)
       setSanctions([])
       setSelectedReportTargetUser(null)
       await loadReportStatusCounts(kind, reason)
+      if (nextSelected) {
+        await loadReportTargetContext(nextSelected, kind)
+      }
     } catch (error) {
       setReportsError(messageOf(error, "신고 목록을 불러오지 못했습니다."))
     } finally {
@@ -437,6 +488,7 @@ export default function AdminDashboardPage() {
       setManualSanctionType("WARNING")
       setManualSanctionDurationHours("")
       setSanctionReason("")
+      await loadReportTargetContext(detail, reportKind)
     } catch (error) {
       setReportsError(messageOf(error, "신고 상세를 불러오지 못했습니다."))
     } finally {
@@ -472,29 +524,7 @@ export default function AdminDashboardPage() {
     setReportsError("")
     setReportsMessage("")
     try {
-      const [targetUser, sanctionPage] = await Promise.all([
-        adminApi.userDetail(selectedReport.reportedUserId),
-        adminApi.sanctions(selectedReport.reportedUserId),
-      ])
-      setSelectedReportTargetUser(targetUser)
-      setSanctions(sanctionPage.content)
-      if (targetUser.role === "ADMIN") {
-        setRecommendation(null)
-        setReportsMessage("관리자 계정은 사용자 제재 대상이 아니므로 제재 적용을 차단했습니다.")
-        return
-      }
-      if (reportKind === "speech") {
-        const nextRecommendation = await adminApi.sanctionRecommendation(selectedReport.reportedUserId, selectedReport.reportId)
-        setRecommendation(nextRecommendation)
-        setManualSanctionType(nextRecommendation.recommendedType)
-        setManualSanctionDurationHours(nextRecommendation.recommendedDurationHours?.toString() ?? "")
-        setSanctionReason(nextRecommendation.recommendationReason)
-      } else {
-        setRecommendation(null)
-        setManualSanctionType("CHAT_RESTRICTION")
-        setManualSanctionDurationHours("24")
-        setSanctionReason("채팅 신고 검토 결과 운영 정책 위반으로 판단되었습니다.")
-      }
+      await loadReportTargetContext(selectedReport, reportKind, true)
     } catch (error) {
       setReportsError(messageOf(error, "제재 정보를 불러오지 못했습니다."))
     } finally {
@@ -539,7 +569,7 @@ export default function AdminDashboardPage() {
         reportId: reportKind === "speech" ? selectedReport.reportId : null,
       })
       setReportsMessage("선택한 제재를 적용했습니다.")
-      await loadSanctionContext()
+      await loadReportTargetContext(selectedReport, reportKind)
     } catch (error) {
       setReportsError(messageOf(error, "제재 적용에 실패했습니다."))
     } finally {
@@ -569,7 +599,7 @@ export default function AdminDashboardPage() {
         sanctionReason.trim(),
       )
       setReportsMessage("기존 활성 제재를 추천 기간 기준으로 연장했습니다.")
-      await loadSanctionContext()
+      await loadReportTargetContext(selectedReport, reportKind, true)
     } catch (error) {
       setReportsError(messageOf(error, "제재 연장에 실패했습니다."))
     } finally {
@@ -1381,7 +1411,7 @@ export default function AdminDashboardPage() {
                                   onClick={loadSanctionContext}
                                 >
                                   {mutatingKey === "sanction-context" ? <Loader2 className="size-4 animate-spin" /> : <Gavel className="size-4" />}
-                                  {reportKind === "speech" ? "제재 추천안 계산" : "제재 이력 불러오기"}
+                                  {reportKind === "speech" ? "제재 추천안 계산" : "채팅 제재 기본값 채우기"}
                                 </Button>
                                 {recommendation && (
                                   <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
@@ -1483,15 +1513,21 @@ export default function AdminDashboardPage() {
                                     )}
                                   </div>
                                 )}
-                                {sanctions.length > 0 && (
-                                  <div className="space-y-2">
-                                    <p className="text-xs font-semibold">최근 제재 이력</p>
-                                    {sanctions.slice(0, 5).map((sanction) => (
+                                <div className="space-y-2">
+                                  <p className="text-xs font-semibold">최근 제재 이력</p>
+                                  {sanctions.length === 0 ? (
+                                    <div className="rounded-lg border border-dashed px-3 py-3 text-xs text-muted-foreground">
+                                      대상 사용자의 최근 제재 이력이 없습니다.
+                                    </div>
+                                  ) : (
+                                    sanctions.slice(0, 5).map((sanction) => (
                                       <div key={sanction.sanctionId} className="rounded-lg border px-3 py-2 text-xs">
                                         <div className="flex flex-wrap items-center gap-2">
                                           <Badge variant="outline">#{sanction.sanctionId}</Badge>
                                           <Badge variant="secondary">{sanctionTypeLabel(sanction.type)}</Badge>
-                                          <Badge variant={sanction.state === "ACTIVE" ? "destructive" : "outline"}>{sanction.state}</Badge>
+                                          <Badge variant={sanction.state === "ACTIVE" ? "destructive" : "outline"}>
+                                            {sanctionStateLabel(sanction.state)}
+                                          </Badge>
                                         </div>
                                         <p className="mt-1 text-muted-foreground">기간: {sanctionPeriodLabel(sanction)}</p>
                                         <p className="mt-1 text-muted-foreground">{sanction.reason}</p>
@@ -1501,9 +1537,9 @@ export default function AdminDashboardPage() {
                                           </p>
                                         )}
                                       </div>
-                                    ))}
-                                  </div>
-                                )}
+                                    ))
+                                  )}
+                                </div>
                               </CardContent>
                             </Card>
                           )}
@@ -1670,7 +1706,9 @@ export default function AdminDashboardPage() {
                                       <div className="flex flex-wrap items-center gap-2">
                                         <Badge variant="outline">#{sanction.sanctionId}</Badge>
                                         <Badge variant="secondary">{sanctionTypeLabel(sanction.type)}</Badge>
-                                        <Badge variant={sanction.state === "ACTIVE" ? "destructive" : "outline"}>{sanction.state}</Badge>
+                                        <Badge variant={sanction.state === "ACTIVE" ? "destructive" : "outline"}>
+                                          {sanctionStateLabel(sanction.state)}
+                                        </Badge>
                                       </div>
                                       <p className="mt-1 text-muted-foreground">기간: {sanctionPeriodLabel(sanction)}</p>
                                       <p className="mt-1 text-muted-foreground">{sanction.reason}</p>

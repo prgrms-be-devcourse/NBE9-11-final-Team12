@@ -15,7 +15,15 @@ import { useAuth } from "@/components/auth-provider"
 import { roomApi, sanctionApi, topicApi, trustApi } from "@/lib/api/services"
 import { ApiError } from "@/lib/api/client"
 import { createRoomStompConnection, type RealtimeStatus, type RoomStompConnection } from "@/lib/api/stomp"
-import type { ActiveUserSanction, RoomEvent, RoomParticipant, RoomParticipantEvent, UserSanctionEvent, UserTrustDetail } from "@/lib/api/types"
+import type {
+  ActiveUserSanction,
+  RoomEvent,
+  RoomParticipant,
+  RoomParticipantEvent,
+  UserSanctionEvent,
+  UserTrustDetail,
+  UserSanctionType,
+} from "@/lib/api/types"
 import {
   ArrowLeft,
   Users,
@@ -43,6 +51,52 @@ function ChatUnavailable() {
       <p className="text-xs">토론방 입장이 완료되면 실시간 채팅이 연결됩니다.</p>
     </div>
   )
+}
+
+function trustLevelLabel(level: UserTrustDetail["trustLevel"]) {
+  switch (level) {
+    case "CAUTION":
+      return "주의 필요"
+    case "NORMAL":
+      return "일반"
+    case "RELIABLE":
+      return "신뢰 높음"
+    case "TRUSTED":
+      return "매우 신뢰"
+    default:
+      return level
+  }
+}
+
+function activityLevelLabel(level: UserTrustDetail["activityLevel"]) {
+  switch (level) {
+    case "NEW":
+      return "새싹 참여자"
+    case "ACTIVE":
+      return "활동 참여자"
+    case "CONTRIBUTOR":
+      return "꾸준한 기여자"
+    case "LEADER":
+      return "토론 리더"
+    default:
+      return level
+  }
+}
+
+function sanctionTypeLabel(type: UserSanctionType) {
+  switch (type) {
+    case "WARNING":
+      return "경고"
+    case "CHAT_RESTRICTION":
+      return "채팅 제한"
+    case "SPEECH_RESTRICTION":
+    case "STAGE_RESTRICTION":
+      return "발언/의견 작성 제한"
+    case "ACCOUNT_SUSPENSION":
+      return "계정 정지"
+    default:
+      return type
+  }
 }
 
 export default function RoomDetailPage() {
@@ -470,11 +524,11 @@ export default function RoomDetailPage() {
                     <div className="flex flex-col gap-2 text-xs">
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">신뢰 점수</span>
-                        <span className="font-semibold">{myTrust.score}점 · {myTrust.trustLevel}</span>
+                        <span className="font-semibold">{myTrust.score}점 · {trustLevelLabel(myTrust.trustLevel)}</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">활동 등급</span>
-                        <span className="font-semibold">{myTrust.activityLevel}</span>
+                        <span className="font-semibold">{activityLevelLabel(myTrust.activityLevel)}</span>
                       </div>
                     </div>
                   ) : (
@@ -487,7 +541,7 @@ export default function RoomDetailPage() {
                         <p className="text-[11px] font-semibold text-destructive">현재 적용 중인 제한</p>
                         {activeSanctions.map((sanction) => (
                           <div key={sanction.sanctionId} className="rounded-lg bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive">
-                            {sanction.type} · {sanction.endsAt ? `${new Date(sanction.endsAt).toLocaleString("ko-KR")}까지` : "해제 전까지"}
+                            {sanctionTypeLabel(sanction.type)} · {sanction.endsAt ? `${new Date(sanction.endsAt).toLocaleString("ko-KR")}까지` : "해제 전까지"}
                           </div>
                         ))}
                       </div>
