@@ -1,8 +1,11 @@
 package com.sisibibi.api.domain.speechreport.service;
 
+import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
 import com.sisibibi.api.domain.speech.entity.Speech;
+import com.sisibibi.api.domain.speech.entity.SpeechDeleteReason;
+import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speechreport.config.OffTopicAiReviewProperties;
 import com.sisibibi.api.domain.speechreport.entity.OffTopicAiReview;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportReason;
@@ -22,9 +25,13 @@ import java.util.concurrent.Executor;
 @Service
 public class OffTopicAiReviewService {
 
+    private static final double AUTO_DELETE_RELEVANCE_THRESHOLD = 0.3;
+
     private final SpeechReportRepository speechReportRepository;
     private final OffTopicAiReviewRepository offTopicAiReviewRepository;
     private final RoomParticipantRepository roomParticipantRepository;
+    private final RoomRepository roomRepository;
+    private final SpeechRepository speechRepository;
     private final OffTopicAiReviewer offTopicAiReviewer;
     private final Executor offTopicAiReviewExecutor;
     private final OffTopicAiReviewProperties properties;
@@ -33,6 +40,8 @@ public class OffTopicAiReviewService {
             SpeechReportRepository speechReportRepository,
             OffTopicAiReviewRepository offTopicAiReviewRepository,
             RoomParticipantRepository roomParticipantRepository,
+            RoomRepository roomRepository,
+            SpeechRepository speechRepository,
             OffTopicAiReviewer offTopicAiReviewer,
             @Qualifier("offTopicAiReviewTaskExecutor") Executor offTopicAiReviewExecutor,
             OffTopicAiReviewProperties properties
@@ -40,6 +49,8 @@ public class OffTopicAiReviewService {
         this.speechReportRepository = speechReportRepository;
         this.offTopicAiReviewRepository = offTopicAiReviewRepository;
         this.roomParticipantRepository = roomParticipantRepository;
+        this.roomRepository = roomRepository;
+        this.speechRepository = speechRepository;
         this.offTopicAiReviewer = offTopicAiReviewer;
         this.offTopicAiReviewExecutor = offTopicAiReviewExecutor;
         this.properties = properties;
@@ -77,9 +88,10 @@ public class OffTopicAiReviewService {
                 threshold,
                 participantCount
         ));
+        String roomTitle = findRoomTitle(speech.getRoomId());
 
         runAfterCommit(() -> CompletableFuture.runAsync(
-                () -> completeReview(review, speech),
+                () -> completeReview(review, speech, roomTitle),
                 offTopicAiReviewExecutor
         ));
     }
@@ -100,12 +112,13 @@ public class OffTopicAiReviewService {
         );
     }
 
-    private void completeReview(OffTopicAiReview review, Speech speech) {
+    private void completeReview(OffTopicAiReview review, Speech speech, String roomTitle) {
         try {
-            OffTopicAiReviewResult result = offTopicAiReviewer.review(speech);
+            OffTopicAiReviewResult result = offTopicAiReviewer.review(speech, roomTitle);
             validateResult(result);
             review.complete(result, LocalDateTime.now());
             offTopicAiReviewRepository.save(review);
+            softDeleteSpeechWhenClearlyOffTopic(review, result);
         } catch (RuntimeException exception) {
             log.warn(
                     "Off-topic AI review failed. reviewId={}, speechId={}",
@@ -118,6 +131,30 @@ public class OffTopicAiReviewService {
                     : exception.getMessage());
             offTopicAiReviewRepository.save(review);
         }
+    }
+
+    private void softDeleteSpeechWhenClearlyOffTopic(
+            OffTopicAiReview review,
+            OffTopicAiReviewResult result
+    ) {
+        if (result.confidence() >= AUTO_DELETE_RELEVANCE_THRESHOLD) {
+            return;
+        }
+
+        speechRepository.findByIdAndDeletedFalse(review.getSpeechId())
+                .ifPresent(speech -> {
+                    speech.softDeleteByModerator(
+                            SpeechDeleteReason.OFF_TOPIC,
+                            LocalDateTime.now()
+                    );
+                    speechRepository.save(speech);
+                });
+    }
+
+    private String findRoomTitle(Long roomId) {
+        return roomRepository.findById(roomId)
+                .map(room -> room.getTitle() == null ? "" : room.getTitle())
+                .orElse("");
     }
 
     private void validateResult(OffTopicAiReviewResult result) {
