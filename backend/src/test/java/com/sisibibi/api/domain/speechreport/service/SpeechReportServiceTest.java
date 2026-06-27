@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.speechreport.service;
 
 import com.sisibibi.api.domain.speech.entity.Speech;
+import com.sisibibi.api.domain.speech.entity.SpeechDeleteReason;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speechreport.dto.command.SpeechReportCreateCommand;
@@ -8,12 +9,16 @@ import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportCreateRes;
 import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportDetailRes;
 import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportSummaryRes;
 import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportReviewRes;
+import com.sisibibi.api.domain.speechreport.entity.OffTopicAiReview;
+import com.sisibibi.api.domain.speechreport.entity.OffTopicAiReviewStatus;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReport;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportReason;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportStatus;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportReviewAction;
 import com.sisibibi.api.domain.speechreport.entity.ViolationSeverity;
+import com.sisibibi.api.domain.speechreport.repository.OffTopicAiReviewRepository;
 import com.sisibibi.api.domain.speechreport.repository.SpeechReportRepository;
+import com.sisibibi.api.domain.user.service.UserNicknameProvider;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import org.junit.jupiter.api.Test;
@@ -29,6 +34,7 @@ import org.springframework.data.domain.PageRequest;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -46,6 +52,15 @@ class SpeechReportServiceTest {
     @Mock
     private SpeechReportRepository speechReportRepository;
 
+    @Mock
+    private OffTopicAiReviewRepository offTopicAiReviewRepository;
+
+    @Mock
+    private OffTopicAiReviewService offTopicAiReviewService;
+
+    @Mock
+    private UserNicknameProvider userNicknameProvider;
+
     @InjectMocks
     private SpeechReportService speechReportService;
 
@@ -58,6 +73,8 @@ class SpeechReportServiceTest {
                 SpeechReportReason.SPAM,
                 pageable
         )).willReturn(new PageImpl<>(List.of(report), pageable, 1));
+        given(userNicknameProvider.findNicknamesByIds(org.mockito.ArgumentMatchers.any()))
+                .willReturn(Map.of(20L, "신고자", 30L, "대상자"));
 
         Page<SpeechReportSummaryRes> response = speechReportService.getReports(
                 SpeechReportStatus.PENDING,
@@ -67,6 +84,8 @@ class SpeechReportServiceTest {
 
         assertThat(response.getTotalElements()).isEqualTo(1);
         assertThat(response.getContent().getFirst().reportId()).isEqualTo(100L);
+        assertThat(response.getContent().getFirst().reportedUserNickname()).isEqualTo("대상자");
+        assertThat(response.getContent().getFirst().reporterUserNickname()).isEqualTo("신고자");
         assertThat(response.getContent().getFirst().status()).isEqualTo(SpeechReportStatus.PENDING);
     }
 
@@ -74,12 +93,22 @@ class SpeechReportServiceTest {
     void getReport_returnsReportDetail() {
         SpeechReport report = createReport(100L, SpeechReportStatus.PENDING);
         given(speechReportRepository.findById(100L)).willReturn(Optional.of(report));
+        given(offTopicAiReviewRepository.findBySpeechId(10L))
+                .willReturn(Optional.of(completedOffTopicAiReview()));
+        given(userNicknameProvider.findNicknamesByIds(org.mockito.ArgumentMatchers.any()))
+                .willReturn(Map.of(20L, "신고자", 30L, "대상자"));
 
         SpeechReportDetailRes response = speechReportService.getReport(100L);
 
         assertThat(response.reportId()).isEqualTo(100L);
+        assertThat(response.reportedUserNickname()).isEqualTo("대상자");
+        assertThat(response.reporterUserNickname()).isEqualTo("신고자");
         assertThat(response.contentSnapshot()).isEqualTo("신고 대상 의견");
         assertThat(response.reason()).isEqualTo(SpeechReportReason.SPAM);
+        assertThat(response.offTopicAiReview()).isNotNull();
+        assertThat(response.offTopicAiReview().status())
+                .isEqualTo(OffTopicAiReviewStatus.COMPLETED);
+        assertThat(response.offTopicAiReview().offTopic()).isTrue();
     }
 
     @Test
@@ -96,6 +125,8 @@ class SpeechReportServiceTest {
     void reviewReport_startsReview() {
         SpeechReport report = createReport(100L, SpeechReportStatus.PENDING);
         given(speechReportRepository.findByIdForUpdate(100L)).willReturn(Optional.of(report));
+        given(userNicknameProvider.findNicknamesByIds(org.mockito.ArgumentMatchers.any()))
+                .willReturn(Map.of(99L, "관리자"));
 
         SpeechReportReviewRes response = speechReportService.reviewReport(
                 100L,
@@ -107,6 +138,35 @@ class SpeechReportServiceTest {
 
         assertThat(response.status()).isEqualTo(SpeechReportStatus.REVIEWING);
         assertThat(response.reviewedBy()).isEqualTo(99L);
+        assertThat(response.reviewedByNickname()).isEqualTo("관리자");
+    }
+
+    @Test
+    void reviewReport_resolveOffTopicReport_softDeletesSpeechWithOffTopicReason() {
+        SpeechReport report = createReport(100L, SpeechReportStatus.PENDING);
+        ReflectionTestUtils.setField(report, "reason", SpeechReportReason.OFF_TOPIC);
+        report.review(
+                SpeechReportReviewAction.START_REVIEW,
+                99L,
+                null,
+                null,
+                LocalDateTime.of(2026, 6, 21, 12, 0)
+        );
+        Speech speech = Speech.createMainOpinion(1L, 30L, "논점 이탈 의견", SpeechStance.PRO);
+        ReflectionTestUtils.setField(speech, "id", 10L);
+        given(speechReportRepository.findByIdForUpdate(100L)).willReturn(Optional.of(report));
+        given(speechRepository.findByIdAndDeletedFalse(10L)).willReturn(Optional.of(speech));
+
+        speechReportService.reviewReport(
+                100L,
+                99L,
+                SpeechReportReviewAction.RESOLVE,
+                "논점 이탈 확인",
+                ViolationSeverity.LOW
+        );
+
+        assertThat(speech.isDeleted()).isTrue();
+        assertThat(speech.getDeleteReason()).isEqualTo(SpeechDeleteReason.OFF_TOPIC);
     }
 
     @Test
@@ -158,6 +218,39 @@ class SpeechReportServiceTest {
         assertThat(savedReport.getStatus()).isEqualTo(SpeechReportStatus.PENDING);
         assertThat(response.reportId()).isEqualTo(100L);
         assertThat(response.status()).isEqualTo(SpeechReportStatus.PENDING);
+    }
+
+    @Test
+    void createReport_triggersOffTopicAiReview_whenReasonIsOffTopic() {
+        Speech speech = Speech.createMainOpinion(1L, 30L, "논점과 관련 없는 의견", SpeechStance.PRO);
+        given(speechRepository.findByIdAndDeletedFalse(10L)).willReturn(Optional.of(speech));
+        given(speechReportRepository.existsBySpeechIdAndReporterUserId(10L, 20L))
+                .willReturn(false);
+        given(speechReportRepository.save(org.mockito.ArgumentMatchers.any(SpeechReport.class)))
+                .willAnswer(invocation -> {
+                    SpeechReport report = invocation.getArgument(0);
+                    ReflectionTestUtils.setField(report, "id", 100L);
+                    ReflectionTestUtils.setField(
+                            report,
+                            "createdAt",
+                            LocalDateTime.of(2026, 6, 14, 12, 0)
+                    );
+                    return report;
+                });
+
+        speechReportService.createReport(
+                10L,
+                20L,
+                new SpeechReportCreateCommand(
+                        SpeechReportReason.OFF_TOPIC,
+                        "논점에서 벗어났습니다."
+                )
+        );
+
+        verify(offTopicAiReviewService).triggerIfNeeded(
+                speech,
+                SpeechReportReason.OFF_TOPIC
+        );
     }
 
     @Test
@@ -242,5 +335,23 @@ class SpeechReportServiceTest {
         ReflectionTestUtils.setField(report, "createdAt", LocalDateTime.of(2026, 6, 21, 12, 0));
         ReflectionTestUtils.setField(report, "updatedAt", LocalDateTime.of(2026, 6, 21, 12, 0));
         return report;
+    }
+
+    private OffTopicAiReview completedOffTopicAiReview() {
+        OffTopicAiReview review = OffTopicAiReview.pending(
+                10L,
+                1L,
+                "신고된 의견",
+                5,
+                5,
+                50
+        );
+        review.complete(new OffTopicAiReviewResult(
+                true,
+                "논점 이탈입니다.",
+                0.9
+        ), LocalDateTime.of(2026, 6, 21, 12, 5));
+        ReflectionTestUtils.setField(review, "id", 200L);
+        return review;
     }
 }

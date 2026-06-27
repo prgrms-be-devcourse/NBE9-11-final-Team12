@@ -9,6 +9,8 @@ import com.sisibibi.api.domain.speechreport.entity.SpeechReportStatus;
 import com.sisibibi.api.domain.speechreport.service.SpeechReportService;
 import com.sisibibi.api.global.response.ApiResponse;
 import com.sisibibi.api.global.security.AuthPrincipal;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +29,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "관리자 의견 신고", description = "관리자 의견 신고 조회 및 처리 API")
 @Validated
 @RestController
 @RequiredArgsConstructor
@@ -35,6 +38,10 @@ public class AdminSpeechReportController {
 
     private final SpeechReportService speechReportService;
 
+    @Operation(
+        summary = "의견 신고 목록 조회",
+        description = "관리자가 의견 신고 목록을 상태, 신고 사유 조건으로 필터링해 페이지 단위로 조회합니다."
+    )
     @GetMapping
     public ResponseEntity<ApiResponse<Page<SpeechReportSummaryRes>>> getReports(
             @RequestParam(required = false) SpeechReportStatus status,
@@ -51,6 +58,10 @@ public class AdminSpeechReportController {
         return ResponseEntity.ok(ApiResponse.ok("의견 신고 목록 조회가 완료되었습니다.", response));
     }
 
+    @Operation(
+        summary = "의견 신고 상세 조회",
+        description = "관리자가 지정한 의견 신고의 상세 정보를 조회합니다."
+    )
     @GetMapping("/{reportId}")
     public ResponseEntity<ApiResponse<SpeechReportDetailRes>> getReport(
             @PathVariable @Positive Long reportId
@@ -60,6 +71,10 @@ public class AdminSpeechReportController {
         return ResponseEntity.ok(ApiResponse.ok("의견 신고 상세 조회가 완료되었습니다.", response));
     }
 
+    @Operation(
+        summary = "의견 신고 처리",
+        description = "관리자가 지정한 의견 신고를 검토하고 처리 결과를 저장합니다."
+    )
     @PatchMapping("/{reportId}")
     public ResponseEntity<ApiResponse<SpeechReportReviewRes>> reviewReport(
             @PathVariable @Positive Long reportId,

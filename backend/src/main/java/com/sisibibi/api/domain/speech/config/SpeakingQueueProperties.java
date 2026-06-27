@@ -14,6 +14,7 @@ public class SpeakingQueueProperties {
 
     private Duration turnDuration = Duration.ofMinutes(3);
     private Queue queue = new Queue();
+    private Idle idle = new Idle();
 
     @Getter
     @Setter
@@ -22,5 +23,14 @@ public class SpeakingQueueProperties {
         private int summarySize = 5;
         private int defaultPageSize = 20;
         private int maxPageSize = 100;
+    }
+
+    @Getter
+    @Setter
+    public static class Idle {
+
+        private Duration warningDelay = Duration.ofSeconds(20);
+        private Duration timeoutDelayAfterWarning = Duration.ofSeconds(20);
+        private Duration warningSuppressionBeforeExpiration = Duration.ofSeconds(40);
     }
 }

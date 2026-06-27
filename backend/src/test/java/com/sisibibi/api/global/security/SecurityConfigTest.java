@@ -150,6 +150,18 @@ class SecurityConfigTest {
     }
 
     @Test
+    void swaggerUiAndOpenApiDocs_arePublic() throws Exception {
+        mockMvc.perform(get("/swagger-ui.html"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(header().string("Location", containsString("/swagger-ui/index.html")));
+
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.openapi").exists())
+                .andExpect(jsonPath("$.info.title", is("Sisibibi API")));
+    }
+
+    @Test
     void roomListAndOpenRooms_arePublic() throws Exception {
         mockMvc.perform(get("/api/v1/rooms"))
                 .andExpect(status().isOk());

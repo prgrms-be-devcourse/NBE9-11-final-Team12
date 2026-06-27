@@ -4,11 +4,12 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { useAuth } from "@/components/auth-provider"
+import { AiReportPanel } from "@/components/ai-report-panel"
 import { cn } from "@/lib/utils"
 import {
-  Users,
-  Clock,
   ArrowRight,
+  Clock,
+  Users,
 } from "lucide-react"
 
 export interface Topic {
@@ -31,19 +32,22 @@ interface TopicCardProps {
 }
 
 const categoryConfig: Record<string, { bg: string; text: string; border: string }> = {
-  "AI·기술":  { bg: "bg-violet-50 dark:bg-violet-500/10", text: "text-violet-700 dark:text-violet-400", border: "border-violet-200 dark:border-violet-500/20" },
-  "경제·금융": { bg: "bg-emerald-50 dark:bg-emerald-500/10", text: "text-emerald-700 dark:text-emerald-400", border: "border-emerald-200 dark:border-emerald-500/20" },
-  "사회·복지": { bg: "bg-amber-50 dark:bg-amber-500/10", text: "text-amber-700 dark:text-amber-400", border: "border-amber-200 dark:border-amber-500/20" },
-  "정치·외교": { bg: "bg-red-50 dark:bg-red-500/10", text: "text-red-700 dark:text-red-400", border: "border-red-200 dark:border-red-500/20" },
-  "문화·연예": { bg: "bg-pink-50 dark:bg-pink-500/10", text: "text-pink-700 dark:text-pink-400", border: "border-pink-200 dark:border-pink-500/20" },
-  "스포츠":   { bg: "bg-orange-50 dark:bg-orange-500/10", text: "text-orange-700 dark:text-orange-400", border: "border-orange-200 dark:border-orange-500/20" },
-  "환경·과학": { bg: "bg-teal-50 dark:bg-teal-500/10", text: "text-teal-700 dark:text-teal-400", border: "border-teal-200 dark:border-teal-500/20" },
+  정치: { bg: "bg-red-50 dark:bg-red-500/10", text: "text-red-700 dark:text-red-400", border: "border-red-200 dark:border-red-500/20" },
+  경제: { bg: "bg-emerald-50 dark:bg-emerald-500/10", text: "text-emerald-700 dark:text-emerald-400", border: "border-emerald-200 dark:border-emerald-500/20" },
+  사회: { bg: "bg-amber-50 dark:bg-amber-500/10", text: "text-amber-700 dark:text-amber-400", border: "border-amber-200 dark:border-amber-500/20" },
+  국제: { bg: "bg-sky-50 dark:bg-sky-500/10", text: "text-sky-700 dark:text-sky-400", border: "border-sky-200 dark:border-sky-500/20" },
+  IT: { bg: "bg-violet-50 dark:bg-violet-500/10", text: "text-violet-700 dark:text-violet-400", border: "border-violet-200 dark:border-violet-500/20" },
+  과학: { bg: "bg-teal-50 dark:bg-teal-500/10", text: "text-teal-700 dark:text-teal-400", border: "border-teal-200 dark:border-teal-500/20" },
+  문화: { bg: "bg-pink-50 dark:bg-pink-500/10", text: "text-pink-700 dark:text-pink-400", border: "border-pink-200 dark:border-pink-500/20" },
+  스포츠: { bg: "bg-orange-50 dark:bg-orange-500/10", text: "text-orange-700 dark:text-orange-400", border: "border-orange-200 dark:border-orange-500/20" },
+  연예: { bg: "bg-fuchsia-50 dark:bg-fuchsia-500/10", text: "text-fuchsia-700 dark:text-fuchsia-400", border: "border-fuchsia-200 dark:border-fuchsia-500/20" },
+  기타: { bg: "bg-muted", text: "text-muted-foreground", border: "border-border" },
 }
 
-const defaultCat = { bg: "bg-muted", text: "text-muted-foreground", border: "border-border" }
+const defaultCategory = { bg: "bg-muted", text: "text-muted-foreground", border: "border-border" }
 
 export function TopicCard({ topic, className }: TopicCardProps) {
-  const cat = categoryConfig[topic.category] ?? defaultCat
+  const category = categoryConfig[topic.category] ?? defaultCategory
   const { user } = useAuth()
   const roomHref = `/rooms/${topic.id}`
   const entryHref = user ? roomHref : `/login?redirect=${encodeURIComponent(roomHref)}`
@@ -52,28 +56,31 @@ export function TopicCard({ topic, className }: TopicCardProps) {
     <Card
       className={cn(
         "group relative flex flex-col overflow-hidden border-border bg-card shadow-card transition-all duration-200",
-        "hover:-translate-y-px hover:shadow-card-hover hover:border-border/80",
-        className
+        "hover:-translate-y-px hover:border-border/80 hover:shadow-card-hover",
+        className,
       )}
     >
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5">
-            {/* Category badge */}
             <span
               className={cn(
                 "rounded-full border px-2 py-0.5 text-[11px] font-medium",
-                cat.bg, cat.text, cat.border
+                category.bg,
+                category.text,
+                category.border,
               )}
             >
               {topic.category}
             </span>
-            <span className={cn(
-              "rounded-full border px-2 py-0.5 text-[11px] font-semibold",
-              topic.status === "OPEN"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-400"
-                : "border-border bg-muted text-muted-foreground",
-            )}>
+            <span
+              className={cn(
+                "rounded-full border px-2 py-0.5 text-[11px] font-semibold",
+                topic.status === "OPEN"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-400"
+                  : "border-border bg-muted text-muted-foreground",
+              )}
+            >
               {topic.status === "OPEN" ? "진행 중" : "종료"}
             </span>
           </div>
@@ -104,6 +111,11 @@ export function TopicCard({ topic, className }: TopicCardProps) {
                 #{tag}
               </span>
             ))}
+          </div>
+        )}
+        {topic.status === "CLOSED" && (
+          <div className={topic.tags && topic.tags.length > 0 ? "mt-3" : ""}>
+            <AiReportPanel roomId={Number(topic.id)} roomStatus={topic.status} compact />
           </div>
         )}
       </CardContent>

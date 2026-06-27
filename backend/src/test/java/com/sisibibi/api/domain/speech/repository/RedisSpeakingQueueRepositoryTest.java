@@ -55,7 +55,7 @@ class RedisSpeakingQueueRepositoryTest {
     }
 
     @Test
-    void upsert_storesQueueOrderPersistedByRdb() {
+    void upsert_storesQueueOrderPersistedByDb() {
         speakingQueueRepository.upsert(1L, 10L, 15);
         speakingQueueRepository.upsert(1L, 20L, 21);
 
@@ -213,7 +213,7 @@ class RedisSpeakingQueueRepositoryTest {
     }
 
     @Test
-    void replaceRoomProjectionIfVersionMatches_clearsCurrentSpeakerWhenRdbHasNoAssignedSpeaker() {
+    void replaceRoomProjectionIfVersionMatches_clearsCurrentSpeakerWhenDbHasNoAssignedSpeaker() {
         redisTemplate.opsForValue().set(CURRENT_SPEAKER_KEY, "10");
         long expectedVersion = speakingQueueRepository.currentProjectionVersion(1L);
 

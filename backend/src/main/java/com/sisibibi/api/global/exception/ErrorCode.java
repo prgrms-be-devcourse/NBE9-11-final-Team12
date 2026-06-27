@@ -66,6 +66,15 @@ public enum ErrorCode {
     CHAT_MESSAGE_TOO_LONG(HttpStatus.BAD_REQUEST, "채팅 메시지 길이를 초과했습니다."),
     CHAT_MESSAGE_CONTAINS_PROFANITY(HttpStatus.BAD_REQUEST, "채팅 메시지에 금칙어가 포함되어 있습니다."),
     CHAT_RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "채팅 메시지 전송 제한을 초과했습니다."),
+    CHAT_REPORT_SELF_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "본인의 채팅 메시지는 신고할 수 없습니다."),
+    CHAT_REPORT_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 신고한 채팅 메시지입니다."),
+    CHAT_REPORT_DESCRIPTION_REQUIRED(HttpStatus.BAD_REQUEST, "기타 신고 사유에는 상세 설명이 필요합니다."),
+    CHAT_REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 채팅 신고입니다."),
+    CHAT_REPORT_INVALID_STATUS_TRANSITION(HttpStatus.CONFLICT, "현재 상태에서 요청한 채팅 신고 처리를 수행할 수 없습니다."),
+    CHAT_REPORT_RESOLUTION_NOTE_REQUIRED(HttpStatus.BAD_REQUEST, "채팅 신고 처리 완료 또는 반려 시 처리 사유가 필요합니다."),
+    CHAT_REPORT_RESOLUTION_NOTE_TOO_LONG(HttpStatus.BAD_REQUEST, "채팅 신고 처리 사유는 500자 이하여야 합니다."),
+    CHAT_REPORT_SEVERITY_REQUIRED(HttpStatus.BAD_REQUEST, "채팅 신고 처리 완료 시 위반 심각도가 필요합니다."),
+    CHAT_REPORT_SEVERITY_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "채팅 신고 검토 시작 또는 반려 처리에는 위반 심각도를 지정할 수 없습니다."),
 
     // Speaking Queue
     SPEAKING_REQUEST_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 발언권을 신청한 상태입니다."),
@@ -97,6 +106,10 @@ public enum ErrorCode {
     BEST_SPEECH_NOT_FOUND(HttpStatus.NOT_FOUND, "베스트 의견이 존재하지 않습니다."),
     INVALID_STANCE(HttpStatus.BAD_REQUEST, "올바르지 않은 입장 값입니다."),
     IMAGE_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "이미지 업로드에 실패했습니다."),
+    S3_CONFIG_MISSING(HttpStatus.INTERNAL_SERVER_ERROR, "서버 설정이 누락되었습니다."),
+
+    // Stage Summary
+    STAGE_SUMMARY_NOT_FOUND(HttpStatus.NOT_FOUND, "중간 정리를 찾을 수 없습니다."),
 
     // AI Report
     AI_REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "AI 리포트를 찾을 수 없습니다."),

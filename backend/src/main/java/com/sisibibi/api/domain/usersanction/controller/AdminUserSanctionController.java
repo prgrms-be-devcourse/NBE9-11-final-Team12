@@ -9,6 +9,8 @@ import com.sisibibi.api.domain.usersanction.service.UserSanctionRecommendationSe
 import com.sisibibi.api.domain.usersanction.service.UserSanctionService;
 import com.sisibibi.api.global.response.ApiResponse;
 import com.sisibibi.api.global.security.AuthPrincipal;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +31,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "관리자 사용자 제재", description = "관리자 사용자 제재 등록, 조회, 추천, 해제, 연장 API")
 @Validated
 @RestController
 @RequiredArgsConstructor
@@ -38,6 +41,10 @@ public class AdminUserSanctionController {
     private final UserSanctionService userSanctionService;
     private final UserSanctionRecommendationService recommendationService;
 
+    @Operation(
+        summary = "사용자 제재 등록",
+        description = "관리자가 지정한 사용자에게 제재를 등록합니다."
+    )
     @PostMapping
     public ResponseEntity<ApiResponse<UserSanctionRes>> createSanction(
             @PathVariable @Positive Long userId,
@@ -52,6 +59,10 @@ public class AdminUserSanctionController {
                 .body(ApiResponse.created("사용자 제재가 등록되었습니다.", response));
     }
 
+    @Operation(
+        summary = "사용자 제재 목록 조회",
+        description = "관리자가 지정한 사용자의 제재 이력을 페이지 단위로 조회합니다."
+    )
     @GetMapping
     public ResponseEntity<ApiResponse<Page<UserSanctionRes>>> getSanctions(
             @PathVariable @Positive Long userId,
@@ -66,6 +77,10 @@ public class AdminUserSanctionController {
         return ResponseEntity.ok(ApiResponse.ok("사용자 제재 목록 조회가 완료되었습니다.", response));
     }
 
+    @Operation(
+        summary = "사용자 제재 추천 조회",
+        description = "신고 내용을 기준으로 지정한 사용자에게 적용할 제재 추천 정보를 조회합니다."
+    )
     @GetMapping("/recommendation")
     public ResponseEntity<ApiResponse<UserSanctionRecommendationRes>> getRecommendation(
             @PathVariable @Positive Long userId,
@@ -80,6 +95,10 @@ public class AdminUserSanctionController {
         ));
     }
 
+    @Operation(
+        summary = "사용자 제재 해제",
+        description = "관리자가 지정한 사용자의 제재를 해제합니다."
+    )
     @PatchMapping("/{sanctionId}/revoke")
     public ResponseEntity<ApiResponse<UserSanctionRes>> revokeSanction(
             @PathVariable @Positive Long userId,
@@ -97,6 +116,10 @@ public class AdminUserSanctionController {
         return ResponseEntity.ok(ApiResponse.ok("사용자 제재가 해제되었습니다.", response));
     }
 
+    @Operation(
+        summary = "사용자 제재 연장",
+        description = "관리자가 지정한 사용자의 제재 기간을 연장합니다."
+    )
     @PatchMapping("/{sanctionId}/extend")
     public ResponseEntity<ApiResponse<UserSanctionRes>> extendSanction(
             @PathVariable @Positive Long userId,

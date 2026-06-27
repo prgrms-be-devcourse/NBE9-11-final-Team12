@@ -10,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -87,6 +88,15 @@ public class SpeakingQueue {
     @Column(name = "expires_at")
     private LocalDateTime expiresAt;
 
+    @Column(name = "last_activity_at")
+    private LocalDateTime lastActivityAt;
+
+    @Column(name = "idle_warning_sent", nullable = false)
+    private boolean idleWarningSent;
+
+    @Column(name = "idle_warned_at")
+    private LocalDateTime idleWarnedAt;
+
     private SpeakingQueue(
             Long roomId,
             Long userId,
@@ -99,6 +109,7 @@ public class SpeakingQueue {
         this.activeRequest = true;
         this.status = SpeakingQueueStatus.WAITING;
         this.requestedAt = requestedAt;
+        this.idleWarningSent = false;
     }
 
     public static SpeakingQueue waiting(
@@ -137,6 +148,9 @@ public class SpeakingQueue {
         this.status = SpeakingQueueStatus.ASSIGNED;
         this.assignedAt = assignedAt;
         this.expiresAt = expiresAt;
+        this.lastActivityAt = assignedAt;
+        this.idleWarningSent = false;
+        this.idleWarnedAt = null;
     }
 
     public void cancel(LocalDateTime canceledAt) {
@@ -160,5 +174,67 @@ public class SpeakingQueue {
 
         this.status = SpeakingQueueStatus.COMPLETED;
         this.activeRequest = null;
+    }
+
+    public void recordActivity(LocalDateTime activityAt) {
+        if (status != SpeakingQueueStatus.ASSIGNED) {
+            throw new IllegalStateException(
+                    "Only assigned speaking requests can record activity."
+            );
+        }
+        if (activityAt == null) {
+            throw new IllegalArgumentException("Activity time is required.");
+        }
+
+        this.lastActivityAt = activityAt;
+        this.idleWarningSent = false;
+        this.idleWarnedAt = null;
+    }
+
+    public boolean markIdleWarningIfDue(
+            LocalDateTime now,
+            Duration warningDelay,
+            Duration warningSuppressionBeforeExpiration
+    ) {
+        if (!isIdleWarningDue(now, warningDelay, warningSuppressionBeforeExpiration)) {
+            return false;
+        }
+
+        this.idleWarningSent = true;
+        this.idleWarnedAt = now;
+        return true;
+    }
+
+    public boolean isIdleWarningDue(
+            LocalDateTime now,
+            Duration warningDelay,
+            Duration warningSuppressionBeforeExpiration
+    ) {
+        if (status != SpeakingQueueStatus.ASSIGNED
+                || idleWarningSent
+                || lastActivityAt == null
+                || expiresAt == null) {
+            return false;
+        }
+
+        boolean inactiveLongEnough = !lastActivityAt.plus(warningDelay).isAfter(now);
+        boolean hasEnoughTimeBeforeExpiration =
+                expiresAt.isAfter(now.plus(warningSuppressionBeforeExpiration));
+        return inactiveLongEnough && hasEnoughTimeBeforeExpiration;
+    }
+
+    public boolean isIdleTimedOut(
+            LocalDateTime now,
+            Duration timeoutDelayAfterWarning
+    ) {
+        if (status != SpeakingQueueStatus.ASSIGNED
+                || !idleWarningSent
+                || idleWarnedAt == null
+                || expiresAt == null
+                || !expiresAt.isAfter(now)) {
+            return false;
+        }
+
+        return !idleWarnedAt.plus(timeoutDelayAfterWarning).isAfter(now);
     }
 }

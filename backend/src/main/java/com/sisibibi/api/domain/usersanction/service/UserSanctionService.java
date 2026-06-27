@@ -3,6 +3,7 @@ package com.sisibibi.api.domain.usersanction.service;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReport;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportStatus;
 import com.sisibibi.api.domain.speechreport.repository.SpeechReportRepository;
+import com.sisibibi.api.domain.roomparticipant.service.RoomParticipantForceLeaveService;
 import com.sisibibi.api.domain.user.repository.UserRepository;
 import com.sisibibi.api.domain.user.entity.User;
 import com.sisibibi.api.domain.user.entity.UserRole;
@@ -33,9 +34,15 @@ import java.util.List;
 @RequiredArgsConstructor
 public class UserSanctionService {
 
+    private static final List<UserSanctionType> SPEECH_AND_STAGE_RESTRICTION_TYPES = List.of(
+            UserSanctionType.SPEECH_RESTRICTION,
+            UserSanctionType.STAGE_RESTRICTION
+    );
+
     private final UserRepository userRepository;
     private final SpeechReportRepository speechReportRepository;
     private final UserSanctionRepository userSanctionRepository;
+    private final RoomParticipantForceLeaveService roomParticipantForceLeaveService;
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
@@ -54,12 +61,7 @@ public class UserSanctionService {
 
         LocalDateTime startsAt = LocalDateTime.now();
         LocalDateTime endsAt = calculateEndsAt(request.type(), request.durationHours(), startsAt);
-        if (request.type() != UserSanctionType.WARNING
-                && userSanctionRepository.existsActive(
-                userId,
-                request.type(),
-                startsAt
-        )) {
+        if (hasActiveSamePolicySanction(userId, request.type(), startsAt)) {
             throw new CustomException(ErrorCode.USER_SANCTION_ALREADY_ACTIVE);
         }
 
@@ -75,6 +77,7 @@ public class UserSanctionService {
         UserSanction savedSanction = userSanctionRepository.save(sanction);
         if (request.type() == UserSanctionType.ACCOUNT_SUSPENSION) {
             targetUser.ban();
+            roomParticipantForceLeaveService.leaveAllJoinedRooms(userId);
         }
         publishSanctionChangedEvent(
                 UserSanctionEventType.SANCTION_CREATED,
@@ -190,6 +193,25 @@ public class UserSanctionService {
                 sanction.getUserId(),
                 UserSanctionEventPayload.from(sanction, now)
         ));
+    }
+
+    private boolean hasActiveSamePolicySanction(
+            Long userId,
+            UserSanctionType type,
+            LocalDateTime now
+    ) {
+        if (type == UserSanctionType.WARNING) {
+            return false;
+        }
+        if (type == UserSanctionType.SPEECH_RESTRICTION
+                || type == UserSanctionType.STAGE_RESTRICTION) {
+            return userSanctionRepository.existsActiveIn(
+                    userId,
+                    SPEECH_AND_STAGE_RESTRICTION_TYPES,
+                    now
+            );
+        }
+        return userSanctionRepository.existsActive(userId, type, now);
     }
 
     private void validateReport(Long userId, Long reportId) {

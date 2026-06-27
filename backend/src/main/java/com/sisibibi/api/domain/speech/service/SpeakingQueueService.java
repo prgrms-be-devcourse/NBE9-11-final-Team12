@@ -42,6 +42,8 @@ public class SpeakingQueueService {
     private final SpeakingQueuePersistenceService speakingQueuePersistenceService;
     private final SpeakingQueueProperties speakingQueueProperties;
     private final ApplicationEventPublisher eventPublisher;
+    private final StageSummaryService stageSummaryService;
+    private final AiCounterIssueService aiCounterIssueService;
 
     public StageRequestRes requestSpeakingTurn(
             Long roomId,
@@ -141,6 +143,8 @@ public class SpeakingQueueService {
                 completed,
                 StageTurnEndReason.COMPLETED
         );
+        suggestAiCounterIssue(roomId);
+        generateStageSummaryIfNeeded(roomId);
         tryAssignNextSpeaker(roomId);
     }
 
@@ -154,9 +158,37 @@ public class SpeakingQueueService {
         SpeakingQueueRoomCloseResult closeResult =
                 speakingQueuePersistenceService.closeActiveRequestsByRoomId(roomId, closedAt);
 
+        synchronizeRoomClosedSpeakingQueuesAfterCommit(closeResult);
+        logRoomClosedSpeakingQueues(roomId, closeResult);
+    }
+
+    private void synchronizeRoomClosedSpeakingQueuesAfterCommit(
+            SpeakingQueueRoomCloseResult closeResult
+    ) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            synchronizeRoomClosedSpeakingQueues(closeResult);
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        synchronizeRoomClosedSpeakingQueues(closeResult);
+                    }
+                }
+        );
+    }
+
+    private void synchronizeRoomClosedSpeakingQueues(SpeakingQueueRoomCloseResult closeResult) {
         closeResult.canceledRequests().forEach(this::synchronizeCanceledRedisProjection);
         closeResult.completedRequests().forEach(this::synchronizeCompletedRedisProjection);
+    }
 
+    private void logRoomClosedSpeakingQueues(
+            Long roomId,
+            SpeakingQueueRoomCloseResult closeResult
+    ) {
         if (!closeResult.canceledRequests().isEmpty()
                 || !closeResult.completedRequests().isEmpty()) {
             log.info(
@@ -193,29 +225,19 @@ public class SpeakingQueueService {
 
         int resolvedOffset = resolveOffset(offset);
         int resolvedSize = resolveSize(size);
-        long totalWaitingCount = redisSpeakingQueueRepository.count(roomId);
-        long start = resolvedOffset;
-        long end = resolvedOffset + (long) resolvedSize - 1;
-        List<Long> userIds =
-                redisSpeakingQueueRepository.findWaitingUserIds(roomId, start, end);
-        Map<Long, String> nicknames =
-                speakingQueuePersistenceService.findNicknamesByUserIds(userIds);
-        List<StageQueueRes.WaitingSpeaker> items =
-                IntStream.range(0, userIds.size())
-                        .mapToObj(index -> waitingSpeaker(
-                                resolvedOffset,
-                                index,
-                                userIds.get(index),
-                                nicknames
-                        ))
-                        .toList();
-
-        return StageQueueRes.of(
-                totalWaitingCount,
-                resolvedOffset,
-                resolvedSize,
-                items
-        );
+        try {
+            return getWaitingQueueFromRedis(roomId, resolvedOffset, resolvedSize);
+        } catch (RuntimeException redisReadException) {
+            log.warn(
+                    "Failed to read speaking waiting queue from Redis. "
+                            + "fallback to DB. roomId={}, offset={}, size={}",
+                    roomId,
+                    resolvedOffset,
+                    resolvedSize,
+                    redisReadException
+            );
+            return getWaitingQueueFromDb(roomId, resolvedOffset, resolvedSize);
+        }
     }
 
     public Optional<SpeakingQueue> expireCurrentSpeaker(
@@ -237,8 +259,68 @@ public class SpeakingQueueService {
                 speakingQueue,
                 StageTurnEndReason.EXPIRED
         ));
-        expired.ifPresent(speakingQueue -> tryAssignNextSpeaker(roomId));
+        expired.ifPresent(speakingQueue -> {
+            suggestAiCounterIssue(roomId);
+            generateStageSummaryIfNeeded(roomId);
+            tryAssignNextSpeaker(roomId);
+        });
         return expired;
+    }
+
+    public Optional<SpeakingQueue> warnIdleCurrentSpeaker(
+            Long roomId,
+            LocalDateTime now
+    ) {
+        SpeakingQueueProperties.Idle idleProperties = speakingQueueProperties.getIdle();
+        Optional<SpeakingQueue> warned =
+                speakingQueuePersistenceService.warnCurrentSpeakerIfIdle(
+                        roomId,
+                        now,
+                        idleProperties.getWarningDelay(),
+                        idleProperties.getWarningSuppressionBeforeExpiration()
+                );
+        warned.ifPresent(speakingQueue -> log.info(
+                "Speaking idle warning sent. roomId={}, userId={}, queueOrder={}, lastActivityAt={}",
+                speakingQueue.getRoomId(),
+                speakingQueue.getUserId(),
+                speakingQueue.getQueueOrder(),
+                speakingQueue.getLastActivityAt()
+        ));
+        warned.ifPresent(speakingQueue ->
+                publishStageChanged(StageEventType.SPEAKER_IDLE_WARNED, speakingQueue));
+        return warned;
+    }
+
+    public Optional<SpeakingQueue> completeIdleCurrentSpeaker(
+            Long roomId,
+            LocalDateTime now
+    ) {
+        SpeakingQueueProperties.Idle idleProperties = speakingQueueProperties.getIdle();
+        Optional<SpeakingQueue> completed =
+                speakingQueuePersistenceService.completeCurrentSpeakerIfIdleTimedOut(
+                        roomId,
+                        now,
+                        idleProperties.getTimeoutDelayAfterWarning()
+                );
+        completed.ifPresent(this::synchronizeCompletedRedisProjection);
+        completed.ifPresent(speakingQueue -> log.info(
+                "Speaking request completed because speaker was idle. "
+                        + "roomId={}, userId={}, queueOrder={}, idleWarnedAt={}",
+                speakingQueue.getRoomId(),
+                speakingQueue.getUserId(),
+                speakingQueue.getQueueOrder(),
+                speakingQueue.getIdleWarnedAt()
+        ));
+        completed.ifPresent(speakingQueue -> publishStageChanged(
+                StageEventType.SPEAKER_COMPLETED,
+                speakingQueue,
+                StageTurnEndReason.IDLE_TIMEOUT
+        ));
+        completed.ifPresent(speakingQueue -> {
+            generateStageSummaryIfNeeded(roomId);
+            tryAssignNextSpeaker(roomId);
+        });
+        return completed;
     }
 
     private void publishStageChanged(
@@ -296,6 +378,8 @@ public class SpeakingQueueService {
 
     private void synchronizeParticipantLeftTurnCompletion(SpeakingQueue completed) {
         synchronizeCompletedRedisProjection(completed);
+        suggestAiCounterIssue(completed.getRoomId());
+        generateStageSummaryIfNeeded(completed.getRoomId());
         tryAssignNextSpeaker(completed.getRoomId());
     }
 
@@ -317,10 +401,120 @@ public class SpeakingQueueService {
             return null;
         }
 
-        return redisSpeakingQueueRepository.rank(
-                speakingQueue.getRoomId(),
-                speakingQueue.getUserId()
-        ).orElse(null);
+        try {
+            Optional<Integer> redisRank = redisSpeakingQueueRepository.rank(
+                    speakingQueue.getRoomId(),
+                    speakingQueue.getUserId()
+            );
+            if (redisRank.isPresent()) {
+                return redisRank.get();
+            }
+
+            log.warn(
+                    "Speaking waiting rank is missing in Redis. fallback to DB. "
+                            + "roomId={}, userId={}, queueOrder={}",
+                    speakingQueue.getRoomId(),
+                    speakingQueue.getUserId(),
+                    speakingQueue.getQueueOrder()
+            );
+        } catch (RuntimeException redisReadException) {
+            log.warn(
+                    "Failed to read speaking waiting rank from Redis. fallback to DB. "
+                            + "roomId={}, userId={}, queueOrder={}",
+                    speakingQueue.getRoomId(),
+                    speakingQueue.getUserId(),
+                    speakingQueue.getQueueOrder(),
+                    redisReadException
+            );
+        }
+
+        return currentWaitingRankFromDb(speakingQueue);
+    }
+
+    private StageQueueRes getWaitingQueueFromRedis(
+            Long roomId,
+            int resolvedOffset,
+            int resolvedSize
+    ) {
+        long totalWaitingCount = redisSpeakingQueueRepository.count(roomId);
+        long start = resolvedOffset;
+        long end = resolvedOffset + (long) resolvedSize - 1;
+        List<Long> userIds =
+                redisSpeakingQueueRepository.findWaitingUserIds(roomId, start, end);
+        Map<Long, String> nicknames =
+                speakingQueuePersistenceService.findNicknamesByUserIds(userIds);
+        List<StageQueueRes.WaitingSpeaker> items =
+                IntStream.range(0, userIds.size())
+                        .mapToObj(index -> waitingSpeaker(
+                                resolvedOffset,
+                                index,
+                                userIds.get(index),
+                                nicknames
+                        ))
+                        .toList();
+
+        return StageQueueRes.of(
+                totalWaitingCount,
+                resolvedOffset,
+                resolvedSize,
+                items
+        );
+    }
+
+    private StageQueueRes getWaitingQueueFromDb(
+            Long roomId,
+            int resolvedOffset,
+            int resolvedSize
+    ) {
+        long totalWaitingCount =
+                speakingQueuePersistenceService.countWaitingRequests(roomId);
+        List<SpeakingQueue> waitingQueues =
+                speakingQueuePersistenceService.findWaitingRequestsForRedisReadFallback(
+                        roomId,
+                        resolvedOffset,
+                        resolvedSize
+                );
+        List<Long> userIds = waitingQueues.stream()
+                .map(SpeakingQueue::getUserId)
+                .toList();
+        Map<Long, String> nicknames =
+                speakingQueuePersistenceService.findNicknamesByUserIds(userIds);
+        List<StageQueueRes.WaitingSpeaker> items =
+                IntStream.range(0, waitingQueues.size())
+                        .mapToObj(index -> waitingSpeaker(
+                                resolvedOffset,
+                                index,
+                                waitingQueues.get(index).getUserId(),
+                                nicknames
+                        ))
+                        .toList();
+
+        return StageQueueRes.of(
+                totalWaitingCount,
+                resolvedOffset,
+                resolvedSize,
+                items
+        );
+    }
+
+    private Integer currentWaitingRankFromDb(SpeakingQueue speakingQueue) {
+        Integer queueOrder = speakingQueue.getQueueOrder();
+        if (queueOrder == null) {
+            log.warn(
+                    "Cannot calculate speaking waiting rank from DB because queueOrder is null. "
+                            + "roomId={}, userId={}",
+                    speakingQueue.getRoomId(),
+                    speakingQueue.getUserId()
+            );
+            return null;
+        }
+
+        long previousWaitingCount =
+                speakingQueuePersistenceService.countWaitingRequestsBefore(
+                        speakingQueue.getRoomId(),
+                        queueOrder
+                );
+        return Math.toIntExact(previousWaitingCount + 1);
     }
 
     private int resolveOffset(Integer offset) {
@@ -624,4 +818,27 @@ public class SpeakingQueueService {
     ) {
     }
 
+    private void suggestAiCounterIssue(Long roomId) {
+        try {
+            aiCounterIssueService.suggestIfNeeded(roomId);
+        } catch (RuntimeException exception) {
+            log.warn(
+                    "Failed to suggest AI counter issue. roomId={}",
+                    roomId,
+                    exception
+            );
+        }
+    }
+
+    private void generateStageSummaryIfNeeded(Long roomId) {
+        try {
+            stageSummaryService.generateIfNeeded(roomId);
+        } catch (RuntimeException exception) {
+            log.warn(
+                    "Failed to generate stage summary after speaking completion. roomId={}",
+                    roomId,
+                    exception
+            );
+        }
+    }
 }

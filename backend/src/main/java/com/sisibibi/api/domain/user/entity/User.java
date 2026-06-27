@@ -1,5 +1,7 @@
 package com.sisibibi.api.domain.user.entity;
 
+import com.sisibibi.api.global.exception.CustomException;
+import com.sisibibi.api.global.exception.ErrorCode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
@@ -85,6 +87,9 @@ public class User {
     }
 
     public void ban() {
+        if (status == UserStatus.BANNED) {
+            throw new CustomException(ErrorCode.USER_BANNED);
+        }
         this.status = UserStatus.BANNED;
         invalidateTokens();
     }

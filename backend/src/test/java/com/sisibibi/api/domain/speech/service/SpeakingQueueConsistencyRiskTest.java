@@ -59,7 +59,7 @@ class SpeakingQueueConsistencyRiskTest {
     }
 
     @Test
-    void requestSpeakingTurn_doesNotCreateRedisEntryWhenRdbSaveFails() {
+    void requestSpeakingTurn_doesNotCreateRedisEntryWhenDbSaveFails() {
         SpeakingQueuePersistenceService failingPersistenceService =
                 mock(SpeakingQueuePersistenceService.class);
         given(failingPersistenceService.createWaitingRequest(ROOM_ID, USER_ID, SpeechStance.PRO))
@@ -68,7 +68,9 @@ class SpeakingQueueConsistencyRiskTest {
                 redisSpeakingQueueRepository,
                 failingPersistenceService,
                 mock(SpeakingQueueProperties.class),
-                mock(ApplicationEventPublisher.class)
+                mock(ApplicationEventPublisher.class),
+                mock(StageSummaryService.class),
+                mock(AiCounterIssueService.class)
         );
 
         assertThatThrownBy(() ->
@@ -101,7 +103,9 @@ class SpeakingQueueConsistencyRiskTest {
                 failingRedisRepository,
                 persistenceService,
                 mock(SpeakingQueueProperties.class),
-                mock(ApplicationEventPublisher.class)
+                mock(ApplicationEventPublisher.class),
+                mock(StageSummaryService.class),
+                mock(AiCounterIssueService.class)
         );
 
         StageRequestRes response =

@@ -6,6 +6,8 @@ import com.sisibibi.api.domain.speechreport.entity.SpeechReportStatus;
 import com.sisibibi.api.domain.speechreport.entity.ViolationSeverity;
 import com.sisibibi.api.domain.speechreport.repository.SpeechReportRepository;
 import com.sisibibi.api.domain.speechreport.repository.ViolationHistorySummaryProjection;
+import com.sisibibi.api.domain.user.entity.User;
+import com.sisibibi.api.domain.user.repository.UserRepository;
 import com.sisibibi.api.domain.usersanction.entity.UserSanctionType;
 import com.sisibibi.api.domain.usersanction.repository.UserSanctionRepository;
 import com.sisibibi.api.global.exception.CustomException;
@@ -18,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -28,6 +31,9 @@ import static org.mockito.BDDMockito.given;
 
 @ExtendWith(MockitoExtension.class)
 class UserSanctionRecommendationServiceTest {
+
+    @Mock
+    private UserRepository userRepository;
 
     @Mock
     private SpeechReportRepository speechReportRepository;
@@ -45,6 +51,8 @@ class UserSanctionRecommendationServiceTest {
     void recommend_returnsRecommendationFromResolvedHistory() {
         SpeechReport report = resolvedReport(100L, 10L, ViolationSeverity.MEDIUM);
         ViolationHistorySummaryProjection projection = projection(1L, 2L, 0L, 0L);
+        given(userRepository.findById(10L))
+                .willReturn(Optional.of(User.signup("user@example.com", "password", "user")));
         given(speechReportRepository.findById(100L)).willReturn(Optional.of(report));
         given(speechReportRepository.summarizeResolvedViolations(
                 eq(10L),
@@ -54,13 +62,14 @@ class UserSanctionRecommendationServiceTest {
                 ViolationSeverity.MEDIUM,
                 new ViolationHistorySummary(1, 2, 0, 0)
         )).willReturn(new SanctionRecommendation(
-                UserSanctionType.SPEECH_RESTRICTION,
+                UserSanctionType.STAGE_RESTRICTION,
                 24,
+                false,
                 "최근 90일 누적 위반 점수가 4점 이상입니다."
         ));
-        given(userSanctionRepository.findFirstActive(
+        given(userSanctionRepository.findFirstActiveIn(
                 eq(10L),
-                eq(UserSanctionType.SPEECH_RESTRICTION),
+                eq(List.of(UserSanctionType.SPEECH_RESTRICTION, UserSanctionType.STAGE_RESTRICTION)),
                 any(LocalDateTime.class)
         )).willReturn(Optional.of(activeSanction()));
 
@@ -71,6 +80,7 @@ class UserSanctionRecommendationServiceTest {
         assertThat(response.mediumCount()).isEqualTo(2);
         assertThat(response.weightedScore()).isEqualTo(5);
         assertThat(response.recommendedDurationHours()).isEqualTo(24);
+        assertThat(response.accountSuspensionReviewRecommended()).isFalse();
         assertThat(response.activeSameTypeSanction()).isTrue();
         assertThat(response.activeSameTypeSanctionId()).isEqualTo(200L);
     }
@@ -85,6 +95,8 @@ class UserSanctionRecommendationServiceTest {
                 SpeechReportReason.SPAM,
                 null
         );
+        given(userRepository.findById(10L))
+                .willReturn(Optional.of(User.signup("user@example.com", "password", "user")));
         given(speechReportRepository.findById(100L)).willReturn(Optional.of(report));
 
         assertThatThrownBy(() -> recommendationService.recommend(10L, 100L))
@@ -96,12 +108,25 @@ class UserSanctionRecommendationServiceTest {
     @Test
     void recommend_throwsReportMismatch_whenTargetUserDiffers() {
         SpeechReport report = resolvedReport(100L, 11L, ViolationSeverity.LOW);
+        given(userRepository.findById(10L))
+                .willReturn(Optional.of(User.signup("user@example.com", "password", "user")));
         given(speechReportRepository.findById(100L)).willReturn(Optional.of(report));
 
         assertThatThrownBy(() -> recommendationService.recommend(10L, 100L))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.USER_SANCTION_REPORT_MISMATCH);
+    }
+
+    @Test
+    void recommend_throwsAdminNotAllowed_whenTargetIsAdmin() {
+        given(userRepository.findById(10L))
+                .willReturn(Optional.of(User.admin("admin@example.com", "password", "admin")));
+
+        assertThatThrownBy(() -> recommendationService.recommend(10L, 100L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.USER_SANCTION_ADMIN_NOT_ALLOWED);
     }
 
     private SpeechReport resolvedReport(

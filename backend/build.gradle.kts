@@ -27,11 +27,16 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-validation")
 	implementation("org.springframework.boot:spring-boot-starter-web")
 	implementation("org.springframework.boot:spring-boot-starter-websocket")
+	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.17")
 	implementation(platform("org.springframework.ai:spring-ai-bom:1.0.9"))
 	implementation("org.springframework.ai:spring-ai-starter-model-openai")
 	implementation(platform("software.amazon.awssdk:bom:2.25.70"))
 	implementation("software.amazon.awssdk:sqs")
 	runtimeOnly("io.micrometer:micrometer-registry-prometheus")
+
+	// S3
+	implementation(platform("software.amazon.awssdk:bom:2.31.54"))
+	implementation("software.amazon.awssdk:s3")
 
 	// JWT 라이브러리
 	implementation("io.jsonwebtoken:jjwt-api:0.12.6")

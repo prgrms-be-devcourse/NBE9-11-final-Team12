@@ -16,6 +16,7 @@ public record UserSanctionRecommendationRes(
         int weightedScore,
         UserSanctionType recommendedType,
         Integer recommendedDurationHours,
+        boolean accountSuspensionReviewRecommended,
         boolean activeSameTypeSanction,
         Long activeSameTypeSanctionId,
         java.time.LocalDateTime activeSameTypeEndsAt,

@@ -33,6 +33,27 @@ export type TopicCreateResponse = {
   status: "PENDING" | "APPROVED" | "REJECTED"
 }
 
+export type IssueNews = {
+  title: string
+  originallink: string
+  link: string
+  description: string
+  pubDate: string
+}
+
+export type ClassifiedIssueNews = {
+  news: IssueNews
+  category: string
+  keywords: string[]
+}
+
+export type ClassifiedIssueCandidate = {
+  keyword: string
+  searchVolume: number | null
+  increasePercentage: number | null
+  news: ClassifiedIssueNews[]
+}
+
 export type RoomCreateResponse = {
   roomId: number
   topicId: number
@@ -46,6 +67,44 @@ export type RoomSummary = RoomCreateResponse
 
 export type RoomDetail = RoomSummary & {
   endedAt: string | null
+}
+
+export type RoomTitlePreview = {
+  topicId: number
+  title: string
+}
+
+export type AiReportStatus = "PENDING" | "COMPLETED" | "FAILED"
+
+export type AiReportCustomPrompt = {
+  label?: string
+  prompt: string
+}
+
+export type AiReportGenerateRequest = {
+  customPrompts?: AiReportCustomPrompt[]
+}
+
+export type AiReportCustomReport = {
+  requestLabel: string
+  prompt: string
+  label: string
+  content: string
+}
+
+export type AiReport = {
+  reportId: number
+  roomId: number
+  status: AiReportStatus
+  coreLine: string | null
+  keyIssues: string[]
+  aiSummary: string | null
+  commonGround: string | null
+  aiOpinion: string | null
+  customReports: AiReportCustomReport[]
+  errorMessage: string | null
+  requestedAt: string | null
+  completedAt: string | null
 }
 
 export type RoomParticipantStatus = "JOINED" | "LEFT"
@@ -75,6 +134,7 @@ export type SpringPage<T> = {
 
 export type SpeechStance = "PRO" | "CON"
 export type SpeechStatus = "READY" | "SPEAKING" | "COMPLETED"
+export type SpeechDeleteReason = "USER_DELETED" | "OFF_TOPIC"
 
 export type SpeechSummary = {
   speechId: number
@@ -83,6 +143,12 @@ export type SpeechSummary = {
   content: string
   stance: SpeechStance | null
   status: SpeechStatus
+  imageUrl: string | null
+  deleted: boolean
+  deleteReason: SpeechDeleteReason | null
+  deletedAt?: string | null
+  reactionCount: number
+  reactedByMe: boolean
   createdAt: string
 }
 
@@ -94,7 +160,34 @@ export type SpeechDetail = SpeechSummary & {
   updatedAt: string
 }
 
-export type SpeechCreateResponse = Omit<SpeechSummary, "createdAt">
+export type SpeechCreateResponse = Omit<
+  SpeechSummary,
+  "createdAt" | "imageUrl" | "deleted" | "deleteReason" | "deletedAt" | "reactionCount" | "reactedByMe"
+>
+
+export type SpeechImageUploadUrl = {
+  uploadUrl: string
+  imageUrl: string
+  imageKey: string
+  expiresAt: string
+}
+
+export type SpeechReactionCreateResponse = {
+  speechId: number
+  reactionCount: number
+  reactedByMe: boolean
+}
+
+export type BestSpeech = {
+  speechId: number
+  roomId: number
+  userId: number
+  content: string
+  stance: SpeechStance | null
+  status: SpeechStatus
+  createdAt: string
+  reactionCount: number
+}
 
 export type SpeechCursorPage = {
   items: SpeechSummary[]
@@ -117,8 +210,33 @@ export type SpeechReportCreateResponse = {
   reportId: number
   speechId: number
   reason: SpeechReportReason
+  status: SpeechReportStatus
+  createdAt: string
+}
+
+export type ChatReportReason = SpeechReportReason
+
+export type ChatReportCreateResponse = {
+  reportId: number
+  roomId: number
+  messageId: number
+  reason: ChatReportReason
   status: "PENDING" | "REVIEWING" | "RESOLVED" | "REJECTED"
   createdAt: string
+}
+
+export type OffTopicAiReviewStatus = "PENDING" | "COMPLETED" | "FAILED"
+
+export type OffTopicAiReview = {
+  reviewId: number
+  status: OffTopicAiReviewStatus
+  offTopic: boolean | null
+  confidence: number | null
+  reason: string | null
+  reportCount: number
+  threshold: number
+  participantCount: number
+  completedAt: string | null
 }
 
 export type ChatMessage = {
@@ -180,6 +298,7 @@ export type StageRequest = {
   status: SpeakingQueueStatus
   roomId: number
   userId: number
+  stance: SpeechStance | null
   queueOrder: number
   requestedAt: string
 }
@@ -189,12 +308,37 @@ export type StageRequestStatus = {
   status: SpeakingQueueStatus | null
   roomId: number | null
   userId: number | null
+  stance: SpeechStance | null
   queueOrder: number | null
   currentRank: number | null
   cancelable: boolean
   requestedAt: string | null
   assignedAt: string | null
   expiresAt: string | null
+}
+
+export type StageSummaryStatus = "PENDING" | "COMPLETED" | "FAILED"
+
+export type StageSummary = {
+  summaryId: number
+  roomId: number
+  status: StageSummaryStatus
+  moderatorSummary: string | null
+  keyPoints: string[]
+  speechCount: number
+  completedSpeakerCount: number
+  triggeredAt: string
+  completedAt: string | null
+}
+
+export type AiCounterIssue = {
+  issueId: number
+  roomId: number
+  triggerQueueId: number
+  targetStance: SpeechStance
+  content: string
+  createdAt: string
+  completedAt: string | null
 }
 
 export type WebSocketEventEnvelope<TData, TEventType extends string = string> = {
@@ -227,6 +371,27 @@ export type StageEvent = WebSocketEventEnvelope<
     occurredAt: string
   },
   "SPEAKING_REQUESTED" | "SPEAKING_CANCELED" | "SPEAKER_ASSIGNED" | "SPEAKER_COMPLETED" | "SPEAKER_EXPIRED"
+>
+
+export type StageSummaryEvent = WebSocketEventEnvelope<
+  {
+    summaryId: number
+    roomId: number
+  },
+  "STAGE_SUMMARY_COMPLETED"
+>
+
+export type AiCounterIssueEvent = WebSocketEventEnvelope<
+  {
+    issueId: number
+    roomId: number
+    triggerQueueId: number
+    targetStance: SpeechStance
+    createdAt: string
+    completedAt: string | null
+    occurredAt: string
+  },
+  "AI_COUNTER_ISSUE_SUGGESTED"
 >
 
 export type RoomEvent = WebSocketEventEnvelope<
@@ -266,7 +431,7 @@ export type UserSanctionType =
   | "STAGE_RESTRICTION"
   | "ACCOUNT_SUSPENSION"
 
-export type UserSanctionState = "SCHEDULED" | "ACTIVE" | "EXPIRED" | "REVOKED"
+export type UserSanctionState = "ACTIVE" | "EXPIRED" | "REVOKED" | "RECORDED"
 
 export type UserSanctionEvent = WebSocketEventEnvelope<
   {
@@ -279,3 +444,168 @@ export type UserSanctionEvent = WebSocketEventEnvelope<
   },
   "SANCTION_CREATED" | "SANCTION_EXTENDED" | "SANCTION_REVOKED"
 >
+
+export type UserTrustLevel = "CAUTION" | "NORMAL" | "RELIABLE" | "TRUSTED"
+
+export type UserActivityLevel = "NEW" | "ACTIVE" | "CONTRIBUTOR" | "LEADER"
+
+export type UserTrustDetail = {
+  userId: number
+  nickname: string
+  score: number
+  trustLevel: UserTrustLevel
+  activityLevel: UserActivityLevel
+  receivedReactionCount: number
+  completedSpeechCount: number
+  participatedRoomCount: number
+  resolvedViolationCount: number
+  positiveScore: number
+  penaltyScore: number
+  policyVersion: string
+  calculatedAt: string
+}
+
+export type UserTrustSummary = {
+  userId: number
+  nickname: string
+  score: number
+  trustLevel: UserTrustLevel
+  activityLevel: UserActivityLevel
+  policyVersion: string
+  calculatedAt: string
+}
+
+export type ActiveUserSanction = {
+  sanctionId: number
+  type: UserSanctionType
+  reason: string
+  startsAt: string
+  endsAt: string | null
+}
+
+export type SpeechReportStatus = "PENDING" | "REVIEWING" | "RESOLVED" | "REJECTED"
+export type SpeechReportReviewAction = "START_REVIEW" | "RESOLVE" | "REJECT"
+export type ViolationSeverity = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
+export type ChatReportStatus = SpeechReportStatus
+export type ChatReportReviewAction = SpeechReportReviewAction
+export type ChatReportSeverity = ViolationSeverity
+
+export type SpeechReportSummary = {
+  reportId: number
+  speechId: number
+  reportedUserId: number
+  reportedUserNickname: string | null
+  reporterUserId: number
+  reporterUserNickname: string | null
+  reason: SpeechReportReason
+  status: SpeechReportStatus
+  createdAt: string
+  offTopicAiReview?: OffTopicAiReview | null
+}
+
+export type SpeechReportDetail = SpeechReportSummary & {
+  contentSnapshot: string
+  description: string | null
+  reviewedBy: number | null
+  reviewedByNickname: string | null
+  reviewedAt: string | null
+  resolutionNote: string | null
+  severity: ViolationSeverity | null
+  updatedAt: string
+}
+
+export type SpeechReportReviewResponse = {
+  reportId: number
+  status: SpeechReportStatus
+  reviewedBy: number | null
+  reviewedByNickname: string | null
+  reviewedAt: string | null
+  resolutionNote: string | null
+  severity: ViolationSeverity | null
+}
+
+export type ChatReportSummary = {
+  reportId: number
+  roomId: number
+  messageId: number
+  reportedUserId: number
+  reportedUserNickname: string | null
+  reporterUserId: number
+  reporterUserNickname: string | null
+  reason: ChatReportReason
+  status: ChatReportStatus
+  createdAt: string
+}
+
+export type ChatReportDetail = ChatReportSummary & {
+  contentSnapshot: string
+  description: string | null
+  reviewedBy: number | null
+  reviewedByNickname: string | null
+  reviewedAt: string | null
+  resolutionNote: string | null
+  severity: ChatReportSeverity | null
+  updatedAt: string
+}
+
+export type ChatReportReviewResponse = {
+  reportId: number
+  status: ChatReportStatus
+  reviewedBy: number | null
+  reviewedByNickname: string | null
+  reviewedAt: string | null
+  resolutionNote: string | null
+  severity: ChatReportSeverity | null
+}
+
+export type UserSanction = {
+  sanctionId: number
+  userId: number
+  adminUserId: number
+  reportId: number | null
+  type: UserSanctionType
+  reason: string
+  state: UserSanctionState
+  startsAt: string
+  endsAt: string | null
+  revokedAt: string | null
+  revokedBy: number | null
+  revocationReason: string | null
+  extendedAt: string | null
+  extendedBy: number | null
+  extensionReason: string | null
+  createdAt: string
+}
+
+export type UserSanctionRecommendation = {
+  reportId: number
+  userId: number
+  currentSeverity: ViolationSeverity | null
+  lookbackDays: number
+  resolvedViolationCount: number
+  lowCount: number
+  mediumCount: number
+  highCount: number
+  criticalCount: number
+  weightedScore: number
+  recommendedType: UserSanctionType
+  recommendedDurationHours: number | null
+  accountSuspensionReviewRecommended: boolean
+  activeSameTypeSanction: boolean
+  activeSameTypeSanctionId: number | null
+  activeSameTypeEndsAt: string | null
+  recommendationReason: string
+}
+
+export type AdminUserRole = "USER" | "ADMIN"
+export type AdminUserStatus = "ACTIVE" | "INACTIVE" | "BANNED"
+
+export type AdminUser = {
+  userId: number
+  email: string
+  nickname: string
+  role: AdminUserRole
+  status: AdminUserStatus
+  createdAt: string
+  updatedAt: string
+}

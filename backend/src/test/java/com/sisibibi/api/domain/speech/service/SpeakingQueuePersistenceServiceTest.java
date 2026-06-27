@@ -3,6 +3,7 @@ package com.sisibibi.api.domain.speech.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.doThrow;
@@ -13,16 +14,22 @@ import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
+import com.sisibibi.api.domain.speech.entity.RoomQueueSequence;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
+import com.sisibibi.api.domain.speech.entity.SpeechStatus;
+import com.sisibibi.api.domain.speech.repository.RoomQueueSequenceRepository;
+import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
+import com.sisibibi.api.domain.speech.util.SpeakingStreakPolicy;
 import com.sisibibi.api.domain.user.repository.UserRepository;
 import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -32,6 +39,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.InOrder;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
@@ -46,6 +54,9 @@ class SpeakingQueuePersistenceServiceTest {
     private SpeakingQueueRepository speakingQueueRepository;
 
     @Mock
+    private RoomQueueSequenceRepository roomQueueSequenceRepository;
+
+    @Mock
     private RoomRepository roomRepository;
 
     @Mock
@@ -56,6 +67,12 @@ class SpeakingQueuePersistenceServiceTest {
 
     @Mock
     private UserSanctionPolicyService userSanctionPolicyService;
+
+    @Mock
+    private SpeechRepository speechRepository;
+
+    @Spy
+    private SpeakingStreakPolicy speakingStreakPolicy;
 
     @InjectMocks
     private SpeakingQueuePersistenceService speakingQueuePersistenceService;
@@ -72,6 +89,8 @@ class SpeakingQueuePersistenceServiceTest {
 
     @Test
     void createWaitingRequest_throwsStageRestricted_whenUserHasActiveSanction() {
+        given(roomRepository.findById(1L))
+                .willReturn(Optional.of(openRoom(1L, "토론방")));
         doThrow(new CustomException(ErrorCode.USER_STAGE_RESTRICTED))
                 .when(userSanctionPolicyService)
                 .validateStageAllowed(7L);
@@ -85,21 +104,26 @@ class SpeakingQueuePersistenceServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.USER_STAGE_RESTRICTED);
 
+        InOrder order = inOrder(roomRepository, userSanctionPolicyService);
+        order.verify(roomRepository).findById(1L);
+        order.verify(userSanctionPolicyService).validateStageAllowed(7L);
         verify(speakingQueueRepository, never()).save(any(SpeakingQueue.class));
     }
 
     @Test
     void createWaitingRequest_persistsRequestWithNextRoomScopedOrder() {
-        given(roomRepository.findByIdForUpdate(1L))
-            .willReturn(Optional.of(openRoom(1L, "토론방")));
+        Room room = openRoom(1L, "토론방");
+        RoomQueueSequence queueSequence = queueSequenceWithNextOrder(1L, 3);
+        given(roomRepository.findById(1L))
+            .willReturn(Optional.of(room));
         givenJoined(1L, 7L);
+        given(roomQueueSequenceRepository.findByRoomIdForUpdate(1L))
+                .willReturn(Optional.of(queueSequence));
         given(speakingQueueRepository.existsByRoomIdAndUserIdAndStatusIn(
                 1L,
                 7L,
                 List.of(SpeakingQueueStatus.WAITING, SpeakingQueueStatus.ASSIGNED)
         )).willReturn(false);
-        given(speakingQueueRepository.findMaxQueueOrderByRoomId(1L))
-                .willReturn(2);
         given(speakingQueueRepository.save(any(SpeakingQueue.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
 
@@ -109,6 +133,7 @@ class SpeakingQueuePersistenceServiceTest {
         assertThat(saved.getQueueOrder()).isEqualTo(3);
         assertThat(saved.getStatus()).isEqualTo(SpeakingQueueStatus.WAITING);
         assertThat(saved.getStance()).isEqualTo(SpeechStance.PRO);
+        assertThat(queueSequence.getNextQueueOrder()).isEqualTo(4);
 
         ArgumentCaptor<SpeakingQueue> captor =
                 ArgumentCaptor.forClass(SpeakingQueue.class);
@@ -121,9 +146,11 @@ class SpeakingQueuePersistenceServiceTest {
 
     @Test
     void createWaitingRequest_rejectsExistingActiveRequest() {
-        given(roomRepository.findByIdForUpdate(1L))
+        given(roomRepository.findById(1L))
             .willReturn(Optional.of(openRoom(1L, "토론방")));
         givenJoined(1L, 7L);
+        given(roomQueueSequenceRepository.findByRoomIdForUpdate(1L))
+                .willReturn(Optional.of(queueSequenceWithNextOrder(1L, 3)));
         given(speakingQueueRepository.existsByRoomIdAndUserIdAndStatusIn(
                 1L,
                 7L,
@@ -136,13 +163,12 @@ class SpeakingQueuePersistenceServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.SPEAKING_REQUEST_ALREADY_EXISTS);
 
-        verify(speakingQueueRepository, never()).findMaxQueueOrderByRoomId(1L);
         verify(speakingQueueRepository, never()).save(any(SpeakingQueue.class));
     }
 
     @Test
     void createWaitingRequest_rejectsUserWhoIsNotJoinedParticipant() {
-        given(roomRepository.findByIdForUpdate(1L))
+        given(roomRepository.findById(1L))
                 .willReturn(Optional.of(openRoom(1L, "토론방")));
 
         assertThatThrownBy(() ->
@@ -162,7 +188,7 @@ class SpeakingQueuePersistenceServiceTest {
 
     @Test
     void createWaitingRequest_rejectsMissingRoom() {
-        given(roomRepository.findByIdForUpdate(1L)).willReturn(Optional.empty());
+        given(roomRepository.findById(1L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() ->
                 speakingQueuePersistenceService.createWaitingRequest(1L, 7L, SpeechStance.PRO))
@@ -188,7 +214,7 @@ class SpeakingQueuePersistenceServiceTest {
                 LocalDateTime.of(2000, 1, 1, 12, 0),
                 100
         );
-        given(roomRepository.findByIdForUpdate(1L)).willReturn(Optional.of(endedRoom));
+        given(roomRepository.findById(1L)).willReturn(Optional.of(endedRoom));
 
         assertThatThrownBy(() ->
                 speakingQueuePersistenceService.createWaitingRequest(1L, 7L, SpeechStance.PRO))
@@ -203,6 +229,17 @@ class SpeakingQueuePersistenceServiceTest {
                         RoomParticipantStatus.JOINED
                 );
         verify(speakingQueueRepository, never()).save(any(SpeakingQueue.class));
+    }
+
+    private RoomQueueSequence queueSequenceWithNextOrder(Long roomId, int nextQueueOrder) {
+        RoomQueueSequence queueSequence = RoomQueueSequence.create(
+                roomId,
+                LocalDateTime.of(2026, 6, 12, 11, 0)
+        );
+        while (queueSequence.getNextQueueOrder() < nextQueueOrder) {
+            queueSequence.issueNextQueueOrder(LocalDateTime.of(2026, 6, 12, 11, 0));
+        }
+        return queueSequence;
     }
 
     @Test
@@ -390,6 +427,8 @@ class SpeakingQueuePersistenceServiceTest {
                 LocalDateTime.of(2026, 6, 24, 11, 51)
         );
         assign(assigned);
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(openRoom(1L, "토론방")));
         given(speakingQueueRepository.findByRoomIdAndStatusInOrderByQueueOrderAsc(
                 1L,
                 List.of(SpeakingQueueStatus.WAITING, SpeakingQueueStatus.ASSIGNED)
@@ -405,6 +444,13 @@ class SpeakingQueuePersistenceServiceTest {
         assertThat(waiting.getActiveRequest()).isNull();
         assertThat(assigned.getStatus()).isEqualTo(SpeakingQueueStatus.COMPLETED);
         assertThat(assigned.getActiveRequest()).isNull();
+        verify(speechRepository).completeSpeakingSpeeches(
+                1L,
+                8L,
+                SpeechStatus.SPEAKING,
+                SpeechStatus.COMPLETED,
+                closedAt
+        );
     }
 
     @Test
@@ -813,6 +859,13 @@ class SpeakingQueuePersistenceServiceTest {
         assertThat(completed).isSameAs(assigned);
         assertThat(completed.getStatus()).isEqualTo(SpeakingQueueStatus.COMPLETED);
         assertThat(completed.getActiveRequest()).isNull();
+        verify(speechRepository).completeSpeakingSpeeches(
+                eq(1L),
+                eq(7L),
+                eq(SpeechStatus.SPEAKING),
+                eq(SpeechStatus.COMPLETED),
+                any(LocalDateTime.class)
+        );
 
         InOrder order = inOrder(roomRepository, speakingQueueRepository);
         order.verify(roomRepository).findByIdForUpdate(1L);
@@ -887,6 +940,13 @@ class SpeakingQueuePersistenceServiceTest {
         assertThat(completed).contains(assigned);
         assertThat(assigned.getStatus()).isEqualTo(SpeakingQueueStatus.COMPLETED);
         assertThat(assigned.getActiveRequest()).isNull();
+        verify(speechRepository).completeSpeakingSpeeches(
+                eq(1L),
+                eq(7L),
+                eq(SpeechStatus.SPEAKING),
+                eq(SpeechStatus.COMPLETED),
+                any(LocalDateTime.class)
+        );
     }
 
     @Test
@@ -997,6 +1057,13 @@ class SpeakingQueuePersistenceServiceTest {
         assertThat(expired).contains(assigned);
         assertThat(assigned.getStatus()).isEqualTo(SpeakingQueueStatus.COMPLETED);
         assertThat(assigned.getActiveRequest()).isNull();
+        verify(speechRepository).completeSpeakingSpeeches(
+                1L,
+                7L,
+                SpeechStatus.SPEAKING,
+                SpeechStatus.COMPLETED,
+                java.time.LocalDateTime.of(2026, 6, 12, 11, 34)
+        );
 
         InOrder order = inOrder(roomRepository, speakingQueueRepository);
         order.verify(roomRepository).findByIdForUpdate(1L);
@@ -1049,6 +1116,163 @@ class SpeakingQueuePersistenceServiceTest {
                 );
 
         assertThat(expired).isEmpty();
+    }
+
+    @Test
+    void recordCurrentSpeakerActivityIfMatches_updatesCurrentSpeakerActivity() {
+        SpeakingQueue assigned = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        assign(assigned);
+        assigned.markIdleWarningIfDue(
+                ASSIGNED_AT.plusSeconds(20),
+                Duration.ofSeconds(20),
+                Duration.ofSeconds(40)
+        );
+        LocalDateTime activityAt = ASSIGNED_AT.plusSeconds(25);
+        given(speakingQueueRepository.findByRoomIdAndUserIdAndStatusIn(
+                1L,
+                7L,
+                List.of(SpeakingQueueStatus.ASSIGNED)
+        )).willReturn(Optional.of(assigned));
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(openRoom(1L, "토론방")));
+        given(speakingQueueRepository.findByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        )).willReturn(Optional.of(assigned));
+
+        speakingQueuePersistenceService.recordCurrentSpeakerActivityIfMatches(
+                1L,
+                7L,
+                activityAt
+        );
+
+        assertThat(assigned.getLastActivityAt()).isEqualTo(activityAt);
+        assertThat(assigned.isIdleWarningSent()).isFalse();
+        assertThat(assigned.getIdleWarnedAt()).isNull();
+    }
+
+    @Test
+    void recordCurrentSpeakerActivityIfMatches_doesNothingWhenUserIsNotCurrentSpeaker() {
+        given(speakingQueueRepository.findByRoomIdAndUserIdAndStatusIn(
+                1L,
+                7L,
+                List.of(SpeakingQueueStatus.ASSIGNED)
+        )).willReturn(Optional.empty());
+
+        speakingQueuePersistenceService.recordCurrentSpeakerActivityIfMatches(
+                1L,
+                7L,
+                ASSIGNED_AT.plusSeconds(10)
+        );
+
+        verify(roomRepository, never()).findByIdForUpdate(1L);
+    }
+
+    @Test
+    void warnCurrentSpeakerIfIdle_marksWarningAfterLockingRoom() {
+        SpeakingQueue assigned = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        assign(assigned);
+        LocalDateTime warnedAt = ASSIGNED_AT.plusSeconds(20);
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(openRoom(1L, "토론방")));
+        given(speakingQueueRepository.findByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        )).willReturn(Optional.of(assigned));
+
+        Optional<SpeakingQueue> warned =
+                speakingQueuePersistenceService.warnCurrentSpeakerIfIdle(
+                        1L,
+                        warnedAt,
+                        Duration.ofSeconds(20),
+                        Duration.ofSeconds(40)
+                );
+
+        assertThat(warned).contains(assigned);
+        assertThat(assigned.isIdleWarningSent()).isTrue();
+        assertThat(assigned.getIdleWarnedAt()).isEqualTo(warnedAt);
+    }
+
+    @Test
+    void warnCurrentSpeakerIfIdle_returnsEmptyWhenWarningIsNotDue() {
+        SpeakingQueue assigned = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        assign(assigned);
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(openRoom(1L, "토론방")));
+        given(speakingQueueRepository.findByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        )).willReturn(Optional.of(assigned));
+
+        Optional<SpeakingQueue> warned =
+                speakingQueuePersistenceService.warnCurrentSpeakerIfIdle(
+                        1L,
+                        ASSIGNED_AT.plusSeconds(19),
+                        Duration.ofSeconds(20),
+                        Duration.ofSeconds(40)
+                );
+
+        assertThat(warned).isEmpty();
+        assertThat(assigned.isIdleWarningSent()).isFalse();
+    }
+
+    @Test
+    void completeCurrentSpeakerIfIdleTimedOut_completesAfterWarningDelay() {
+        SpeakingQueue assigned = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        assign(assigned);
+        assigned.markIdleWarningIfDue(
+                ASSIGNED_AT.plusSeconds(20),
+                Duration.ofSeconds(20),
+                Duration.ofSeconds(40)
+        );
+        given(roomRepository.findByIdForUpdate(1L))
+                .willReturn(Optional.of(openRoom(1L, "토론방")));
+        given(speakingQueueRepository.findByRoomIdAndStatus(
+                1L,
+                SpeakingQueueStatus.ASSIGNED
+        )).willReturn(Optional.of(assigned));
+
+        Optional<SpeakingQueue> completed =
+                speakingQueuePersistenceService.completeCurrentSpeakerIfIdleTimedOut(
+                        1L,
+                        ASSIGNED_AT.plusSeconds(40),
+                        Duration.ofSeconds(20)
+                );
+
+        assertThat(completed).contains(assigned);
+        assertThat(assigned.getStatus()).isEqualTo(SpeakingQueueStatus.COMPLETED);
+        assertThat(assigned.getActiveRequest()).isNull();
+        verify(speechRepository).completeSpeakingSpeeches(
+                1L,
+                7L,
+                SpeechStatus.SPEAKING,
+                SpeechStatus.COMPLETED,
+                ASSIGNED_AT.plusSeconds(40)
+        );
     }
 
     private void givenJoined(Long roomId, Long userId) {

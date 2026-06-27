@@ -20,6 +20,7 @@ class UserSanctionRecommendationPolicyTest {
 
         assertThat(recommendation.type()).isEqualTo(UserSanctionType.WARNING);
         assertThat(recommendation.durationHours()).isNull();
+        assertThat(recommendation.accountSuspensionReviewRecommended()).isFalse();
     }
 
     @Test
@@ -30,8 +31,9 @@ class UserSanctionRecommendationPolicyTest {
         );
 
         assertThat(recommendation.type())
-                .isEqualTo(UserSanctionType.SPEECH_RESTRICTION);
+                .isEqualTo(UserSanctionType.STAGE_RESTRICTION);
         assertThat(recommendation.durationHours()).isEqualTo(24);
+        assertThat(recommendation.accountSuspensionReviewRecommended()).isFalse();
     }
 
     @Test
@@ -42,6 +44,7 @@ class UserSanctionRecommendationPolicyTest {
         );
 
         assertThat(recommendation.durationHours()).isEqualTo(168);
+        assertThat(recommendation.accountSuspensionReviewRecommended()).isFalse();
     }
 
     @Test
@@ -52,6 +55,7 @@ class UserSanctionRecommendationPolicyTest {
         );
 
         assertThat(recommendation.durationHours()).isEqualTo(720);
+        assertThat(recommendation.accountSuspensionReviewRecommended()).isFalse();
     }
 
     @Test
@@ -62,5 +66,32 @@ class UserSanctionRecommendationPolicyTest {
         );
 
         assertThat(recommendation.durationHours()).isEqualTo(168);
+        assertThat(recommendation.accountSuspensionReviewRecommended()).isFalse();
+    }
+
+    @Test
+    void recommend_marksAccountSuspensionReview_whenAccumulatedScoreReachesTwentyFour() {
+        SanctionRecommendation recommendation = policy.recommend(
+                ViolationSeverity.MEDIUM,
+                new ViolationHistorySummary(0, 12, 0, 0)
+        );
+
+        assertThat(recommendation.type())
+                .isEqualTo(UserSanctionType.STAGE_RESTRICTION);
+        assertThat(recommendation.durationHours()).isEqualTo(168);
+        assertThat(recommendation.accountSuspensionReviewRecommended()).isTrue();
+    }
+
+    @Test
+    void recommend_marksAccountSuspensionReview_whenCriticalViolationRepeated() {
+        SanctionRecommendation recommendation = policy.recommend(
+                ViolationSeverity.CRITICAL,
+                new ViolationHistorySummary(0, 0, 0, 2)
+        );
+
+        assertThat(recommendation.type())
+                .isEqualTo(UserSanctionType.STAGE_RESTRICTION);
+        assertThat(recommendation.durationHours()).isEqualTo(720);
+        assertThat(recommendation.accountSuspensionReviewRecommended()).isTrue();
     }
 }

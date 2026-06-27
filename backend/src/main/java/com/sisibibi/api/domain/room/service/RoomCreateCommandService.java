@@ -3,6 +3,8 @@ package com.sisibibi.api.domain.room.service;
 import com.sisibibi.api.domain.room.dto.response.CreateRoomRes;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
+import com.sisibibi.api.domain.speech.entity.RoomQueueSequence;
+import com.sisibibi.api.domain.speech.repository.RoomQueueSequenceRepository;
 import com.sisibibi.api.domain.topic.entity.Topic;
 import com.sisibibi.api.domain.topic.entity.TopicStatus;
 import com.sisibibi.api.domain.topic.repository.TopicRepository;
@@ -13,14 +15,18 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
 public class RoomCreateCommandService {
 
+  private static final Duration DEFAULT_ROOM_DURATION = Duration.ofHours(2);
+
   private final RoomRepository roomRepository;
   private final TopicRepository topicRepository;
+  private final RoomQueueSequenceRepository roomQueueSequenceRepository;
 
   @Transactional
   public CreateRoomRes createRoom(Long topicId, String debateTitle, Integer maxParticipants) {
@@ -36,7 +42,7 @@ public class RoomCreateCommandService {
     }
 
     LocalDateTime startedAt = LocalDateTime.now();
-    LocalDateTime endedAt = startedAt.plusMinutes(5);
+    LocalDateTime endedAt = startedAt.plus(DEFAULT_ROOM_DURATION);
     int resolvedMaxParticipants = resolveMaxParticipants(maxParticipants);
 
     Room room = Room.open(
@@ -49,6 +55,7 @@ public class RoomCreateCommandService {
 
     try {
       Room savedRoom = roomRepository.save(room);
+      roomQueueSequenceRepository.save(RoomQueueSequence.create(savedRoom.getId(), startedAt));
       return CreateRoomRes.from(savedRoom);
     } catch (DataIntegrityViolationException e) {
       throw new CustomException(ErrorCode.ROOM_ALREADY_EXISTS);
