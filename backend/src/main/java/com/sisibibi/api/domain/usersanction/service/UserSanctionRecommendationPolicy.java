@@ -26,14 +26,14 @@ public class UserSanctionRecommendationPolicy {
             return restriction(
                     THIRTY_DAYS_HOURS,
                     accountSuspensionReviewRecommended,
-                    "중대한 위반이 확인되어 30일 의견 제한을 추천합니다."
+                    "중대한 위반이 확인되어 30일 발언/의견 제한을 추천합니다."
             );
         }
         if (currentSeverity == ViolationSeverity.HIGH) {
             return restriction(
                     SEVEN_DAYS_HOURS,
                     accountSuspensionReviewRecommended,
-                    "높은 심각도의 위반이 확인되어 7일 의견 제한을 추천합니다."
+                    "높은 심각도의 위반이 확인되어 7일 발언/의견 제한을 추천합니다."
             );
         }
         if (weightedScore >= 8) {
@@ -64,7 +64,7 @@ public class UserSanctionRecommendationPolicy {
             String reason
     ) {
         return new SanctionRecommendation(
-                UserSanctionType.SPEECH_RESTRICTION,
+                UserSanctionType.STAGE_RESTRICTION,
                 durationHours,
                 accountSuspensionReviewRecommended,
                 reason

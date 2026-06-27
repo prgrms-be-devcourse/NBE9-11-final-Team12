@@ -51,7 +51,7 @@ class AdminUserSanctionRecommendationControllerTest {
                         0,
                         0,
                         4,
-                        UserSanctionType.SPEECH_RESTRICTION,
+                        UserSanctionType.STAGE_RESTRICTION,
                         24,
                         false,
                         false,
@@ -66,7 +66,7 @@ class AdminUserSanctionRecommendationControllerTest {
                 ).queryParam("reportId", "100"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.recommendedType")
-                        .value("SPEECH_RESTRICTION"))
+                        .value("STAGE_RESTRICTION"))
                 .andExpect(jsonPath("$.data.recommendedDurationHours").value(24))
                 .andExpect(jsonPath("$.data.accountSuspensionReviewRecommended").value(false))
                 .andExpect(jsonPath("$.data.mediumCount").value(2))

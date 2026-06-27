@@ -99,9 +99,12 @@ class UserSanctionServiceTest {
     void createSanction_throwsAlreadyActive_whenSameRestrictionExists() {
         given(userRepository.findByIdForUpdate(10L))
                 .willReturn(Optional.of(User.signup("user@example.com", "password", "user")));
-        given(userSanctionRepository.existsActive(
+        given(userSanctionRepository.existsActiveIn(
                 org.mockito.ArgumentMatchers.eq(10L),
-                org.mockito.ArgumentMatchers.eq(UserSanctionType.SPEECH_RESTRICTION),
+                org.mockito.ArgumentMatchers.eq(List.of(
+                        UserSanctionType.SPEECH_RESTRICTION,
+                        UserSanctionType.STAGE_RESTRICTION
+                )),
                 any(LocalDateTime.class)
         )).willReturn(true);
 

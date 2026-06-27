@@ -18,6 +18,7 @@ db/redis
 
 # Local application logs
 backend/logs/
+/logs/
 
 # Local root documents
 /AGENTS.md
