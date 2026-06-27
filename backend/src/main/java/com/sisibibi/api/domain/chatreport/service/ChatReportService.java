@@ -20,10 +20,12 @@ import com.sisibibi.api.domain.user.repository.UserRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import java.time.LocalDateTime;
-import java.util.HashSet;
+import java.util.Collection;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -48,7 +50,7 @@ public class ChatReportService {
             Pageable pageable
     ) {
         Page<ChatReport> reports = chatReportRepository.findAllByFilters(status, reason, pageable);
-        Map<Long, String> nicknames = findNicknames(extractUserIds(reports));
+        Map<Long, String> nicknames = findNicknames(extractUserIds(reports.getContent()));
 
         return reports.map(report -> ChatReportSummaryRes.from(
                 report,
@@ -62,7 +64,7 @@ public class ChatReportService {
         ChatReport report = chatReportRepository.findById(reportId)
                 .orElseThrow(() -> new CustomException(ErrorCode.CHAT_REPORT_NOT_FOUND));
 
-        Map<Long, String> nicknames = findNicknames(extractUserIds(report));
+        Map<Long, String> nicknames = findNicknames(extractUserIds(Set.of(report)));
 
         return ChatReportDetailRes.from(
                 report,
@@ -167,26 +169,15 @@ public class ChatReportService {
         }
     }
 
-    private Set<Long> extractUserIds(Page<ChatReport> reports) {
-        Set<Long> userIds = new HashSet<>();
-        reports.forEach(report -> {
-            userIds.add(report.getReportedUserId());
-            userIds.add(report.getReporterUserId());
-            if (report.getReviewedBy() != null) {
-                userIds.add(report.getReviewedBy());
-            }
-        });
-        return userIds;
-    }
-
-    private Set<Long> extractUserIds(ChatReport report) {
-        Set<Long> userIds = new HashSet<>();
-        userIds.add(report.getReportedUserId());
-        userIds.add(report.getReporterUserId());
-        if (report.getReviewedBy() != null) {
-            userIds.add(report.getReviewedBy());
-        }
-        return userIds;
+    private Set<Long> extractUserIds(Collection<ChatReport> reports) {
+        return reports.stream()
+                .flatMap(report -> Stream.of(
+                        report.getReportedUserId(),
+                        report.getReporterUserId(),
+                        report.getReviewedBy()
+                ))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
     }
 
     private Map<Long, String> findNicknames(Set<Long> userIds) {
