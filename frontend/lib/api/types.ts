@@ -74,6 +74,39 @@ export type RoomTitlePreview = {
   title: string
 }
 
+export type AiReportStatus = "PENDING" | "COMPLETED" | "FAILED"
+
+export type AiReportCustomPrompt = {
+  label?: string
+  prompt: string
+}
+
+export type AiReportGenerateRequest = {
+  customPrompts?: AiReportCustomPrompt[]
+}
+
+export type AiReportCustomReport = {
+  requestLabel: string
+  prompt: string
+  label: string
+  content: string
+}
+
+export type AiReport = {
+  reportId: number
+  roomId: number
+  status: AiReportStatus
+  coreLine: string | null
+  keyIssues: string[]
+  aiSummary: string | null
+  commonGround: string | null
+  aiOpinion: string | null
+  customReports: AiReportCustomReport[]
+  errorMessage: string | null
+  requestedAt: string | null
+  completedAt: string | null
+}
+
 export type RoomParticipantStatus = "JOINED" | "LEFT"
 
 export type RoomParticipant = {

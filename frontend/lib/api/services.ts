@@ -1,6 +1,8 @@
 import { api } from "@/lib/api/client"
 import type {
   AiCounterIssue,
+  AiReport,
+  AiReportGenerateRequest,
   AuthUser,
   ChatMessageCursorPage,
   ClassifiedIssueCandidate,
@@ -150,4 +152,13 @@ export const stageSummaryApi = {
 export const aiCounterIssueApi = {
   recent: (roomId: number) =>
     api.get<AiCounterIssue[]>(`/api/v1/rooms/${roomId}/ai-counter-issues/recent`),
+}
+
+export const aiReportApi = {
+  get: (roomId: number) => api.get<AiReport>(`/api/v1/rooms/${roomId}/ai-report`),
+  generate: (roomId: number, body?: AiReportGenerateRequest) =>
+    api.post<AiReport>(
+      `/api/v1/rooms/${roomId}/ai-report`,
+      body ?? { customPrompts: [] },
+    ),
 }

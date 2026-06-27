@@ -1,7 +1,7 @@
 "use client"
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react"
-import { FileText, Flag, History, ImageIcon, Lightbulb, Loader2, MessageSquarePlus, Mic, MicOff, RefreshCw, Users, X } from "lucide-react"
+import { FileText, Flag, History, ImageIcon, Lightbulb, Loader2, MessageSquarePlus, Mic, MicOff, Users, X } from "lucide-react"
 import { ApiError } from "@/lib/api/client"
 import { aiCounterIssueApi, speechApi, stageApi, stageSummaryApi } from "@/lib/api/services"
 import type { RoomStompConnection } from "@/lib/api/stomp"
@@ -554,6 +554,22 @@ export function MainStage({
   const hasCompletedSummary = Boolean(
     stageSummary?.status === "COMPLETED" && (stageSummary.moderatorSummary?.trim() || summaryKeyPoints.length > 0),
   )
+  const summaryOccurredAt = stageSummary?.completedAt ?? stageSummary?.triggeredAt ?? ""
+  const timelineItems = [
+    ...speeches.map((speech) => ({
+      type: "speech" as const,
+      key: `speech-${speech.speechId}`,
+      occurredAt: speech.createdAt,
+      speech,
+    })),
+    ...(hasCompletedSummary && summaryOccurredAt
+      ? [{
+          type: "summary" as const,
+          key: `stage-summary-${stageSummary?.summaryId ?? summaryOccurredAt}`,
+          occurredAt: summaryOccurredAt,
+        }]
+      : []),
+  ].sort((left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime())
   const latestCounterIssue = counterIssues[0] ?? null
 
   return (
@@ -645,88 +661,13 @@ export function MainStage({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        <section className="mb-4 rounded-xl border border-border/50 bg-card p-4">
-          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 items-center gap-2">
-              <FileText className="size-4 shrink-0 text-primary" />
-              <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-foreground">의견 요약</h3>
-                <p className="text-[11px] text-muted-foreground">
-                  {stageSummary?.completedAt
-                    ? `${new Date(stageSummary.completedAt).toLocaleString("ko-KR")} 기준`
-                    : "토론 흐름을 정리한 중간 요약입니다."}
-                </p>
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              {stageSummary?.status && (
-                <Badge variant="outline" className="text-[10px]">
-                  {stageSummary.status === "COMPLETED" ? "완료" : stageSummary.status === "PENDING" ? "준비 중" : "대기"}
-                </Badge>
-              )}
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1.5 text-xs"
-                disabled={!liveEnabled || summaryLoading}
-                onClick={() => void loadStageSummary()}
-              >
-                {summaryLoading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
-                요약 확인
-              </Button>
-            </div>
-          </div>
-
-          {summaryError && (
-            <p className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{summaryError}</p>
-          )}
-
-          {summaryLoading && !stageSummary ? (
-            <div className="flex h-24 items-center justify-center">
-              <Loader2 className="size-5 animate-spin text-primary" />
-            </div>
-          ) : hasCompletedSummary ? (
-            <div className="space-y-3">
-              {stageSummary?.moderatorSummary?.trim() && (
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-                  {stageSummary.moderatorSummary}
-                </p>
-              )}
-              {summaryKeyPoints.length > 0 && (
-                <ul className="space-y-2">
-                  {summaryKeyPoints.map((point) => (
-                    <li key={point} className="flex gap-2 text-sm leading-relaxed text-foreground">
-                      <span className="mt-2 size-1.5 shrink-0 rounded-full bg-primary" />
-                      <span className="min-w-0 break-words">{point}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <p className="text-[11px] text-muted-foreground">
-                의견 {stageSummary?.speechCount ?? 0}개 · 완료 발언자 {stageSummary?.completedSpeakerCount ?? 0}명 기준
-              </p>
-            </div>
-          ) : (
-            <div className="flex min-h-24 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
-              <FileText className="size-6" />
-              <p className="text-sm">
-                {stageSummary?.status === "PENDING"
-                  ? "의견 요약을 준비 중입니다."
-                  : stageSummary?.status === "FAILED"
-                  ? "의견 요약을 준비하지 못했습니다."
-                  : "아직 생성된 의견 요약이 없습니다."}
-              </p>
-              <p className="text-xs">
-                {stageSummary?.status === "FAILED" ? "잠시 후 다시 확인해주세요." : "발언이 충분히 모이면 자동으로 생성됩니다."}
-              </p>
-            </div>
-          )}
-        </section>
-
+        {summaryError && (
+          <p className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{summaryError}</p>
+        )}
         {error && <p className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
         {loading ? (
           <div className="flex h-40 items-center justify-center"><Loader2 className="size-5 animate-spin text-primary" /></div>
-        ) : speeches.length === 0 ? (
+        ) : timelineItems.length === 0 ? (
           <div className="flex h-40 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
             <History className="size-6" />
             <p className="text-sm">아직 등록된 의견이 없습니다.</p>
@@ -734,7 +675,48 @@ export function MainStage({
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {speeches.map((speech) => {
+            {timelineItems.map((item) => {
+              if (item.type === "summary") {
+                return (
+                  <article key={item.key} className="rounded-xl border border-sky-200/70 bg-sky-50/70 p-4 text-sky-950 dark:border-sky-900/50 dark:bg-sky-950/25 dark:text-sky-50">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Avatar className="size-7 border border-sky-200 bg-sky-100 dark:border-sky-800 dark:bg-sky-900">
+                          <AvatarFallback className="bg-transparent text-[10px] font-semibold text-sky-700 dark:text-sky-200">AI</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="text-xs font-semibold">AI 중간 요약</p>
+                          <p className="text-[10px] text-sky-700/80 dark:text-sky-200/75">{new Date(item.occurredAt).toLocaleString("ko-KR")}</p>
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="border-sky-300 bg-white/60 text-[10px] text-sky-700 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-200">
+                        요약
+                      </Badge>
+                    </div>
+                    {stageSummary?.moderatorSummary?.trim() && (
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                        <span className="font-semibold">[AI 중간 요약]</span>{" "}
+                        {stageSummary.moderatorSummary}
+                      </p>
+                    )}
+                    {summaryKeyPoints.length > 0 && (
+                      <ul className={stageSummary?.moderatorSummary?.trim() ? "mt-3 space-y-2" : "space-y-2"}>
+                        {summaryKeyPoints.map((point) => (
+                          <li key={point} className="flex gap-2 text-sm leading-relaxed">
+                            <span className="mt-2 size-1.5 shrink-0 rounded-full bg-sky-500" />
+                            <span className="min-w-0 break-words">{point}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <p className="mt-3 text-[11px] text-sky-700/75 dark:text-sky-200/70">
+                      의견 {stageSummary?.speechCount ?? 0}개 · 완료 발언자 {stageSummary?.completedSpeakerCount ?? 0}명 기준
+                    </p>
+                  </article>
+                )
+              }
+
+              const speech = item.speech
               const isDeleted = speech.deleted
               const isOffTopicDeleted = speech.deleteReason === "OFF_TOPIC"
 
