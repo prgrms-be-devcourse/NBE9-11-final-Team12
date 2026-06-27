@@ -11,7 +11,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Navbar } from "@/components/navbar"
 import { MainStage } from "@/components/main-stage"
 import { ChatPanel } from "@/components/chat-panel"
-import { AiReportPanel } from "@/components/ai-report-panel"
 import { useAuth } from "@/components/auth-provider"
 import { roomApi, topicApi } from "@/lib/api/services"
 import { ApiError } from "@/lib/api/client"
@@ -441,9 +440,6 @@ export default function RoomDetailPage() {
                   </div>
                 </div>
 
-                {roomView && (
-                  <AiReportPanel roomId={roomId} roomStatus={roomView.status} />
-                )}
               </div>
             </aside>
 

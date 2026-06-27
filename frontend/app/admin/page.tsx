@@ -102,7 +102,24 @@ function aiReviewLabel(review: OffTopicAiReview | null | undefined) {
   if (!review) return "AI 검토 없음"
   if (review.status === "PENDING") return "AI 검토 중"
   if (review.status === "FAILED") return "AI 검토 실패"
-  return review.offTopic ? "AI 검토 완료 · 논점 이탈 가능성 있음" : "AI 검토 완료 · 논점 이탈 가능성 낮음"
+  if (review.confidence !== null && review.confidence < 0.3) {
+    return "AI 검토 완료 · 논점 이탈 가능성 있음"
+  }
+  if (review.confidence !== null && review.confidence < 0.6) {
+    return "AI 검토 완료 · 논점 이탈 의심"
+  }
+  return "AI 검토 완료 · 정상 범위"
+}
+
+function aiReviewTextClass(review: OffTopicAiReview | null | undefined) {
+  return review?.status === "COMPLETED" && review.confidence !== null && review.confidence < 0.3
+    ? "text-destructive"
+    : "text-foreground"
+}
+
+function relationScoreLabel(value: number | null) {
+  const percent = formatPercent(value)
+  return percent ? `연관성 점수 ${percent}` : ""
 }
 
 function categoryOf(candidate: ClassifiedIssueCandidate) {
@@ -924,7 +941,7 @@ export default function AdminDashboardPage() {
                 ) : (
                   <div className="grid gap-3 lg:grid-cols-2">
                     {reports.map((report) => {
-                      const confidence = formatPercent(report.offTopicAiReview?.confidence ?? null)
+                      const relationScore = relationScoreLabel(report.offTopicAiReview?.confidence ?? null)
                       const selected = selectedReportId === report.reportId
 
                       return (
@@ -948,9 +965,9 @@ export default function AdminDashboardPage() {
                             신고자 #{report.reporterUserId} · 대상 사용자 #{report.reportedUserId} · {new Date(report.createdAt).toLocaleString("ko-KR")}
                           </p>
                           <div className="mt-3 rounded-lg bg-muted/40 px-3 py-2">
-                            <p className="text-xs font-medium text-foreground">
+                            <p className={`text-xs font-medium ${aiReviewTextClass(report.offTopicAiReview)}`}>
                               {aiReviewLabel(report.offTopicAiReview)}
-                              {confidence ? ` · 신뢰도 ${confidence}` : ""}
+                              {relationScore ? ` · ${relationScore}` : ""}
                             </p>
                             {report.offTopicAiReview && (
                               <p className="mt-1 text-[11px] text-muted-foreground">
@@ -1191,7 +1208,7 @@ function InfoBox({ label, value }: { label: string; value: string }) {
 }
 
 function AiReviewBox({ review }: { review: OffTopicAiReview | null | undefined }) {
-  const confidence = formatPercent(review?.confidence ?? null)
+  const relationScore = relationScoreLabel(review?.confidence ?? null)
 
   return (
     <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
@@ -1199,9 +1216,9 @@ function AiReviewBox({ review }: { review: OffTopicAiReview | null | undefined }
         <Badge variant={review?.status === "COMPLETED" ? "secondary" : "outline"} className="text-[10px]">
           AI 검토 보조 결과
         </Badge>
-        <p className="text-xs font-medium text-foreground">
+        <p className={`text-xs font-medium ${aiReviewTextClass(review)}`}>
           {aiReviewLabel(review)}
-          {confidence ? ` · 신뢰도 ${confidence}` : ""}
+          {relationScore ? ` · ${relationScore}` : ""}
         </p>
       </div>
       {review ? (

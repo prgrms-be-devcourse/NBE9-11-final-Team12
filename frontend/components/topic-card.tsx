@@ -4,6 +4,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { useAuth } from "@/components/auth-provider"
+import { AiReportPanel } from "@/components/ai-report-panel"
 import { cn } from "@/lib/utils"
 import {
   ArrowRight,
@@ -110,6 +111,11 @@ export function TopicCard({ topic, className }: TopicCardProps) {
                 #{tag}
               </span>
             ))}
+          </div>
+        )}
+        {topic.status === "CLOSED" && (
+          <div className={topic.tags && topic.tags.length > 0 ? "mt-3" : ""}>
+            <AiReportPanel roomId={Number(topic.id)} roomStatus={topic.status} compact />
           </div>
         )}
       </CardContent>
