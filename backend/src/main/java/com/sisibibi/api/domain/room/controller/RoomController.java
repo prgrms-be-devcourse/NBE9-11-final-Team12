@@ -4,6 +4,8 @@ import com.sisibibi.api.domain.room.dto.response.RoomDetailRes;
 import com.sisibibi.api.domain.room.dto.response.RoomSummaryRes;
 import com.sisibibi.api.domain.room.service.RoomService;
 import com.sisibibi.api.global.response.ApiResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+@Tag(name = "토론방", description = "토론방 조회 API")
 @Validated
 @RestController
 @RequiredArgsConstructor
@@ -23,6 +26,10 @@ public class RoomController {
 
   private final RoomService roomService;
 
+  @Operation(
+      summary = "진행 중인 토론방 목록 조회",
+      description = "현재 진행 중인 토론방 목록을 조회합니다."
+  )
   @GetMapping("/open")
   public ResponseEntity<ApiResponse<List<RoomSummaryRes>>> getOpenRooms() {
     List<RoomSummaryRes> response = roomService.getOpenRooms();
@@ -30,6 +37,10 @@ public class RoomController {
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
 
+  @Operation(
+      summary = "토론방 상세 조회",
+      description = "지정한 토론방의 상세 정보를 조회합니다."
+  )
   @GetMapping("/{roomId}")
   public ResponseEntity<ApiResponse<RoomDetailRes>> getRoom(
       @PathVariable @Positive Long roomId
@@ -39,6 +50,10 @@ public class RoomController {
     return ResponseEntity.ok(ApiResponse.ok(response));
   }
 
+  @Operation(
+      summary = "토론방 목록 조회",
+      description = "전체 토론방 목록을 조회합니다."
+  )
   @GetMapping
   public ResponseEntity<ApiResponse<List<RoomSummaryRes>>> getRooms() {
     List<RoomSummaryRes> response = roomService.getRooms();
