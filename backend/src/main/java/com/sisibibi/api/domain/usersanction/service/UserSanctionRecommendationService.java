@@ -4,6 +4,8 @@ import com.sisibibi.api.domain.speechreport.entity.SpeechReport;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportStatus;
 import com.sisibibi.api.domain.speechreport.repository.SpeechReportRepository;
 import com.sisibibi.api.domain.speechreport.repository.ViolationHistorySummaryProjection;
+import com.sisibibi.api.domain.user.entity.UserRole;
+import com.sisibibi.api.domain.user.repository.UserRepository;
 import com.sisibibi.api.domain.usersanction.dto.response.UserSanctionRecommendationRes;
 import com.sisibibi.api.domain.usersanction.entity.UserSanction;
 import com.sisibibi.api.domain.usersanction.entity.UserSanctionType;
@@ -22,12 +24,14 @@ public class UserSanctionRecommendationService {
 
     private static final int LOOKBACK_DAYS = 90;
 
+    private final UserRepository userRepository;
     private final SpeechReportRepository speechReportRepository;
     private final UserSanctionRepository userSanctionRepository;
     private final UserSanctionRecommendationPolicy recommendationPolicy;
 
     @Transactional(readOnly = true)
     public UserSanctionRecommendationRes recommend(Long userId, Long reportId) {
+        validateSanctionTarget(userId);
         SpeechReport report = speechReportRepository.findById(reportId)
                 .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_REPORT_NOT_FOUND));
         validateReport(userId, report);
@@ -66,6 +70,15 @@ public class UserSanctionRecommendationService {
                 activeSameTypeSanction == null ? null : activeSameTypeSanction.getEndsAt(),
                 recommendation.reason()
         );
+    }
+
+    private void validateSanctionTarget(Long userId) {
+        UserRole role = userRepository.findById(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND))
+                .getRole();
+        if (role == UserRole.ADMIN) {
+            throw new CustomException(ErrorCode.USER_SANCTION_ADMIN_NOT_ALLOWED);
+        }
     }
 
     private void validateReport(Long userId, SpeechReport report) {
