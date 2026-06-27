@@ -4,14 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { ApiError } from "@/lib/api/client"
 import { chatApi } from "@/lib/api/services"
 import type { RealtimeStatus, RoomStompConnection } from "@/lib/api/stomp"
-import type { ChatEvent, ChatMessageEventPayload, ChatMessage as ApiChatMessage } from "@/lib/api/types"
+import type { ChatEvent, ChatMessageEventPayload, ChatMessage as ApiChatMessage, ChatReportReason } from "@/lib/api/types"
 import { useAuth } from "@/components/auth-provider"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
-import { MessageSquare, Send, Trash2 } from "lucide-react"
+import { Flag, Loader2, MessageSquare, Send, Trash2 } from "lucide-react"
 
 interface ChatViewMessage {
   id: string
@@ -28,6 +29,18 @@ const avatarColors = [
   "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400",
   "bg-red-100 text-red-600 dark:bg-red-500/20 dark:text-red-400",
   "bg-pink-100 text-pink-700 dark:bg-pink-500/20 dark:text-pink-400",
+]
+
+const REPORT_REASONS: { value: ChatReportReason; label: string }[] = [
+  { value: "ABUSE_HARASSMENT", label: "욕설 / 괴롭힘" },
+  { value: "HATE_SPEECH", label: "혐오 발언" },
+  { value: "SEXUAL_CONTENT", label: "성적 콘텐츠" },
+  { value: "THREAT_VIOLENCE", label: "위협 / 폭력" },
+  { value: "SPAM", label: "광고 / 스팸" },
+  { value: "MISINFORMATION", label: "허위 정보" },
+  { value: "PRIVACY_VIOLATION", label: "개인정보 노출" },
+  { value: "OFF_TOPIC", label: "주제 무관" },
+  { value: "OTHER", label: "기타" },
 ]
 
 function getAvatarColor(userId: number) {
@@ -82,6 +95,12 @@ export function ChatPanel({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [deletingId, setDeletingId] = useState("")
+  const [reportTarget, setReportTarget] = useState<ChatViewMessage | null>(null)
+  const [reportReason, setReportReason] = useState<ChatReportReason | null>(null)
+  const [reportDescription, setReportDescription] = useState("")
+  const [reportSubmitting, setReportSubmitting] = useState(false)
+  const [reportSubmitted, setReportSubmitted] = useState(false)
+  const [reportError, setReportError] = useState("")
   const bottomRef = useRef<HTMLDivElement>(null)
   const handledEventIdsRef = useRef<string[]>([])
   const deletedMessageIdsRef = useRef<Set<string>>(new Set())
@@ -187,6 +206,37 @@ export function ChatPanel({
     }
   }
 
+  const openReport = (message: ChatViewMessage) => {
+    setReportTarget(message)
+    setReportReason(null)
+    setReportDescription("")
+    setReportSubmitted(false)
+    setReportError("")
+  }
+
+  const closeReport = () => {
+    setReportTarget(null)
+    setReportReason(null)
+    setReportDescription("")
+    setReportSubmitted(false)
+    setReportError("")
+  }
+
+  const submitReport = async () => {
+    if (!reportTarget || !reportReason) return
+
+    setReportSubmitting(true)
+    setReportError("")
+    try {
+      await chatApi.report(roomId, Number(reportTarget.id), reportReason, reportDescription)
+      setReportSubmitted(true)
+    } catch (requestError) {
+      setReportError(messageOf(requestError))
+    } finally {
+      setReportSubmitting(false)
+    }
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="shrink-0 flex items-center justify-between border-b border-border/50 px-4 py-3">
@@ -233,16 +283,26 @@ export function ChatPanel({
                   </p>
                 </div>
 
-                {isMine && (
+                <div className="mt-0.5 flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                {isMine ? (
                   <button
                     onClick={() => deleteMessage(message.id)}
                     disabled={deletingId === message.id}
-                    className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground/60 opacity-0 transition-opacity hover:bg-muted hover:text-destructive group-hover:opacity-100 disabled:opacity-50"
+                    className="flex size-6 items-center justify-center rounded text-muted-foreground/60 hover:bg-muted hover:text-destructive disabled:opacity-50"
                     aria-label="메시지 삭제"
                   >
                     <Trash2 className="size-3" />
                   </button>
+                ) : (
+                  <button
+                    onClick={() => openReport(message)}
+                    className="flex size-6 items-center justify-center rounded text-muted-foreground/60 hover:bg-muted hover:text-destructive"
+                    aria-label="메시지 신고"
+                  >
+                    <Flag className="size-3" />
+                  </button>
                 )}
+                </div>
               </div>
             )
           })}
@@ -274,6 +334,61 @@ export function ChatPanel({
           커뮤니티 규칙을 준수하여 예의 바른 토론에 참여해주세요
         </p>
       </div>
+
+      <Dialog open={!!reportTarget} onOpenChange={(open) => !open && closeReport()}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Flag className="size-4 text-destructive" />
+              채팅 메시지 신고
+            </DialogTitle>
+            <DialogDescription>신고 내용은 메시지 원문과 함께 운영팀에 전달됩니다.</DialogDescription>
+          </DialogHeader>
+          {reportSubmitted ? (
+            <div className="flex flex-col gap-3 py-3 text-center">
+              <p className="font-semibold">신고가 접수되었습니다.</p>
+              <Button onClick={closeReport}>확인</Button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {reportTarget && (
+                <div className="rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                  <p className="font-medium text-foreground">{reportTarget.nickname}</p>
+                  <p className="mt-1 line-clamp-3 whitespace-pre-wrap">{reportTarget.content}</p>
+                </div>
+              )}
+              {reportError && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{reportError}</p>}
+              <div className="grid grid-cols-1 gap-1.5">
+                {REPORT_REASONS.map((reason) => (
+                  <button
+                    key={reason.value}
+                    onClick={() => setReportReason(reason.value)}
+                    className={`rounded-lg border px-3 py-2 text-left text-xs ${reportReason === reason.value ? "border-primary bg-primary/10 text-primary" : "border-border"}`}
+                  >
+                    {reason.label}
+                  </button>
+                ))}
+              </div>
+              <textarea
+                value={reportDescription}
+                onChange={(event) => setReportDescription(event.target.value)}
+                maxLength={500}
+                rows={3}
+                placeholder={reportReason === "OTHER" ? "기타 사유는 상세 설명이 필수입니다." : "상세 설명 (선택)"}
+                className="resize-none rounded-lg border bg-background px-3 py-2 text-xs outline-none focus:border-primary"
+              />
+              <Button
+                variant="destructive"
+                disabled={reportSubmitting || !reportReason || (reportReason === "OTHER" && !reportDescription.trim())}
+                onClick={submitReport}
+              >
+                {reportSubmitting && <Loader2 className="mr-2 size-4 animate-spin" />}
+                신고하기
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

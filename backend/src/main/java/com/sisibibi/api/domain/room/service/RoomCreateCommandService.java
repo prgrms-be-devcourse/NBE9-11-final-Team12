@@ -15,11 +15,14 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
 public class RoomCreateCommandService {
+
+  private static final Duration DEFAULT_ROOM_DURATION = Duration.ofHours(2);
 
   private final RoomRepository roomRepository;
   private final TopicRepository topicRepository;
@@ -39,7 +42,7 @@ public class RoomCreateCommandService {
     }
 
     LocalDateTime startedAt = LocalDateTime.now();
-    LocalDateTime endedAt = startedAt.plusMinutes(5);
+    LocalDateTime endedAt = startedAt.plus(DEFAULT_ROOM_DURATION);
     int resolvedMaxParticipants = resolveMaxParticipants(maxParticipants);
 
     Room room = Room.open(

@@ -6,16 +6,17 @@ import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speechreport.dto.command.SpeechReportCreateCommand;
 import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportCreateRes;
 import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportDetailRes;
-import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportSummaryRes;
 import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportReviewRes;
+import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportSummaryRes;
+import com.sisibibi.api.domain.speechreport.entity.OffTopicAiReview;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReport;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportReason;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportReviewAction;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportStatus;
 import com.sisibibi.api.domain.speechreport.entity.ViolationSeverity;
-import com.sisibibi.api.domain.speechreport.entity.OffTopicAiReview;
 import com.sisibibi.api.domain.speechreport.repository.OffTopicAiReviewRepository;
 import com.sisibibi.api.domain.speechreport.repository.SpeechReportRepository;
+import com.sisibibi.api.domain.user.service.UserNicknameProvider;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +27,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -39,6 +43,7 @@ public class SpeechReportService {
     private final SpeechReportRepository speechReportRepository;
     private final OffTopicAiReviewRepository offTopicAiReviewRepository;
     private final OffTopicAiReviewService offTopicAiReviewService;
+    private final UserNicknameProvider userNicknameProvider;
 
     @Transactional(readOnly = true)
     public Page<SpeechReportSummaryRes> getReports(
@@ -46,13 +51,15 @@ public class SpeechReportService {
             SpeechReportReason reason,
             Pageable pageable
     ) {
-        Page<SpeechReport> reports =
-                speechReportRepository.findAllByFilters(status, reason, pageable);
+        Page<SpeechReport> reports = speechReportRepository.findAllByFilters(status, reason, pageable);
+        Map<Long, String> nicknames = userNicknameProvider.findNicknamesByIds(extractUserIds(reports));
         Map<Long, OffTopicAiReview> reviewsBySpeechId =
                 findOffTopicAiReviewsBySpeechId(reports.getContent());
 
         return reports.map(report -> SpeechReportSummaryRes.from(
                 report,
+                nicknames.get(report.getReportedUserId()),
+                nicknames.get(report.getReporterUserId()),
                 reviewsBySpeechId.get(report.getSpeechId())
         ));
     }
@@ -61,11 +68,17 @@ public class SpeechReportService {
     public SpeechReportDetailRes getReport(Long reportId) {
         SpeechReport report = speechReportRepository.findById(reportId)
                 .orElseThrow(() -> new CustomException(ErrorCode.SPEECH_REPORT_NOT_FOUND));
-
+        Map<Long, String> nicknames = userNicknameProvider.findNicknamesByIds(extractUserIds(report));
         OffTopicAiReview review = offTopicAiReviewRepository.findBySpeechId(report.getSpeechId())
                 .orElse(null);
 
-        return SpeechReportDetailRes.from(report, review);
+        return SpeechReportDetailRes.from(
+                report,
+                nicknameOf(nicknames, report.getReportedUserId()),
+                nicknameOf(nicknames, report.getReporterUserId()),
+                nicknameOf(nicknames, report.getReviewedBy()),
+                review
+        );
     }
 
     @Transactional
@@ -91,7 +104,8 @@ public class SpeechReportService {
                 report.getSeverity()
         );
 
-        return SpeechReportReviewRes.from(report);
+        Map<Long, String> nicknames = userNicknameProvider.findNicknamesByIds(Set.of(reviewerUserId));
+        return SpeechReportReviewRes.from(report, nicknameOf(nicknames, reviewerUserId));
     }
 
     @Transactional
@@ -155,18 +169,18 @@ public class SpeechReportService {
     }
 
     private Map<Long, OffTopicAiReview> findOffTopicAiReviewsBySpeechId(
-            java.util.List<SpeechReport> reports
+            List<SpeechReport> reports
     ) {
         if (reports.isEmpty()) {
             return Map.of();
         }
 
-        java.util.List<Long> speechIds = reports.stream()
+        List<Long> speechIds = reports.stream()
                 .map(SpeechReport::getSpeechId)
                 .distinct()
                 .toList();
 
-        java.util.List<OffTopicAiReview> reviews =
+        List<OffTopicAiReview> reviews =
                 offTopicAiReviewRepository.findBySpeechIdIn(speechIds);
         if (reviews == null || reviews.isEmpty()) {
             return Map.of();
@@ -194,5 +208,31 @@ public class SpeechReportService {
                         SpeechDeleteReason.OFF_TOPIC,
                         LocalDateTime.now()
                 ));
+    }
+
+    private Set<Long> extractUserIds(Page<SpeechReport> reports) {
+        Set<Long> userIds = new HashSet<>();
+        reports.forEach(report -> {
+            userIds.add(report.getReportedUserId());
+            userIds.add(report.getReporterUserId());
+            if (report.getReviewedBy() != null) {
+                userIds.add(report.getReviewedBy());
+            }
+        });
+        return userIds;
+    }
+
+    private Set<Long> extractUserIds(SpeechReport report) {
+        Set<Long> userIds = new HashSet<>();
+        userIds.add(report.getReportedUserId());
+        userIds.add(report.getReporterUserId());
+        if (report.getReviewedBy() != null) {
+            userIds.add(report.getReviewedBy());
+        }
+        return userIds;
+    }
+
+    private String nicknameOf(Map<Long, String> nicknames, Long userId) {
+        return userId == null ? null : nicknames.get(userId);
     }
 }
