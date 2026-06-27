@@ -2,6 +2,7 @@ package com.sisibibi.api.domain.chatreport.service;
 
 import com.sisibibi.api.domain.chat.entity.ChatMessage;
 import com.sisibibi.api.domain.chat.repository.ChatMessageRepository;
+import com.sisibibi.api.domain.chatreport.dto.command.ChatReportCreateCommand;
 import com.sisibibi.api.domain.chatreport.dto.request.ChatReportCreateReq;
 import com.sisibibi.api.domain.chatreport.dto.response.ChatReportCreateRes;
 import com.sisibibi.api.domain.chatreport.entity.ChatReport;
@@ -277,7 +278,7 @@ class ChatReportServiceTest {
     }
 
     private ChatReport report(Long id, ChatReportStatus status) {
-        ChatReport report = ChatReport.create(
+        ChatReport report = ChatReport.create(new ChatReportCreateCommand(
                 1L,
                 10L,
                 30L,
@@ -285,7 +286,7 @@ class ChatReportServiceTest {
                 "신고 대상 채팅",
                 ChatReportReason.SPAM,
                 null
-        );
+        ));
         ReflectionTestUtils.setField(report, "id", id);
         ReflectionTestUtils.setField(report, "status", status);
         ReflectionTestUtils.setField(report, "createdAt", LocalDateTime.of(2026, 6, 26, 10, 0));

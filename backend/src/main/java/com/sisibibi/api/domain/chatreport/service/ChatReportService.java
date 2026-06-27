@@ -2,6 +2,7 @@ package com.sisibibi.api.domain.chatreport.service;
 
 import com.sisibibi.api.domain.chat.entity.ChatMessage;
 import com.sisibibi.api.domain.chat.repository.ChatMessageRepository;
+import com.sisibibi.api.domain.chatreport.dto.command.ChatReportCreateCommand;
 import com.sisibibi.api.domain.chatreport.dto.request.ChatReportCreateReq;
 import com.sisibibi.api.domain.chatreport.dto.response.ChatReportCreateRes;
 import com.sisibibi.api.domain.chatreport.dto.response.ChatReportDetailRes;
@@ -134,7 +135,7 @@ public class ChatReportService {
             throw new CustomException(ErrorCode.CHAT_REPORT_ALREADY_EXISTS);
         }
 
-        ChatReport report = ChatReport.create(
+        ChatReport report = ChatReport.create(new ChatReportCreateCommand(
                 roomId,
                 messageId,
                 message.getUserId(),
@@ -142,7 +143,7 @@ public class ChatReportService {
                 message.getContent(),
                 request.reason(),
                 request.description()
-        );
+        ));
         ChatReport savedReport = chatReportRepository.save(report);
 
         log.info(

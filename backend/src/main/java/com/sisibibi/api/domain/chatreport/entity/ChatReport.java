@@ -1,5 +1,8 @@
 package com.sisibibi.api.domain.chatreport.entity;
 
+import com.sisibibi.api.domain.chatreport.dto.command.ChatReportCreateCommand;
+import com.sisibibi.api.global.exception.CustomException;
+import com.sisibibi.api.global.exception.ErrorCode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
@@ -15,8 +18,6 @@ import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import com.sisibibi.api.global.exception.CustomException;
-import com.sisibibi.api.global.exception.ErrorCode;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -108,23 +109,15 @@ public class ChatReport {
         this.status = ChatReportStatus.PENDING;
     }
 
-    public static ChatReport create(
-            Long roomId,
-            Long messageId,
-            Long reportedUserId,
-            Long reporterUserId,
-            String contentSnapshot,
-            ChatReportReason reason,
-            String description
-    ) {
+    public static ChatReport create(ChatReportCreateCommand command) {
         return new ChatReport(
-                roomId,
-                messageId,
-                reportedUserId,
-                reporterUserId,
-                contentSnapshot,
-                reason,
-                description
+                command.roomId(),
+                command.messageId(),
+                command.reportedUserId(),
+                command.reporterUserId(),
+                command.contentSnapshot(),
+                command.reason(),
+                command.description()
         );
     }
 
