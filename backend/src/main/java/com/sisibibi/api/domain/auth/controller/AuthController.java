@@ -9,6 +9,8 @@ import com.sisibibi.api.domain.auth.dto.response.TokenReissueRes;
 import com.sisibibi.api.domain.auth.service.AuthService;
 import com.sisibibi.api.global.response.ApiResponse;
 import com.sisibibi.api.global.security.cookie.AuthCookieProvider;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "인증", description = "회원가입, 로그인, 로그아웃, 토큰 재발급 API")
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/auth")
@@ -29,6 +32,10 @@ public class AuthController {
     private final AuthService authService;
     private final AuthCookieProvider authCookieProvider;
 
+    @Operation(
+        summary = "회원가입",
+        description = "이메일, 비밀번호, 닉네임으로 새 사용자를 등록합니다."
+    )
     @PostMapping("/signup")
     public ResponseEntity<ApiResponse<SignupRes>> signup(
             @Valid @RequestBody SignupReq request
@@ -40,6 +47,10 @@ public class AuthController {
                 .body(ApiResponse.created("회원가입이 완료되었습니다.", response));
     }
 
+    @Operation(
+        summary = "로그인",
+        description = "이메일과 비밀번호를 검증하고 accessToken, refreshToken 쿠키를 발급합니다."
+    )
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<LoginRes>> login(
             @Valid @RequestBody LoginReq request
@@ -50,6 +61,10 @@ public class AuthController {
                 .body(ApiResponse.ok("로그인이 완료되었습니다.", result.response()));
     }
 
+    @Operation(
+        summary = "로그아웃",
+        description = "refreshToken을 무효화하고 인증 쿠키를 만료 처리합니다."
+    )
     @PostMapping("/logout")
     public ResponseEntity<ApiResponse<Void>> logout(
             @CookieValue(
@@ -65,6 +80,10 @@ public class AuthController {
                 .body(ApiResponse.okMessage("로그아웃이 완료되었습니다."));
     }
 
+    @Operation(
+        summary = "토큰 재발급",
+        description = "refreshToken 쿠키를 검증하고 새로운 accessToken, refreshToken 쿠키를 발급합니다."
+    )
     @PostMapping("/reissue")
     public ResponseEntity<ApiResponse<TokenReissueRes>> reissue(
             @CookieValue(

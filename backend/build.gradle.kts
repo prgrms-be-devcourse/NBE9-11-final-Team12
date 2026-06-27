@@ -27,6 +27,7 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-validation")
 	implementation("org.springframework.boot:spring-boot-starter-web")
 	implementation("org.springframework.boot:spring-boot-starter-websocket")
+	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.17")
 	implementation(platform("org.springframework.ai:spring-ai-bom:1.0.9"))
 	implementation("org.springframework.ai:spring-ai-starter-model-openai")
 	runtimeOnly("io.micrometer:micrometer-registry-prometheus")

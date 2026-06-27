@@ -60,6 +60,12 @@ public class SecurityConfig {
         )
         .authorizeHttpRequests(auth -> auth
             .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+            .requestMatchers(
+                "/swagger-ui.html",
+                "/swagger-ui/**",
+                "/v3/api-docs",
+                "/v3/api-docs/**"
+            ).permitAll()
             .requestMatchers("/api/v1/topics/issues/**").permitAll()
             .requestMatchers(HttpMethod.GET, "/api/v1/rooms").permitAll()
             .requestMatchers(HttpMethod.GET, "/api/v1/rooms/open").permitAll()

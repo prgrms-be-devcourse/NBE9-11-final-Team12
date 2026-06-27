@@ -155,6 +155,17 @@ naver:
     client-id: ${NAVER_CLIENT_ID:}
     client-secret: ${NAVER_CLIENT_SECRET:}
 
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    csrf:
+      enabled: true
+    operations-sorter: alpha
+    tags-sorter: alpha
+    disable-swagger-default-url: true
+
 serpapi:
   base-url: ${SERPAPI_BASE_URL:https://serpapi.com/search.json}
   api-key: ${SERPAPI_API_KEY:}
