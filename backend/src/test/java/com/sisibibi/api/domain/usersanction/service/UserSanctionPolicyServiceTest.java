@@ -11,6 +11,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -42,9 +43,9 @@ class UserSanctionPolicyServiceTest {
 
     @Test
     void validateSpeechAllowed_throwsRestricted_whenActiveRestrictionExists() {
-        given(userSanctionRepository.existsActive(
+        given(userSanctionRepository.existsActiveIn(
                 eq(10L),
-                eq(UserSanctionType.SPEECH_RESTRICTION),
+                eq(List.of(UserSanctionType.SPEECH_RESTRICTION, UserSanctionType.STAGE_RESTRICTION)),
                 any(LocalDateTime.class)
         )).willReturn(true);
 
@@ -56,9 +57,9 @@ class UserSanctionPolicyServiceTest {
 
     @Test
     void validateStageAllowed_throwsRestricted_whenActiveRestrictionExists() {
-        given(userSanctionRepository.existsActive(
+        given(userSanctionRepository.existsActiveIn(
                 eq(10L),
-                eq(UserSanctionType.STAGE_RESTRICTION),
+                eq(List.of(UserSanctionType.SPEECH_RESTRICTION, UserSanctionType.STAGE_RESTRICTION)),
                 any(LocalDateTime.class)
         )).willReturn(true);
 

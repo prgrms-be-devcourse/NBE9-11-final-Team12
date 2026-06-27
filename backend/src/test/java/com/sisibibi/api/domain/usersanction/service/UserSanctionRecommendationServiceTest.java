@@ -20,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -61,14 +62,14 @@ class UserSanctionRecommendationServiceTest {
                 ViolationSeverity.MEDIUM,
                 new ViolationHistorySummary(1, 2, 0, 0)
         )).willReturn(new SanctionRecommendation(
-                UserSanctionType.SPEECH_RESTRICTION,
+                UserSanctionType.STAGE_RESTRICTION,
                 24,
                 false,
                 "최근 90일 누적 위반 점수가 4점 이상입니다."
         ));
-        given(userSanctionRepository.findFirstActive(
+        given(userSanctionRepository.findFirstActiveIn(
                 eq(10L),
-                eq(UserSanctionType.SPEECH_RESTRICTION),
+                eq(List.of(UserSanctionType.SPEECH_RESTRICTION, UserSanctionType.STAGE_RESTRICTION)),
                 any(LocalDateTime.class)
         )).willReturn(Optional.of(activeSanction()));
 

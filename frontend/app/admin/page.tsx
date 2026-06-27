@@ -97,8 +97,7 @@ const SANCTION_TYPES: {
 }[] = [
   { value: "WARNING", label: "경고", requiresDuration: false },
   { value: "CHAT_RESTRICTION", label: "채팅 제한", requiresDuration: true, maxDurationHours: MAX_RESTRICTION_HOURS },
-  { value: "SPEECH_RESTRICTION", label: "의견 작성 제한", requiresDuration: true, maxDurationHours: MAX_RESTRICTION_HOURS },
-  { value: "STAGE_RESTRICTION", label: "발언권 제한", requiresDuration: true, maxDurationHours: MAX_RESTRICTION_HOURS },
+  { value: "STAGE_RESTRICTION", label: "발언/의견 작성 제한", requiresDuration: true, maxDurationHours: MAX_RESTRICTION_HOURS },
   { value: "ACCOUNT_SUSPENSION", label: "계정 정지", requiresDuration: false },
 ]
 
@@ -134,6 +133,13 @@ function reportReasonLabel(reason: SpeechReportReason) {
 function severityLabel(severity: ViolationSeverity | null) {
   if (!severity) return "-"
   return SEVERITIES.find((item) => item.value === severity)?.label ?? severity
+}
+
+function sanctionTypeLabel(type: UserSanctionType) {
+  if (type === "SPEECH_RESTRICTION" || type === "STAGE_RESTRICTION") {
+    return "발언/의견 작성 제한"
+  }
+  return SANCTION_TYPES.find((item) => item.value === type)?.label ?? type
 }
 
 function reportKindLabel(kind: ReportKind) {
@@ -1380,7 +1386,7 @@ export default function AdminDashboardPage() {
                                 {recommendation && (
                                   <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
                                     <div className="grid gap-1 text-xs text-muted-foreground">
-                                      <span>추천 제재 유형: {recommendation.recommendedType}</span>
+                                      <span>추천 제재 유형: {sanctionTypeLabel(recommendation.recommendedType)}</span>
                                       <span>추천 제재 기간: {recommendation.recommendedDurationHours ? `${recommendation.recommendedDurationHours}시간` : "기간 없음"}</span>
                                       <span>누적 점수: {recommendation.weightedScore}</span>
                                       <span>동일 활성 제재: {recommendation.activeSameTypeSanction ? `있음 #${recommendation.activeSameTypeSanctionId}` : "없음"}</span>
@@ -1484,7 +1490,7 @@ export default function AdminDashboardPage() {
                                       <div key={sanction.sanctionId} className="rounded-lg border px-3 py-2 text-xs">
                                         <div className="flex flex-wrap items-center gap-2">
                                           <Badge variant="outline">#{sanction.sanctionId}</Badge>
-                                          <Badge variant="secondary">{sanction.type}</Badge>
+                                          <Badge variant="secondary">{sanctionTypeLabel(sanction.type)}</Badge>
                                           <Badge variant={sanction.state === "ACTIVE" ? "destructive" : "outline"}>{sanction.state}</Badge>
                                         </div>
                                         <p className="mt-1 text-muted-foreground">기간: {sanctionPeriodLabel(sanction)}</p>
@@ -1663,7 +1669,7 @@ export default function AdminDashboardPage() {
                                     >
                                       <div className="flex flex-wrap items-center gap-2">
                                         <Badge variant="outline">#{sanction.sanctionId}</Badge>
-                                        <Badge variant="secondary">{sanction.type}</Badge>
+                                        <Badge variant="secondary">{sanctionTypeLabel(sanction.type)}</Badge>
                                         <Badge variant={sanction.state === "ACTIVE" ? "destructive" : "outline"}>{sanction.state}</Badge>
                                       </div>
                                       <p className="mt-1 text-muted-foreground">기간: {sanctionPeriodLabel(sanction)}</p>

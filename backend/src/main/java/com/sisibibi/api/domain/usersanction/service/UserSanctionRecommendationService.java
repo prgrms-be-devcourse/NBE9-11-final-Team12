@@ -17,12 +17,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 public class UserSanctionRecommendationService {
 
     private static final int LOOKBACK_DAYS = 90;
+    private static final List<UserSanctionType> SPEECH_AND_STAGE_RESTRICTION_TYPES = List.of(
+            UserSanctionType.SPEECH_RESTRICTION,
+            UserSanctionType.STAGE_RESTRICTION
+    );
 
     private final UserRepository userRepository;
     private final SpeechReportRepository speechReportRepository;
@@ -97,6 +102,15 @@ public class UserSanctionRecommendationService {
     ) {
         if (type == UserSanctionType.WARNING) {
             return null;
+        }
+        if (type == UserSanctionType.SPEECH_RESTRICTION
+                || type == UserSanctionType.STAGE_RESTRICTION) {
+            return userSanctionRepository.findFirstActiveIn(
+                            userId,
+                            SPEECH_AND_STAGE_RESTRICTION_TYPES,
+                            now
+                    )
+                    .orElse(null);
         }
         return userSanctionRepository.findFirstActive(userId, type, now)
                 .orElse(null);

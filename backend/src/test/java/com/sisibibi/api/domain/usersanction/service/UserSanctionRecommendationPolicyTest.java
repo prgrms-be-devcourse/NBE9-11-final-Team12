@@ -31,7 +31,7 @@ class UserSanctionRecommendationPolicyTest {
         );
 
         assertThat(recommendation.type())
-                .isEqualTo(UserSanctionType.SPEECH_RESTRICTION);
+                .isEqualTo(UserSanctionType.STAGE_RESTRICTION);
         assertThat(recommendation.durationHours()).isEqualTo(24);
         assertThat(recommendation.accountSuspensionReviewRecommended()).isFalse();
     }
@@ -77,7 +77,7 @@ class UserSanctionRecommendationPolicyTest {
         );
 
         assertThat(recommendation.type())
-                .isEqualTo(UserSanctionType.SPEECH_RESTRICTION);
+                .isEqualTo(UserSanctionType.STAGE_RESTRICTION);
         assertThat(recommendation.durationHours()).isEqualTo(168);
         assertThat(recommendation.accountSuspensionReviewRecommended()).isTrue();
     }
@@ -90,7 +90,7 @@ class UserSanctionRecommendationPolicyTest {
         );
 
         assertThat(recommendation.type())
-                .isEqualTo(UserSanctionType.SPEECH_RESTRICTION);
+                .isEqualTo(UserSanctionType.STAGE_RESTRICTION);
         assertThat(recommendation.durationHours()).isEqualTo(720);
         assertThat(recommendation.accountSuspensionReviewRecommended()).isTrue();
     }

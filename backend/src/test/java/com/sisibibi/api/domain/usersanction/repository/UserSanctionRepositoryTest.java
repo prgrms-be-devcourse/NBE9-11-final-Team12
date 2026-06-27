@@ -49,6 +49,31 @@ class UserSanctionRepositoryTest {
     }
 
     @Test
+    void existsActiveIn_returnsTrue_whenAnyTypeInPolicyGroupIsActive() {
+        LocalDateTime now = LocalDateTime.of(2026, 6, 21, 12, 0);
+        UserSanction active = userSanctionRepository.saveAndFlush(UserSanction.create(
+                10L,
+                99L,
+                null,
+                UserSanctionType.SPEECH_RESTRICTION,
+                "기존 의견 제한",
+                now.minusHours(1),
+                now.plusHours(1)
+        ));
+
+        assertThat(userSanctionRepository.existsActiveIn(
+                10L,
+                List.of(UserSanctionType.SPEECH_RESTRICTION, UserSanctionType.STAGE_RESTRICTION),
+                now
+        )).isTrue();
+        assertThat(userSanctionRepository.findFirstActiveIn(
+                10L,
+                List.of(UserSanctionType.SPEECH_RESTRICTION, UserSanctionType.STAGE_RESTRICTION),
+                now
+        )).contains(active);
+    }
+
+    @Test
     void findByUserId_returnsLatestHistoryFirst() {
         LocalDateTime now = LocalDateTime.of(2026, 6, 21, 12, 0);
         userSanctionRepository.saveAndFlush(UserSanction.create(
