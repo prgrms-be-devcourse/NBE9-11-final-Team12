@@ -66,7 +66,7 @@ const roomId = idOf(room, "roomId", "id")
 
 await admin.patch(`/api/v1/admin/rooms/${roomId}`, {
   startedAt: localDateTimeAfter(-1),
-  endedAt: localDateTimeAfter(60),
+  endedAt: localDateTimeAfter(120),
   maxParticipants: 20,
 })
 
