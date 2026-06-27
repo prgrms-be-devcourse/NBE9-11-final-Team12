@@ -1,9 +1,13 @@
 package com.sisibibi.api.domain.speechreport.service;
 
+import com.sisibibi.api.domain.room.entity.Room;
+import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
+import com.sisibibi.api.domain.speech.entity.SpeechDeleteReason;
 import com.sisibibi.api.domain.speech.entity.Speech;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
+import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speechreport.config.OffTopicAiReviewProperties;
 import com.sisibibi.api.domain.speechreport.entity.OffTopicAiReview;
 import com.sisibibi.api.domain.speechreport.entity.OffTopicAiReviewStatus;
@@ -41,6 +45,12 @@ class OffTopicAiReviewServiceTest {
     private RoomParticipantRepository roomParticipantRepository;
 
     @Mock
+    private RoomRepository roomRepository;
+
+    @Mock
+    private SpeechRepository speechRepository;
+
+    @Mock
     private OffTopicAiReviewer offTopicAiReviewer;
 
     private OffTopicAiReviewService offTopicAiReviewService;
@@ -54,6 +64,8 @@ class OffTopicAiReviewServiceTest {
                 speechReportRepository,
                 offTopicAiReviewRepository,
                 roomParticipantRepository,
+                roomRepository,
+                speechRepository,
                 offTopicAiReviewer,
                 directExecutor,
                 properties
@@ -70,7 +82,7 @@ class OffTopicAiReviewServiceTest {
 
     @Test
     void triggerIfNeeded_skipsWhenReasonIsNotOffTopic() {
-        Speech speech = speech(10L, 1L, "의견");
+        Speech speech = speech(10L, 1L, "opinion");
 
         offTopicAiReviewService.triggerIfNeeded(speech, SpeechReportReason.SPAM);
 
@@ -81,7 +93,7 @@ class OffTopicAiReviewServiceTest {
 
     @Test
     void triggerIfNeeded_skipsWhenOffTopicReportCountIsBelowThreshold() {
-        Speech speech = speech(10L, 1L, "의견");
+        Speech speech = speech(10L, 1L, "opinion");
         given(roomParticipantRepository.countByRoomIdAndStatus(1L, RoomParticipantStatus.JOINED))
                 .willReturn(50);
         given(speechReportRepository.countBySpeechIdAndReason(
@@ -98,7 +110,8 @@ class OffTopicAiReviewServiceTest {
 
     @Test
     void triggerIfNeeded_createsPendingReviewAndCompletesAiResultWhenThresholdIsReached() {
-        Speech speech = speech(10L, 1L, "주제와 무관한 음식 이야기");
+        Speech speech = speech(10L, 1L, "unrelated food story");
+        Room room = Room.open(100L, "Should school uniforms be mandatory?", null, null, 50);
         given(roomParticipantRepository.countByRoomIdAndStatus(1L, RoomParticipantStatus.JOINED))
                 .willReturn(50);
         given(speechReportRepository.countBySpeechIdAndReason(
@@ -106,16 +119,17 @@ class OffTopicAiReviewServiceTest {
                 SpeechReportReason.OFF_TOPIC
         )).willReturn(5);
         given(offTopicAiReviewRepository.findBySpeechId(10L)).willReturn(Optional.empty());
+        given(roomRepository.findById(1L)).willReturn(Optional.of(room));
         given(offTopicAiReviewRepository.save(org.mockito.ArgumentMatchers.any(OffTopicAiReview.class)))
                 .willAnswer(invocation -> {
                     OffTopicAiReview review = invocation.getArgument(0);
                     ReflectionTestUtils.setField(review, "id", 100L);
                     return review;
                 });
-        given(offTopicAiReviewer.review(speech))
+        given(offTopicAiReviewer.review(speech, "Should school uniforms be mandatory?"))
                 .willReturn(new OffTopicAiReviewResult(
                         true,
-                        "방 주제와 직접 관련 없는 내용입니다.",
+                        "The speech is unrelated to the room title.",
                         0.82
                 ));
 
@@ -132,16 +146,81 @@ class OffTopicAiReviewServiceTest {
         assertThat(review.getParticipantCount()).isEqualTo(50);
         assertThat(review.getStatus()).isEqualTo(OffTopicAiReviewStatus.COMPLETED);
         assertThat(review.isOffTopic()).isTrue();
-        assertThat(review.getReason()).isEqualTo("방 주제와 직접 관련 없는 내용입니다.");
+        assertThat(review.getReason()).isEqualTo("The speech is unrelated to the room title.");
+        verify(offTopicAiReviewer).review(speech, "Should school uniforms be mandatory?");
+    }
+
+    @Test
+    void triggerIfNeeded_softDeletesSpeechWhenRelevanceScoreIsBelowAutoDeleteThreshold() {
+        Speech speech = speech(10L, 1L, "buy cheap pills now");
+        Room room = Room.open(100L, "Should school uniforms be mandatory?", null, null, 50);
+        given(roomParticipantRepository.countByRoomIdAndStatus(1L, RoomParticipantStatus.JOINED))
+                .willReturn(50);
+        given(speechReportRepository.countBySpeechIdAndReason(
+                10L,
+                SpeechReportReason.OFF_TOPIC
+        )).willReturn(5);
+        given(offTopicAiReviewRepository.findBySpeechId(10L)).willReturn(Optional.empty());
+        given(roomRepository.findById(1L)).willReturn(Optional.of(room));
+        given(speechRepository.findByIdAndDeletedFalse(10L)).willReturn(Optional.of(speech));
+        given(offTopicAiReviewRepository.save(org.mockito.ArgumentMatchers.any(OffTopicAiReview.class)))
+                .willAnswer(invocation -> {
+                    OffTopicAiReview review = invocation.getArgument(0);
+                    ReflectionTestUtils.setField(review, "id", 100L);
+                    return review;
+                });
+        given(offTopicAiReviewer.review(speech, "Should school uniforms be mandatory?"))
+                .willReturn(new OffTopicAiReviewResult(
+                        true,
+                        "The speech has very low relevance to the room title.",
+                        0.2
+                ));
+
+        offTopicAiReviewService.triggerIfNeeded(speech, SpeechReportReason.OFF_TOPIC);
+
+        assertThat(speech.isDeleted()).isTrue();
+        assertThat(speech.getDeleteReason()).isEqualTo(SpeechDeleteReason.OFF_TOPIC);
+        verify(speechRepository).save(speech);
+    }
+
+    @Test
+    void triggerIfNeeded_doesNotSoftDeleteSpeechWhenRelevanceScoreIsSuspiciousButNotLowEnough() {
+        Speech speech = speech(10L, 1L, "somewhat related opinion");
+        Room room = Room.open(100L, "Should school uniforms be mandatory?", null, null, 50);
+        given(roomParticipantRepository.countByRoomIdAndStatus(1L, RoomParticipantStatus.JOINED))
+                .willReturn(50);
+        given(speechReportRepository.countBySpeechIdAndReason(
+                10L,
+                SpeechReportReason.OFF_TOPIC
+        )).willReturn(5);
+        given(offTopicAiReviewRepository.findBySpeechId(10L)).willReturn(Optional.empty());
+        given(roomRepository.findById(1L)).willReturn(Optional.of(room));
+        given(offTopicAiReviewRepository.save(org.mockito.ArgumentMatchers.any(OffTopicAiReview.class)))
+                .willAnswer(invocation -> {
+                    OffTopicAiReview review = invocation.getArgument(0);
+                    ReflectionTestUtils.setField(review, "id", 100L);
+                    return review;
+                });
+        given(offTopicAiReviewer.review(speech, "Should school uniforms be mandatory?"))
+                .willReturn(new OffTopicAiReviewResult(
+                        false,
+                        "The speech is suspicious but not clearly unrelated.",
+                        0.45
+                ));
+
+        offTopicAiReviewService.triggerIfNeeded(speech, SpeechReportReason.OFF_TOPIC);
+
+        assertThat(speech.isDeleted()).isFalse();
+        verify(speechRepository, never()).save(org.mockito.ArgumentMatchers.any(Speech.class));
     }
 
     @Test
     void triggerIfNeeded_skipsWhenReviewAlreadyExists() {
-        Speech speech = speech(10L, 1L, "의견");
+        Speech speech = speech(10L, 1L, "opinion");
         OffTopicAiReview existing = OffTopicAiReview.pending(
                 10L,
                 1L,
-                "의견",
+                "opinion",
                 5,
                 5,
                 50
@@ -156,7 +235,10 @@ class OffTopicAiReviewServiceTest {
 
         offTopicAiReviewService.triggerIfNeeded(speech, SpeechReportReason.OFF_TOPIC);
 
-        verify(offTopicAiReviewer, never()).review(speech);
+        verify(offTopicAiReviewer, never()).review(
+                org.mockito.ArgumentMatchers.eq(speech),
+                org.mockito.ArgumentMatchers.anyString()
+        );
         verify(offTopicAiReviewRepository, never()).save(
                 org.mockito.ArgumentMatchers.any(OffTopicAiReview.class)
         );
@@ -164,7 +246,8 @@ class OffTopicAiReviewServiceTest {
 
     @Test
     void triggerIfNeeded_marksReviewFailedWhenAiResultIsInvalid() {
-        Speech speech = speech(10L, 1L, "의견");
+        Speech speech = speech(10L, 1L, "opinion");
+        Room room = Room.open(100L, "Should school uniforms be mandatory?", null, null, 50);
         given(roomParticipantRepository.countByRoomIdAndStatus(1L, RoomParticipantStatus.JOINED))
                 .willReturn(50);
         given(speechReportRepository.countBySpeechIdAndReason(
@@ -172,13 +255,14 @@ class OffTopicAiReviewServiceTest {
                 SpeechReportReason.OFF_TOPIC
         )).willReturn(5);
         given(offTopicAiReviewRepository.findBySpeechId(10L)).willReturn(Optional.empty());
+        given(roomRepository.findById(1L)).willReturn(Optional.of(room));
         given(offTopicAiReviewRepository.save(org.mockito.ArgumentMatchers.any(OffTopicAiReview.class)))
                 .willAnswer(invocation -> {
                     OffTopicAiReview review = invocation.getArgument(0);
                     ReflectionTestUtils.setField(review, "id", 100L);
                     return review;
                 });
-        given(offTopicAiReviewer.review(speech))
+        given(offTopicAiReviewer.review(speech, "Should school uniforms be mandatory?"))
                 .willReturn(new OffTopicAiReviewResult(true, " ", 0.8));
 
         offTopicAiReviewService.triggerIfNeeded(speech, SpeechReportReason.OFF_TOPIC);

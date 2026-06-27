@@ -4,5 +4,5 @@ import com.sisibibi.api.domain.speech.entity.Speech;
 
 public interface OffTopicAiReviewer {
 
-    OffTopicAiReviewResult review(Speech speech);
+    OffTopicAiReviewResult review(Speech speech, String roomTitle);
 }
