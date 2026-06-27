@@ -49,22 +49,4 @@ public class TopicController {
     return ResponseEntity.ok(ApiResponse.ok("승인된 토픽 목록 조회가 완료되었습니다.", result));
   }
 
-  // 테스트용
-  @GetMapping("/candidates/classified")
-  public ResponseEntity<ApiResponse<List<ClassifiedIssueCandidateRes>>> createClassifiedIssue() {
-    List<IssueCandidateRes> candidates = topicIssueService.createIssue();
-    List<ClassifiedIssueCandidateRes> result = topicKeywordService.classify(candidates);
-
-    return ResponseEntity.ok(ApiResponse.ok("뉴스별 키워드 분류가 완료되었습니다.", result));
-  }
-
-  // ai 분류 없는 토픽후보 모음
-  @GetMapping("/candidates")
-  public ResponseEntity<ApiResponse<List<IssueCandidateRes>>> createIssue() {
-    List<IssueCandidateRes> result = topicIssueService.createIssue();
-
-    return ResponseEntity.ok(ApiResponse.ok("실시간 이슈 후보 생성이 완료되었습니다.", result));
-  }
-
-
 }
