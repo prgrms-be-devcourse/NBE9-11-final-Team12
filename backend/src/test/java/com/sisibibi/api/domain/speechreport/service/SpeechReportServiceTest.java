@@ -10,7 +10,6 @@ import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportDetailRes;
 import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportSummaryRes;
 import com.sisibibi.api.domain.speechreport.dto.response.SpeechReportReviewRes;
 import com.sisibibi.api.domain.speechreport.entity.OffTopicAiReview;
-import com.sisibibi.api.domain.speechreport.entity.OffTopicAiReviewResult;
 import com.sisibibi.api.domain.speechreport.entity.OffTopicAiReviewStatus;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReport;
 import com.sisibibi.api.domain.speechreport.entity.SpeechReportReason;

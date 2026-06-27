@@ -44,6 +44,31 @@ public record SpeechReportSummaryRes(
         );
     }
 
+    public SpeechReportSummaryRes(
+            Long reportId,
+            Long speechId,
+            Long reportedUserId,
+            String reportedUserNickname,
+            Long reporterUserId,
+            String reporterUserNickname,
+            SpeechReportReason reason,
+            SpeechReportStatus status,
+            LocalDateTime createdAt
+    ) {
+        this(
+                reportId,
+                speechId,
+                reportedUserId,
+                reportedUserNickname,
+                reporterUserId,
+                reporterUserNickname,
+                reason,
+                status,
+                createdAt,
+                null
+        );
+    }
+
     public static SpeechReportSummaryRes from(SpeechReport report) {
         return from(report, null, null, null);
     }

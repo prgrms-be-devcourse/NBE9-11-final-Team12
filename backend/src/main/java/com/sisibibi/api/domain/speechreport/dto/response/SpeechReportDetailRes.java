@@ -68,6 +68,47 @@ public record SpeechReportDetailRes(
         );
     }
 
+    public SpeechReportDetailRes(
+            Long reportId,
+            Long speechId,
+            Long reportedUserId,
+            String reportedUserNickname,
+            Long reporterUserId,
+            String reporterUserNickname,
+            String contentSnapshot,
+            SpeechReportReason reason,
+            String description,
+            SpeechReportStatus status,
+            Long reviewedBy,
+            String reviewedByNickname,
+            LocalDateTime reviewedAt,
+            String resolutionNote,
+            ViolationSeverity severity,
+            LocalDateTime createdAt,
+            LocalDateTime updatedAt
+    ) {
+        this(
+                reportId,
+                speechId,
+                reportedUserId,
+                reportedUserNickname,
+                reporterUserId,
+                reporterUserNickname,
+                contentSnapshot,
+                reason,
+                description,
+                status,
+                reviewedBy,
+                reviewedByNickname,
+                reviewedAt,
+                resolutionNote,
+                severity,
+                createdAt,
+                updatedAt,
+                null
+        );
+    }
+
     public static SpeechReportDetailRes from(SpeechReport report) {
         return from(report, null, null, null, null);
     }
