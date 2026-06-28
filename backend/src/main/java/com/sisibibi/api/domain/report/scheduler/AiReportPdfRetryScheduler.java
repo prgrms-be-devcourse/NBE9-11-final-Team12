@@ -33,7 +33,7 @@ public class AiReportPdfRetryScheduler {
                 attemptedBefore,
                 properties.getMaxPdfRetryCount(),
                 PageRequest.of(0, properties.getRetryBatchSize())
-        ).forEach(export -> generationService.generate(export.getId()));
+        ).forEach(export -> generateQuietly(export.getId()));
 
         exportRepository.findNotificationRetryCandidates(
                 AiReportPdfStatus.READY,
@@ -41,6 +41,14 @@ public class AiReportPdfRetryScheduler {
                 attemptedBefore,
                 properties.getMaxNotificationRetryCount(),
                 PageRequest.of(0, properties.getRetryBatchSize())
-        ).forEach(export -> generationService.generate(export.getId()));
+        ).forEach(export -> generateQuietly(export.getId()));
+    }
+
+    private void generateQuietly(Long exportId) {
+        try {
+            generationService.generate(exportId);
+        } catch (RuntimeException e) {
+            log.warn("Failed to retry AI report PDF export. exportId={}", exportId, e);
+        }
     }
 }
