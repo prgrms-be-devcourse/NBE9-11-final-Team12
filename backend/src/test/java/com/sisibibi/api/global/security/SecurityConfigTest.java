@@ -36,7 +36,10 @@ import org.springframework.http.MediaType;
 @SpringBootTest(classes = ApiApplication.class)
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-@Import(SecurityConfigTest.TestProtectedController.class)
+@Import({
+        SecurityConfigTest.TestProtectedController.class,
+        SecurityConfigTest.TestInternalController.class
+})
 class SecurityConfigTest {
 
     @Autowired
@@ -126,6 +129,13 @@ class SecurityConfigTest {
     }
 
     @Test
+    void internalApi_isPublicAndDoesNotRequireCsrfToken() throws Exception {
+        mockMvc.perform(post("/api/v1/internal/test"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code", is("SUCCESS")));
+    }
+
+    @Test
     void actuatorHealth_isPublic() throws Exception {
         mockMvc.perform(get("/actuator/health"))
                 .andExpect(status().isOk())
@@ -210,6 +220,15 @@ class SecurityConfigTest {
         @PostMapping("/api/v1/auth/test")
         ResponseEntity<ApiResponse<Void>> publicAuthApi() {
             return ResponseEntity.ok(ApiResponse.okMessage("인증 공개 API입니다."));
+        }
+    }
+
+    @RestController
+    static class TestInternalController {
+
+        @PostMapping("/api/v1/internal/test")
+        ResponseEntity<ApiResponse<Void>> publicInternalApi() {
+            return ResponseEntity.ok(ApiResponse.okMessage("internal API"));
         }
     }
 }

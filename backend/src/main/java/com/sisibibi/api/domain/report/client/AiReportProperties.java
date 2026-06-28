@@ -16,4 +16,5 @@ public class AiReportProperties {
     private String baseUrl;
     private String generatePath = "/report";
     private Duration timeout = Duration.ofSeconds(5);
+    private String workerToken;
 }

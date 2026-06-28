@@ -41,6 +41,47 @@ public class AiReportPersistenceService {
     private final AiReportRepository aiReportRepository;
 
     @Transactional
+    public AiReportRequestResult requestGeneration(Long roomId, Long userId, List<CustomPromptCommand> customPrompts) {
+        Room room = roomRepository.findByIdForUpdate(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+        if (room.getStatus() != RoomStatus.CLOSED) {
+            throw new CustomException(ErrorCode.AI_REPORT_ROOM_NOT_CLOSED);
+        }
+
+        AiReport report = aiReportRepository.findByRoomIdForUpdate(roomId)
+                .orElse(null);
+
+        if (report != null && report.isGenerationInProgress()) {
+            return AiReportRequestResult.skip(AiReportRes.from(report, userId));
+        }
+
+        if (report != null && report.getStatus() == com.sisibibi.api.domain.report.entity.AiReportStatus.COMPLETED) {
+            if (customPrompts == null || customPrompts.isEmpty()) {
+                return AiReportRequestResult.skip(AiReportRes.from(report, userId));
+            }
+
+            report.requestCustomReports(toSnapshots(userId, customPrompts));
+            return AiReportRequestResult.publish(
+                    AiReportRes.from(report, userId),
+                    AiReportGenerationType.CUSTOM_ONLY
+            );
+        }
+
+        AiReportGenerationType generationType = customPrompts == null || customPrompts.isEmpty()
+                ? AiReportGenerationType.BASE_ONLY
+                : AiReportGenerationType.BASE_WITH_CUSTOM;
+
+        if (report == null) {
+            report = aiReportRepository.save(AiReport.requested(roomId, toSnapshots(userId, customPrompts)));
+        } else {
+            report.retry(toSnapshots(userId, customPrompts));
+        }
+
+        return AiReportRequestResult.publish(AiReportRes.from(report, userId), generationType);
+    }
+
+    @Transactional
     public AiReportGenerationContext prepareGeneration(Long roomId, List<CustomPromptCommand> customPrompts) {
         return prepareGeneration(roomId, null, customPrompts);
     }
@@ -57,7 +98,7 @@ public class AiReportPersistenceService {
         AiReport report = aiReportRepository.findByRoomIdForUpdate(roomId)
                 .orElse(null);
 
-        if (report != null && report.getStatus() == com.sisibibi.api.domain.report.entity.AiReportStatus.PENDING) {
+        if (report != null && report.isGenerationInProgress()) {
             return AiReportGenerationContext.skipAi(AiReportRes.from(report, userId));
         }
 
@@ -83,7 +124,7 @@ public class AiReportPersistenceService {
         }
 
         if (report == null) {
-            report = aiReportRepository.save(AiReport.pending(roomId, toSnapshots(userId, customPrompts)));
+            report = aiReportRepository.save(AiReport.requested(roomId, toSnapshots(userId, customPrompts)));
         } else {
             report.retry(toSnapshots(userId, customPrompts));
         }
@@ -117,6 +158,22 @@ public class AiReportPersistenceService {
     }
 
     @Transactional
+    public void markQueued(Long reportId) {
+        AiReport report = aiReportRepository.findById(reportId)
+                .orElseThrow(() -> new CustomException(ErrorCode.AI_REPORT_NOT_FOUND));
+
+        report.markQueued();
+    }
+
+    @Transactional
+    public void markPublishFailed(Long reportId, String errorCode, String errorMessage) {
+        AiReport report = aiReportRepository.findById(reportId)
+                .orElseThrow(() -> new CustomException(ErrorCode.AI_REPORT_NOT_FOUND));
+
+        report.markPublishFailed(errorCode, errorMessage);
+    }
+
+    @Transactional
     public AiReportRes appendCustomReports(
             Long reportId,
             List<CustomPromptCommand> customPrompts,
@@ -146,10 +203,6 @@ public class AiReportPersistenceService {
 
         report.fail(errorMessage);
         return AiReportRes.from(report);
-    }
-
-    public AiReportRes getReport(Long roomId) {
-        return getReport(roomId, null);
     }
 
     public AiReportRes getReport(Long roomId, Long userId) {

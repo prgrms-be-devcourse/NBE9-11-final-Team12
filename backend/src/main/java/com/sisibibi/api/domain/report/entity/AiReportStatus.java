@@ -1,7 +1,11 @@
 package com.sisibibi.api.domain.report.entity;
 
 public enum AiReportStatus {
-    PENDING,
+    REQUESTED,
+    QUEUED,
+    PROCESSING,
     COMPLETED,
-    FAILED
+    PUBLISH_FAILED,
+    GENERATION_FAILED,
+    BLOCKED
 }
