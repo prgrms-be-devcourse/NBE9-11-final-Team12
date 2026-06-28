@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.speech.repository;
 
 import com.sisibibi.api.domain.speech.entity.Speech;
+import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -59,6 +60,30 @@ public interface SpeechRepository extends JpaRepository<Speech, Long> {
             order by speech.createdAt asc, speech.id asc
             """)
     List<Speech> findAiReportSourceSpeeches(@Param("roomId") Long roomId);
+
+    @Query("""
+            select count(speech.id)
+            from Speech speech
+            where speech.roomId = :roomId
+              and speech.deleted = false
+              and speech.status = com.sisibibi.api.domain.speech.entity.SpeechStatus.COMPLETED
+              and speech.stance is not null
+              and speech.content is not null
+              and trim(speech.content) <> ''
+            """)
+    long countAiReportSourceSpeeches(@Param("roomId") Long roomId);
+
+    @Query("""
+            select count(speech.id)
+            from Speech speech
+            where speech.roomId = :roomId
+              and speech.deleted = false
+              and speech.status = com.sisibibi.api.domain.speech.entity.SpeechStatus.COMPLETED
+              and speech.stance = :stance
+              and speech.content is not null
+              and trim(speech.content) <> ''
+            """)
+    long countAiReportSourceSpeechesByStance(@Param("roomId") Long roomId, @Param("stance") SpeechStance stance);
 
     @Query("""
             select speech

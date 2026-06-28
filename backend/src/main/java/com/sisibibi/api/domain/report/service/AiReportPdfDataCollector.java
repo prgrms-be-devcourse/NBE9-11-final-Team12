@@ -7,7 +7,10 @@ import com.sisibibi.api.domain.report.repository.AiReportPdfQueryRepository;
 import com.sisibibi.api.domain.report.repository.AiReportRepository;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
+import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
+import com.sisibibi.api.domain.speech.repository.SpeechRepository;
+import com.sisibibi.api.domain.speechreaction.repository.SpeechReactionRepository;
 import com.sisibibi.api.domain.topic.entity.Topic;
 import com.sisibibi.api.domain.topic.repository.TopicRepository;
 import com.sisibibi.api.domain.user.entity.User;
@@ -30,6 +33,9 @@ public class AiReportPdfDataCollector {
     private final RoomRepository roomRepository;
     private final TopicRepository topicRepository;
     private final UserRepository userRepository;
+    private final RoomParticipantRepository roomParticipantRepository;
+    private final SpeechRepository speechRepository;
+    private final SpeechReactionRepository speechReactionRepository;
     private final AiReportPdfQueryRepository queryRepository;
 
     public AiReportPdfModel collect(AiReportPdfExport export) {
@@ -41,7 +47,13 @@ public class AiReportPdfDataCollector {
                 .orElseThrow(() -> new CustomException(ErrorCode.TOPIC_NOT_FOUND));
         User requester = userRepository.findById(export.getRequestedByUserId())
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
-        AiReportPdfModel.Stats stats = queryRepository.collectStats(room.getId());
+
+        int participantCount = roomParticipantRepository.countByRoomId(room.getId());
+        long opinionCount = speechRepository.countAiReportSourceSpeeches(room.getId());
+        long reactionCount = speechReactionRepository.countReactionsForCompletedSpeeches(room.getId());
+        long proCount = speechRepository.countAiReportSourceSpeechesByStance(room.getId(), SpeechStance.PRO);
+        long conCount = speechRepository.countAiReportSourceSpeechesByStance(room.getId(), SpeechStance.CON);
+
         List<AiReportPdfModel.TopOpinion> proTopOpinions =
                 queryRepository.findTopOpinions(room.getId(), SpeechStance.PRO, 3);
         List<AiReportPdfModel.TopOpinion> conTopOpinions =
@@ -61,11 +73,11 @@ public class AiReportPdfDataCollector {
                 topic.getDescription(),
                 requester.getEmail(),
                 requester.getNickname(),
-                queryRepository.countParticipants(room.getId()),
-                stats.opinionCount(),
-                stats.reactionCount(),
-                stats.proCount(),
-                stats.conCount(),
+                participantCount,
+                opinionCount,
+                reactionCount,
+                proCount,
+                conCount,
                 report.getCoreLine(),
                 report.getKeyIssues() == null ? List.of() : report.getKeyIssues(),
                 report.getCommonGround(),

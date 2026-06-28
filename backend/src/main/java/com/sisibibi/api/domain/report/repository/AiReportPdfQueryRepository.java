@@ -15,51 +15,6 @@ public class AiReportPdfQueryRepository {
 
     private final EntityManager entityManager;
 
-    public int countParticipants(Long roomId) {
-        Long count = entityManager.createQuery("""
-                select count(participant.id)
-                from RoomParticipant participant
-                where participant.roomId = :roomId
-                """, Long.class)
-                .setParameter("roomId", roomId)
-                .getSingleResult();
-        return count.intValue();
-    }
-
-    public AiReportPdfModel.Stats collectStats(Long roomId) {
-        Long opinionCount = entityManager.createQuery("""
-                select count(speech.id)
-                from Speech speech
-                where speech.roomId = :roomId
-                  and speech.status = :completed
-                  and speech.deleted = false
-                  and speech.stance is not null
-                  and speech.content is not null
-                  and trim(speech.content) <> ''
-                """, Long.class)
-                .setParameter("roomId", roomId)
-                .setParameter("completed", SpeechStatus.COMPLETED)
-                .getSingleResult();
-
-        Long reactionCount = entityManager.createQuery("""
-                select count(reaction.id)
-                from SpeechReaction reaction, Speech speech
-                where reaction.speechId = speech.id
-                  and speech.roomId = :roomId
-                  and speech.status = :completed
-                  and speech.deleted = false
-                  and speech.content is not null
-                  and trim(speech.content) <> ''
-                """, Long.class)
-                .setParameter("roomId", roomId)
-                .setParameter("completed", SpeechStatus.COMPLETED)
-                .getSingleResult();
-
-        Long proCount = countByStance(roomId, SpeechStance.PRO);
-        Long conCount = countByStance(roomId, SpeechStance.CON);
-        return new AiReportPdfModel.Stats(opinionCount, reactionCount, proCount, conCount);
-    }
-
     public List<AiReportPdfModel.TopOpinion> findTopOpinions(Long roomId, SpeechStance stance, int limit) {
         return entityManager.createQuery("""
                 select new com.sisibibi.api.domain.report.service.AiReportPdfModel$TopOpinion(
@@ -88,22 +43,5 @@ public class AiReportPdfQueryRepository {
                 .setParameter("stance", stance)
                 .setMaxResults(limit)
                 .getResultList();
-    }
-
-    private Long countByStance(Long roomId, SpeechStance stance) {
-        return entityManager.createQuery("""
-                select count(speech.id)
-                from Speech speech
-                where speech.roomId = :roomId
-                  and speech.status = :completed
-                  and speech.deleted = false
-                  and speech.stance = :stance
-                  and speech.content is not null
-                  and trim(speech.content) <> ''
-                """, Long.class)
-                .setParameter("roomId", roomId)
-                .setParameter("completed", SpeechStatus.COMPLETED)
-                .setParameter("stance", stance)
-                .getSingleResult();
     }
 }

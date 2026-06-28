@@ -61,12 +61,4 @@ public record AiReportPdfModel(
             LocalDateTime createdAt
     ) {
     }
-
-    public record Stats(
-            long opinionCount,
-            long reactionCount,
-            long proCount,
-            long conCount
-    ) {
-    }
 }
