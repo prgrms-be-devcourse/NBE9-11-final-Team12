@@ -98,9 +98,12 @@ app:
     presence:
       enabled: ${WEBSOCKET_PRESENCE_ENABLED:true}
       disconnect-grace-period: ${WEBSOCKET_PRESENCE_DISCONNECT_GRACE_PERIOD:60s}
+      cleanup-retention: ${WEBSOCKET_PRESENCE_CLEANUP_RETENTION:10m}
       expiration-fixed-delay-ms: ${WEBSOCKET_PRESENCE_EXPIRATION_FIXED_DELAY_MS:5000}
       expiration-batch-size: ${WEBSOCKET_PRESENCE_EXPIRATION_BATCH_SIZE:100}
       max-expiration-failures: ${WEBSOCKET_PRESENCE_MAX_EXPIRATION_FAILURES:3}
+      cleanup-fixed-delay-ms: ${WEBSOCKET_PRESENCE_CLEANUP_FIXED_DELAY_MS:60000}
+      cleanup-batch-size: ${WEBSOCKET_PRESENCE_CLEANUP_BATCH_SIZE:100}
   speaking:
     turn-duration: ${SPEAKING_TURN_DURATION:3m}
     queue:

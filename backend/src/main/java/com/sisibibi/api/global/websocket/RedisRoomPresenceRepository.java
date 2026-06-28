@@ -1,8 +1,13 @@
 package com.sisibibi.api.global.websocket;
 
 import java.time.Instant;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import org.springframework.data.redis.connection.RedisConnection;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Repository;
@@ -140,6 +145,42 @@ public class RedisRoomPresenceRepository {
         redisTemplate.opsForHash().delete(expirationFailuresKey(), candidate.member());
     }
 
+    public void deletePresence(Long roomId, Long userId) {
+        redisTemplate.delete(presenceKey(roomId, userId));
+    }
+
+    public long deleteRoomPresence(Long roomId) {
+        List<String> keys = scanPresenceKeys("room:presence:{" + roomId + "}:*", Integer.MAX_VALUE);
+        if (keys.isEmpty()) {
+            return 0L;
+        }
+
+        Long deletedCount = redisTemplate.delete(keys);
+        return deletedCount == null ? 0L : deletedCount;
+    }
+
+    public long cleanupExpiredDisconnectedPresence(Instant cutoff, int limit) {
+        List<String> keys = scanPresenceKeys("room:presence:{*}:*", Math.max(1, limit));
+        long cleanedCount = 0L;
+        for (String key : keys) {
+            List<Object> fields = redisTemplate.opsForHash()
+                    .multiGet(key, List.of("status", "expiresAt"));
+            if (fields == null || fields.size() != 2) {
+                continue;
+            }
+
+            String status = valueOf(fields.get(0));
+            Long expiresAt = longValueOf(fields.get(1));
+            if (STATUS_DISCONNECTED.equals(status)
+                    && expiresAt != null
+                    && expiresAt <= cutoff.toEpochMilli()
+                    && Boolean.TRUE.equals(redisTemplate.delete(key))) {
+                cleanedCount++;
+            }
+        }
+        return cleanedCount;
+    }
+
     private String valueOf(Object value) {
         if (value == null) {
             return null;
@@ -172,5 +213,21 @@ public class RedisRoomPresenceRepository {
 
     private String expirationFailuresKey() {
         return "room:presence:expiration-failures";
+    }
+
+    private List<String> scanPresenceKeys(String pattern, int limit) {
+        return redisTemplate.execute((RedisConnection connection) -> {
+            List<String> keys = new ArrayList<>();
+            ScanOptions options = ScanOptions.scanOptions()
+                    .match(pattern)
+                    .count(Math.min(Math.max(1, limit), 1000))
+                    .build();
+            try (Cursor<byte[]> cursor = connection.keyCommands().scan(options)) {
+                while (cursor.hasNext() && keys.size() < limit) {
+                    keys.add(new String(cursor.next(), StandardCharsets.UTF_8));
+                }
+            }
+            return keys;
+        });
     }
 }

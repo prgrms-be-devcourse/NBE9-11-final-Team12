@@ -64,4 +64,66 @@ public class RoomPresenceService {
             );
         }
     }
+
+    public void clearPresence(Long roomId, Long userId) {
+        if (!roomPresenceProperties.isEnabled()) {
+            return;
+        }
+
+        try {
+            roomPresenceRepository.deletePresence(roomId, userId);
+        } catch (RuntimeException redisException) {
+            log.warn(
+                    "Failed to clear room WebSocket presence. roomId={}, userId={}",
+                    roomId,
+                    userId,
+                    redisException
+            );
+        }
+    }
+
+    public void clearRoomPresence(Long roomId) {
+        if (!roomPresenceProperties.isEnabled()) {
+            return;
+        }
+
+        try {
+            long deletedCount = roomPresenceRepository.deleteRoomPresence(roomId);
+            if (deletedCount > 0) {
+                log.info("Cleared room WebSocket presence. roomId={}, deletedCount={}",
+                        roomId,
+                        deletedCount);
+            }
+        } catch (RuntimeException redisException) {
+            log.warn(
+                    "Failed to clear room WebSocket presence. roomId={}",
+                    roomId,
+                    redisException
+            );
+        }
+    }
+
+    public void cleanupExpiredDisconnectedPresence() {
+        cleanupExpiredDisconnectedPresenceAt(Instant.now());
+    }
+
+    void cleanupExpiredDisconnectedPresenceAt(Instant now) {
+        if (!roomPresenceProperties.isEnabled()) {
+            return;
+        }
+
+        try {
+            Instant cutoff = now.minus(roomPresenceProperties.getCleanupRetention());
+            long cleanedCount = roomPresenceRepository.cleanupExpiredDisconnectedPresence(
+                    cutoff,
+                    roomPresenceProperties.getCleanupBatchSize()
+            );
+            if (cleanedCount > 0) {
+                log.info("Cleaned expired disconnected room presence. cleanedCount={}",
+                        cleanedCount);
+            }
+        } catch (RuntimeException redisException) {
+            log.warn("Failed to clean expired disconnected room presence.", redisException);
+        }
+    }
 }
