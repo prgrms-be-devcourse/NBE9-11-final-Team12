@@ -53,20 +53,16 @@ public class SpeakingQueueService {
         SpeakingQueue saved =
                 speakingQueuePersistenceService.createWaitingRequest(roomId, userId, stance);
 
-        synchronizeWaitingRedisProjection(saved);
-        log.info(
+        log.debug(
                 "Speaking request created. roomId={}, userId={}, queueOrder={}, status={}",
                 saved.getRoomId(),
                 saved.getUserId(),
                 saved.getQueueOrder(),
                 saved.getStatus()
         );
+        synchronizeWaitingRedisProjection(saved);
         publishStageChanged(StageEventType.SPEAKING_REQUESTED, saved);
-        return StageRequestRes.from(
-                tryAssignNextSpeaker(roomId)
-                        .filter(assigned -> assigned.getUserId().equals(userId))
-                        .orElse(saved)
-        );
+        return StageRequestRes.from(saved);
     }
 
     public Optional<SpeakingQueue> assignNextSpeaker(Long roomId) {

@@ -17,6 +17,14 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByEmail(String email);
 
+    @Query("""
+            select user.status as status,
+                   user.tokenVersion as tokenVersion
+            from User user
+            where user.id = :userId
+            """)
+    Optional<UserSessionProjection> findSessionById(@Param("userId") Long userId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select user from User user where user.id = :userId")
     Optional<User> findByIdForUpdate(@Param("userId") Long userId);
@@ -36,4 +44,11 @@ public interface UserRepository extends JpaRepository<User, Long> {
             @Param("role") UserRole role,
             Pageable pageable
     );
+
+    interface UserSessionProjection {
+
+        UserStatus getStatus();
+
+        Long getTokenVersion();
+    }
 }

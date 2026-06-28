@@ -8,7 +8,6 @@ import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipant;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
 import com.sisibibi.api.domain.speech.entity.RoomQueueSequence;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
-import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.RoomQueueSequenceRepository;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
@@ -50,13 +49,13 @@ class SpeakingQueueRequestConcurrencyTest {
     private SpeakingQueueRepository speakingQueueRepository;
 
     @Autowired
-    private RoomQueueSequenceRepository roomQueueSequenceRepository;
-
-    @Autowired
     private RoomRepository roomRepository;
 
     @Autowired
     private RoomParticipantRepository roomParticipantRepository;
+
+    @Autowired
+    private RoomQueueSequenceRepository roomQueueSequenceRepository;
 
     @MockitoBean
     private UserSanctionPolicyService userSanctionPolicyService;
@@ -66,8 +65,8 @@ class SpeakingQueueRequestConcurrencyTest {
     @BeforeEach
     void setUpRoom() {
         speakingQueueRepository.deleteAll();
-        roomQueueSequenceRepository.deleteAll();
         roomParticipantRepository.deleteAll();
+        roomQueueSequenceRepository.deleteAll();
         roomRepository.deleteAll();
 
         LocalDateTime startedAt = LocalDateTime.of(2026, 6, 15, 10, 0);
@@ -75,7 +74,9 @@ class SpeakingQueueRequestConcurrencyTest {
         Room room = Room.open(1L, "토론방", startedAt, endedAt, 100);
         ReflectionTestUtils.setField(room, "createdAt", LocalDateTime.now());
         roomId = roomRepository.saveAndFlush(room).getId();
-        roomQueueSequenceRepository.saveAndFlush(RoomQueueSequence.create(roomId, startedAt));
+        roomQueueSequenceRepository.saveAndFlush(
+                RoomQueueSequence.create(roomId, startedAt)
+        );
 
         for (int index = 0; index < REQUEST_COUNT; index++) {
             roomParticipantRepository.saveAndFlush(
@@ -102,22 +103,19 @@ class SpeakingQueueRequestConcurrencyTest {
             }
         }
 
-        List<Integer> queueOrders = speakingQueueRepository.findAll()
-                .stream()
+        List<SpeakingQueue> speakingQueues = speakingQueueRepository.findAll();
+        List<Integer> queueOrders = speakingQueues.stream()
                 .map(SpeakingQueue::getQueueOrder)
                 .sorted()
                 .toList();
 
         assertThat(queueOrders).hasSize(REQUEST_COUNT);
         assertThat(queueOrders).doesNotHaveDuplicates();
-        assertThat(queueOrders).containsExactlyElementsOf(
-                java.util.stream.IntStream
+        assertThat(queueOrders)
+                .containsExactlyElementsOf(java.util.stream.IntStream
                         .rangeClosed(1, REQUEST_COUNT)
                         .boxed()
-                        .toList()
-        );
-        assertThat(roomQueueSequenceRepository.findById(roomId).orElseThrow()
-                .getNextQueueOrder()).isEqualTo(REQUEST_COUNT + 1);
+                        .toList());
     }
 
     private SpeakingQueue requestAfterSignal(CountDownLatch start, int index)
