@@ -1,5 +1,6 @@
 package com.sisibibi.api.global.config;
 
+import com.sisibibi.api.global.websocket.RegistryWebSocketHandlerDecoratorFactory;
 import com.sisibibi.api.global.websocket.WebSocketAuthChannelInterceptor;
 import com.sisibibi.api.global.websocket.WebSocketAuthHandshakeInterceptor;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +12,7 @@ import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
+import org.springframework.web.socket.config.annotation.WebSocketTransportRegistration;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 
 @Configuration
@@ -26,6 +28,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final WebSocketAuthHandshakeInterceptor handshakeInterceptor;
     private final WebSocketAuthChannelInterceptor authChannelInterceptor;
+    private final RegistryWebSocketHandlerDecoratorFactory webSocketHandlerDecoratorFactory;
 
     @Value("${app.frontend.url}")
     private String frontendUrl;
@@ -49,6 +52,11 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
         registration.interceptors(authChannelInterceptor);
+    }
+
+    @Override
+    public void configureWebSocketTransport(WebSocketTransportRegistration registration) {
+        registration.addDecoratorFactory(webSocketHandlerDecoratorFactory);
     }
 
     @Bean
