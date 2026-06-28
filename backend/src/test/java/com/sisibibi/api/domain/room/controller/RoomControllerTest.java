@@ -46,7 +46,7 @@ class RoomControllerTest {
             new RoomSummaryRes(
                 10L,
                 1L,
-                "토론방 목록",
+                "진행 중인 토론방",
                 RoomStatus.OPEN,
                 LocalDateTime.of(2026, 6, 15, 10, 0),
                 LocalDateTime.of(2026, 6, 15, 11, 0),
