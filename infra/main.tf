@@ -333,7 +333,7 @@ resource "aws_sqs_queue" "speech_event_dlq" {
 
 resource "aws_sqs_queue" "speech_event_queue" {
   name                       = "${var.prefix}-speech-event-queue"
-  visibility_timeout_seconds = 30
+  visibility_timeout_seconds = 300
   message_retention_seconds  = 345600 # 4일
 
   redrive_policy = jsonencode({
