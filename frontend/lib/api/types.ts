@@ -63,11 +63,11 @@ export type RoomCreateResponse = {
   createdAt: string
 }
 
-export type RoomSummary = RoomCreateResponse
-
-export type RoomDetail = RoomSummary & {
+export type RoomSummary = RoomCreateResponse & {
   endedAt: string | null
 }
+
+export type RoomDetail = RoomSummary
 
 export type RoomTitlePreview = {
   topicId: number

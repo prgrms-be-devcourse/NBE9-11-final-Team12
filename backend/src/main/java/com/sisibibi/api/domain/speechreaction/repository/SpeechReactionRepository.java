@@ -55,4 +55,13 @@ public interface SpeechReactionRepository extends JpaRepository<SpeechReaction, 
             @Param("roomId") Long roomId,
             Pageable pageable
     );
+
+    @Query("""
+        select count(reaction.id)
+        from SpeechReaction reaction, Speech speech
+        where reaction.speechId = speech.id
+          and speech.roomId = :roomId
+          and speech.deleted = false
+        """)
+    long countByRoomId(@Param("roomId") Long roomId);
 }

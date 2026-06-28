@@ -31,14 +31,20 @@ import {
   Zap,
   LogOut,
   ShieldCheck,
+  Clock,
+  ExternalLink,
 } from "lucide-react"
 
 type RoomView = {
   id: string
   title: string
-  description: string
+  topicTitle: string
+  sourceUrl: string | null
   category: string
   status: "OPEN" | "CLOSED"
+  startedAt: string | null
+  endedAt: string | null
+  timeLabel: string
   tags: string[]
   isLive: boolean
 }
@@ -99,6 +105,43 @@ function sanctionTypeLabel(type: UserSanctionType) {
   }
 }
 
+function formatRoomDateTime(value: string | null | undefined) {
+  if (!value) return null
+
+  return new Date(value).toLocaleString("ko-KR", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
+function roomTimeLabel(startedAt: string | null | undefined, endedAt: string | null | undefined) {
+  const startLabel = formatRoomDateTime(startedAt)
+  const endLabel = formatRoomDateTime(endedAt)
+
+  if (startLabel && endLabel) return `${startLabel} - ${endLabel}`
+  if (startLabel) return `${startLabel} 시작`
+  return "시간 정보 없음"
+}
+
+function formatRemainingRoomTime(endedAt: string | null | undefined, now: number) {
+  if (!endedAt) return null
+
+  const endedAtTime = new Date(endedAt).getTime()
+  if (Number.isNaN(endedAtTime)) return null
+
+  const remainingSeconds = Math.max(0, Math.floor((endedAtTime - now) / 1000))
+  const hours = Math.floor(remainingSeconds / 3600)
+  const minutes = Math.floor((remainingSeconds % 3600) / 60)
+  const seconds = remainingSeconds % 60
+  const paddedMinutes = String(minutes).padStart(2, "0")
+  const paddedSeconds = String(seconds).padStart(2, "0")
+
+  if (hours > 0) return `남은 시간 ${hours}:${paddedMinutes}:${paddedSeconds}`
+  return `남은 시간 ${minutes}:${paddedSeconds}`
+}
+
 export default function RoomDetailPage() {
   const params = useParams<{ id: string }>()
   const roomId = Number(params.id)
@@ -124,6 +167,7 @@ export default function RoomDetailPage() {
   const roomRecoveryTimerRef = useRef<number | null>(null)
   const disconnectGraceTimerRef = useRef<number | null>(null)
   const [disconnectGraceExceeded, setDisconnectGraceExceeded] = useState(false)
+  const [roomTimerNow, setRoomTimerNow] = useState(() => Date.now())
 
   const rememberEvent = useCallback((eventId: string) => {
     if (handledEventIdsRef.current.includes(eventId)) return false
@@ -141,9 +185,13 @@ export default function RoomDetailPage() {
       setRoomView({
         id: String(room.roomId),
         title: room.title,
-        description: topicDetail.description ?? "승인된 토픽으로 개설된 실시간 토론방입니다.",
+        topicTitle: topicDetail.title,
+        sourceUrl: topicDetail.sourceUrl,
         category: topicDetail.category,
         status: room.status,
+        startedAt: room.startedAt,
+        endedAt: room.endedAt,
+        timeLabel: roomTimeLabel(room.startedAt, room.endedAt),
         tags: [topicDetail.category],
         isLive: room.status === "OPEN",
       })
@@ -343,6 +391,19 @@ export default function RoomDetailPage() {
   }, [loadParticipantSnapshot, loadRoom, recoveryKey])
 
   useEffect(() => {
+    if (roomView?.status !== "OPEN" || !roomView.endedAt) return
+
+    setRoomTimerNow(Date.now())
+    const timerId = window.setInterval(() => {
+      setRoomTimerNow(Date.now())
+    }, 1000)
+
+    return () => {
+      window.clearInterval(timerId)
+    }
+  }, [roomView?.endedAt, roomView?.status])
+
+  useEffect(() => {
     const recoverVisibleSnapshot = () => {
       if (document.visibilityState !== "visible") return
       scheduleRoomRecovery()
@@ -386,6 +447,12 @@ export default function RoomDetailPage() {
         : realtimeStatus === "connecting"
           ? "실시간 연결 중입니다."
           : ""
+
+  const roomRemainingTimeLabel = roomView?.status === "OPEN"
+    ? formatRemainingRoomTime(roomView.endedAt, roomTimerNow)
+    : roomView
+      ? "토론 종료"
+      : null
 
   return (
     <div className="flex flex-col bg-background" style={{ height: "100dvh" }}>
@@ -458,11 +525,35 @@ export default function RoomDetailPage() {
                   <h2 className="mb-2 text-sm font-semibold leading-snug text-foreground">
                     {roomView?.title ?? "토론방 정보를 불러오는 중..."}
                   </h2>
-                  <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
-                    {roomView?.description ?? "잠시만 기다려 주세요."}
-                  </p>
+                  <div className="mb-3 space-y-2">
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      {roomView?.topicTitle ?? "토픽 정보를 불러오는 중입니다."}
+                    </p>
+                    {roomView?.sourceUrl && (
+                      <a
+                        href={roomView.sourceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex max-w-full items-center gap-1 text-xs font-medium text-primary hover:underline"
+                      >
+                        <span className="truncate">원문 보기</span>
+                        <ExternalLink className="size-3 shrink-0" />
+                      </a>
+                    )}
+                  </div>
 
                   <Separator className="mb-3" />
+
+                  <div className="mb-3 flex items-start gap-2 rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                    <Clock className="mt-0.5 size-3.5 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="font-medium text-foreground">토론 시간</p>
+                      <p className="mt-0.5 leading-relaxed">{roomView?.timeLabel ?? "시간 정보 없음"}</p>
+                      {roomRemainingTimeLabel && (
+                        <p className="mt-1 text-sm font-semibold text-foreground">{roomRemainingTimeLabel}</p>
+                      )}
+                    </div>
+                  </div>
 
                   <div className="flex items-center justify-center gap-2 text-center">
                     <Users className="size-3.5 text-muted-foreground" />
