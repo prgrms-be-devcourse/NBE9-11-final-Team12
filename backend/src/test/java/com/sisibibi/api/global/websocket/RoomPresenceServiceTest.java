@@ -77,4 +77,32 @@ class RoomPresenceServiceTest {
 
         verify(roomPresenceRepository).markConnected(1L, 2L, "session-1", now);
     }
+
+    @Test
+    void clearPresence_deletesRoomUserPresence() {
+        roomPresenceService.clearPresence(1L, 2L);
+
+        verify(roomPresenceRepository).deletePresence(1L, 2L);
+    }
+
+    @Test
+    void clearRoomPresence_deletesRoomPresence() {
+        roomPresenceService.clearRoomPresence(1L);
+
+        verify(roomPresenceRepository).deleteRoomPresence(1L);
+    }
+
+    @Test
+    void cleanupExpiredDisconnectedPresenceAt_usesRetentionAndBatchSize() {
+        roomPresenceProperties.setCleanupRetention(Duration.ofMinutes(10));
+        roomPresenceProperties.setCleanupBatchSize(25);
+        Instant now = Instant.parse("2026-06-28T01:10:00Z");
+
+        roomPresenceService.cleanupExpiredDisconnectedPresenceAt(now);
+
+        verify(roomPresenceRepository).cleanupExpiredDisconnectedPresence(
+                Instant.parse("2026-06-28T01:00:00Z"),
+                25
+        );
+    }
 }

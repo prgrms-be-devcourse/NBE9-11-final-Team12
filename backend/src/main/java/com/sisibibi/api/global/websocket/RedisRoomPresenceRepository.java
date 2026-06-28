@@ -1,17 +1,26 @@
 package com.sisibibi.api.global.websocket;
 
 import java.time.Instant;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import org.springframework.data.redis.connection.RedisConnection;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Repository;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Repository
 public class RedisRoomPresenceRepository {
 
     private static final String STATUS_CONNECTED = "CONNECTED";
     private static final String STATUS_DISCONNECTED = "DISCONNECTED";
+    private static final int MAX_SCAN_COUNT = 1000;
+    private static final int ROOM_DELETE_BATCH_SIZE = 1000;
 
     private static final DefaultRedisScript<Long> MARK_CONNECTED_SCRIPT =
             new DefaultRedisScript<>(
@@ -140,6 +149,52 @@ public class RedisRoomPresenceRepository {
         redisTemplate.opsForHash().delete(expirationFailuresKey(), candidate.member());
     }
 
+    public void deletePresence(Long roomId, Long userId) {
+        redisTemplate.delete(presenceKey(roomId, userId));
+    }
+
+    public long deleteRoomPresence(Long roomId) {
+        long deletedCount = 0L;
+        List<String> keys;
+        do {
+            keys = scanPresenceKeys(roomPresencePattern(roomId), ROOM_DELETE_BATCH_SIZE);
+            deletedCount += deleteKeys(keys);
+        } while (keys.size() == ROOM_DELETE_BATCH_SIZE);
+
+        return deletedCount;
+    }
+
+    private long deleteKeys(List<String> keys) {
+        if (keys == null || keys.isEmpty()) {
+            return 0L;
+        }
+
+        Long deletedCount = redisTemplate.delete(keys);
+        return deletedCount == null ? 0L : deletedCount;
+    }
+
+    public long cleanupExpiredDisconnectedPresence(Instant cutoff, int limit) {
+        List<String> keys = scanPresenceKeys(allRoomPresencePattern(), Math.max(1, limit));
+        List<String> keysToDelete = new ArrayList<>();
+        for (String key : keys) {
+            List<Object> fields = redisTemplate.opsForHash()
+                    .multiGet(key, List.of("status", "expiresAt"));
+            if (fields == null || fields.size() != 2) {
+                continue;
+            }
+
+            String status = valueOf(fields.get(0));
+            Long expiresAt = longValueOf(fields.get(1));
+            if (STATUS_DISCONNECTED.equals(status)
+                    && expiresAt != null
+                    && expiresAt <= cutoff.toEpochMilli()) {
+                keysToDelete.add(key);
+            }
+        }
+
+        return deleteKeys(keysToDelete);
+    }
+
     private String valueOf(Object value) {
         if (value == null) {
             return null;
@@ -166,11 +221,46 @@ public class RedisRoomPresenceRepository {
         return "room:presence:{" + roomId + "}:" + userId;
     }
 
+    private String roomPresencePattern(Long roomId) {
+        return "room:presence:{" + roomId + "}:*";
+    }
+
+    private String allRoomPresencePattern() {
+        return "room:presence:{*}:*";
+    }
+
     private String expirationsKey() {
         return "room:presence:expirations";
     }
 
     private String expirationFailuresKey() {
         return "room:presence:expiration-failures";
+    }
+
+    private List<String> scanPresenceKeys(String pattern, int limit) {
+        List<String> scannedKeys = redisTemplate.execute((RedisConnection connection) -> {
+            List<String> keys = new ArrayList<>();
+            ScanOptions options = ScanOptions.scanOptions()
+                    .match(pattern)
+                    .count(Math.min(Math.max(1, limit), MAX_SCAN_COUNT))
+                    .build();
+            Cursor<byte[]> cursor = connection.keyCommands().scan(options);
+            if (cursor == null) {
+                return keys;
+            }
+
+            try (cursor) {
+                while (cursor.hasNext() && keys.size() < limit) {
+                    keys.add(new String(cursor.next(), StandardCharsets.UTF_8));
+                }
+            } catch (RuntimeException scanException) {
+                log.warn("Failed to scan room presence keys. pattern={}, limit={}",
+                        pattern,
+                        limit,
+                        scanException);
+            }
+            return keys;
+        });
+        return scannedKeys == null ? List.of() : scannedKeys;
     }
 }
