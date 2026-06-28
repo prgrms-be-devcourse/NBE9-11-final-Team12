@@ -3,7 +3,7 @@ package com.sisibibi.api.domain.speech.event;
 import com.sisibibi.api.domain.speech.dto.event.StageChangedEvent;
 import com.sisibibi.api.global.config.AsyncConfig;
 import com.sisibibi.api.global.realtime.RealtimeEventPublisher;
-import com.sisibibi.api.global.websocket.RoomWebSocketDestinations;
+import com.sisibibi.api.global.websocket.destination.RoomWebSocketDestinations;
 import com.sisibibi.api.global.websocket.WebSocketEventEnvelope;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

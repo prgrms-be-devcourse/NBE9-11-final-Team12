@@ -4,7 +4,7 @@ import com.sisibibi.api.domain.roomparticipant.dto.event.RoomParticipantChangedE
 import com.sisibibi.api.domain.roomparticipant.dto.event.RoomParticipantEventPayload;
 import com.sisibibi.api.domain.roomparticipant.dto.event.RoomParticipantEventType;
 import com.sisibibi.api.global.realtime.RealtimeEventPublisher;
-import com.sisibibi.api.global.websocket.RoomWebSocketDestinations;
+import com.sisibibi.api.global.websocket.destination.RoomWebSocketDestinations;
 import com.sisibibi.api.global.websocket.WebSocketEventEnvelope;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
