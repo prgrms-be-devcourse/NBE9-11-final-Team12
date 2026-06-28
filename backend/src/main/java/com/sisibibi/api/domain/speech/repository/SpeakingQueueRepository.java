@@ -4,16 +4,107 @@ import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
+import com.sisibibi.api.domain.speech.repository.projection.SpeakingRequestEligibilityProjection;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface SpeakingQueueRepository extends JpaRepository<SpeakingQueue, Long> {
+
+    @Query(value = """
+            select
+              case when exists (
+                select 1
+                from rooms room
+                where room.id = :roomId
+              ) then 1 else 0 end as roomExists,
+              case when exists (
+                select 1
+                from rooms room
+                where room.id = :roomId
+                  and room.status = 'OPEN'
+                  and (room.ended_at is null or room.ended_at > :requestedAt)
+              ) then 1 else 0 end as roomActive,
+              case when exists (
+                select 1
+                from room_participants participant
+                where participant.room_id = :roomId
+                  and participant.user_id = :userId
+                  and participant.status = 'JOINED'
+              ) then 1 else 0 end as joinedParticipant,
+              case when exists (
+                select 1
+                from speaking_queue sq
+                where sq.room_id = :roomId
+                  and sq.user_id = :userId
+                  and sq.active_request = true
+              ) then 1 else 0 end as activeRequestExists,
+              case when exists (
+                select 1
+                from user_sanctions sanction
+                where sanction.user_id = :userId
+                  and sanction.type in ('SPEECH_RESTRICTION', 'STAGE_RESTRICTION')
+                  and sanction.revoked_at is null
+                  and sanction.starts_at <= :requestedAt
+                  and (sanction.ends_at is null or sanction.ends_at > :requestedAt)
+              ) then 1 else 0 end as restricted
+            """, nativeQuery = true)
+    SpeakingRequestEligibilityProjection findSpeakingRequestEligibility(
+            @Param("roomId") Long roomId,
+            @Param("userId") Long userId,
+            @Param("requestedAt") LocalDateTime requestedAt
+    );
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = """
+            insert into speaking_queue (
+                room_id,
+                user_id,
+                queue_order,
+                active_request,
+                stance,
+                status,
+                requested_at,
+                idle_warning_sent
+            ) values (
+                :roomId,
+                :userId,
+                :queueOrder,
+                true,
+                :stance,
+                :status,
+                :requestedAt,
+                false
+            )
+            """, nativeQuery = true)
+    int insertWaitingRequest(
+            @Param("roomId") Long roomId,
+            @Param("userId") Long userId,
+            @Param("queueOrder") Integer queueOrder,
+            @Param("stance") String stance,
+            @Param("status") String status,
+            @Param("requestedAt") LocalDateTime requestedAt
+    );
+
+    @Query(value = """
+            select case when exists (
+              select 1
+              from rooms room
+              where room.id = :roomId
+                and room.status = 'OPEN'
+                and (room.ended_at is null or room.ended_at > :requestedAt)
+            ) then 1 else 0 end
+            """, nativeQuery = true)
+    Integer findRoomActiveForSpeakingRequest(
+            @Param("roomId") Long roomId,
+            @Param("requestedAt") LocalDateTime requestedAt
+    );
 
     boolean existsByRoomIdAndUserIdAndStatusIn(
             Long roomId,
