@@ -11,7 +11,9 @@ import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Repository;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Repository
 public class RedisRoomPresenceRepository {
 
@@ -242,10 +244,20 @@ public class RedisRoomPresenceRepository {
                     .match(pattern)
                     .count(Math.min(Math.max(1, limit), MAX_SCAN_COUNT))
                     .build();
-            try (Cursor<byte[]> cursor = connection.keyCommands().scan(options)) {
+            Cursor<byte[]> cursor = connection.keyCommands().scan(options);
+            if (cursor == null) {
+                return keys;
+            }
+
+            try (cursor) {
                 while (cursor.hasNext() && keys.size() < limit) {
                     keys.add(new String(cursor.next(), StandardCharsets.UTF_8));
                 }
+            } catch (RuntimeException scanException) {
+                log.warn("Failed to scan room presence keys. pattern={}, limit={}",
+                        pattern,
+                        limit,
+                        scanException);
             }
             return keys;
         });
