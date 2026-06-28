@@ -15,10 +15,17 @@ public record RoomPresenceCandidate(
         if (parts.length != 3) {
             throw new IllegalArgumentException("Invalid room presence candidate: " + member);
         }
-        return new RoomPresenceCandidate(
-                Long.valueOf(parts[0]),
-                Long.valueOf(parts[1]),
-                Long.parseLong(parts[2])
-        );
+        try {
+            return new RoomPresenceCandidate(
+                    Long.valueOf(parts[0]),
+                    Long.valueOf(parts[1]),
+                    Long.parseLong(parts[2])
+            );
+        } catch (NumberFormatException parseException) {
+            throw new IllegalArgumentException(
+                    "Invalid room presence candidate number: " + member,
+                    parseException
+            );
+        }
     }
 }

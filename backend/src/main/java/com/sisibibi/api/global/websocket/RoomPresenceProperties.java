@@ -15,4 +15,5 @@ public class RoomPresenceProperties {
     private boolean enabled = true;
     private Duration disconnectGracePeriod = Duration.ofSeconds(60);
     private int expirationBatchSize = 100;
+    private int maxExpirationFailures = 3;
 }

@@ -39,9 +39,10 @@ public class RedisRoomPresenceRepository {
                         return 0
                     end
 
-                    local generation = redis.call('HGET', KEYS[1], 'generation')
-                    if generation == false then
-                        generation = redis.call('HINCRBY', KEYS[1], 'generation', 1)
+                    local generation = tonumber(redis.call('HGET', KEYS[1], 'generation') or '0')
+                    if generation <= 0 then
+                        generation = 1
+                        redis.call('HSET', KEYS[1], 'generation', generation)
                     end
 
                     redis.call(
@@ -51,7 +52,7 @@ public class RedisRoomPresenceRepository {
                         'disconnectedAt', ARGV[2],
                         'expiresAt', ARGV[3]
                     )
-                    redis.call('ZADD', KEYS[2], ARGV[3], ARGV[4] .. ':' .. generation)
+                    redis.call('ZADD', KEYS[2], ARGV[3], ARGV[4] .. ':' .. tostring(generation))
                     return generation
                     """,
                     Long.class
@@ -129,6 +130,16 @@ public class RedisRoomPresenceRepository {
         redisTemplate.opsForZSet().remove(expirationsKey(), candidate.member());
     }
 
+    public long incrementExpirationFailure(RoomPresenceCandidate candidate) {
+        Long count = redisTemplate.opsForHash()
+                .increment(expirationFailuresKey(), candidate.member(), 1L);
+        return count == null ? 0L : count;
+    }
+
+    public void removeExpirationFailure(RoomPresenceCandidate candidate) {
+        redisTemplate.opsForHash().delete(expirationFailuresKey(), candidate.member());
+    }
+
     private String valueOf(Object value) {
         if (value == null) {
             return null;
@@ -157,5 +168,9 @@ public class RedisRoomPresenceRepository {
 
     private String expirationsKey() {
         return "room:presence:expirations";
+    }
+
+    private String expirationFailuresKey() {
+        return "room:presence:expiration-failures";
     }
 }

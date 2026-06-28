@@ -26,6 +26,7 @@ class RoomPresenceExpirationServiceTest {
         roomPresenceProperties = new RoomPresenceProperties();
         roomPresenceProperties.setEnabled(true);
         roomPresenceProperties.setExpirationBatchSize(10);
+        roomPresenceProperties.setMaxExpirationFailures(3);
         roomParticipantService = mock(RoomParticipantService.class);
         roomPresenceExpirationService = new RoomPresenceExpirationService(
                 roomPresenceRepository,
@@ -46,6 +47,7 @@ class RoomPresenceExpirationServiceTest {
 
         verify(roomParticipantService).leaveRoom(1L, 2L);
         verify(roomPresenceRepository).removeExpirationCandidate(candidate);
+        verify(roomPresenceRepository).removeExpirationFailure(candidate);
     }
 
     @Test
@@ -60,6 +62,7 @@ class RoomPresenceExpirationServiceTest {
 
         verify(roomParticipantService, never()).leaveRoom(1L, 2L);
         verify(roomPresenceRepository).removeExpirationCandidate(candidate);
+        verify(roomPresenceRepository).removeExpirationFailure(candidate);
     }
 
     @Test
@@ -71,6 +74,7 @@ class RoomPresenceExpirationServiceTest {
                 .willReturn(List.of(first, second));
         given(roomPresenceRepository.isExpiredDisconnected(first, now)).willReturn(true);
         given(roomPresenceRepository.isExpiredDisconnected(second, now)).willReturn(true);
+        given(roomPresenceRepository.incrementExpirationFailure(first)).willReturn(1L);
         willThrow(new IllegalStateException("database unavailable"))
                 .given(roomParticipantService)
                 .leaveRoom(1L, 2L);
@@ -84,6 +88,25 @@ class RoomPresenceExpirationServiceTest {
     }
 
     @Test
+    void expireDisconnectedParticipantsAt_removesCandidateWhenFailureCountReachesLimit() {
+        Instant now = Instant.parse("2026-06-28T01:01:00Z");
+        RoomPresenceCandidate candidate = new RoomPresenceCandidate(1L, 2L, 3L);
+        given(roomPresenceRepository.findExpiredCandidates(now, 10))
+                .willReturn(List.of(candidate));
+        given(roomPresenceRepository.isExpiredDisconnected(candidate, now)).willReturn(true);
+        given(roomPresenceRepository.incrementExpirationFailure(candidate)).willReturn(3L);
+        willThrow(new IllegalStateException("database unavailable"))
+                .given(roomParticipantService)
+                .leaveRoom(1L, 2L);
+
+        roomPresenceExpirationService.expireDisconnectedParticipantsAt(now);
+
+        verify(roomParticipantService).leaveRoom(1L, 2L);
+        verify(roomPresenceRepository).removeExpirationCandidate(candidate);
+        verify(roomPresenceRepository).removeExpirationFailure(candidate);
+    }
+
+    @Test
     void expireDisconnectedParticipantsAt_doesNothingWhenPresenceIsDisabled() {
         roomPresenceProperties.setEnabled(false);
         Instant now = Instant.parse("2026-06-28T01:01:00Z");
@@ -94,6 +117,21 @@ class RoomPresenceExpirationServiceTest {
                 .findExpiredCandidates(
                         org.mockito.ArgumentMatchers.any(),
                         org.mockito.ArgumentMatchers.anyInt()
+                );
+    }
+
+    @Test
+    void expireDisconnectedParticipantsAt_doesNotThrowWhenCandidateLookupFails() {
+        Instant now = Instant.parse("2026-06-28T01:01:00Z");
+        given(roomPresenceRepository.findExpiredCandidates(now, 10))
+                .willThrow(new IllegalStateException("redis unavailable"));
+
+        roomPresenceExpirationService.expireDisconnectedParticipantsAt(now);
+
+        verify(roomParticipantService, never())
+                .leaveRoom(
+                        org.mockito.ArgumentMatchers.anyLong(),
+                        org.mockito.ArgumentMatchers.anyLong()
                 );
     }
 }

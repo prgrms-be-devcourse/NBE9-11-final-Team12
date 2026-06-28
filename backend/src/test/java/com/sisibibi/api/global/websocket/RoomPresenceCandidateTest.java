@@ -28,4 +28,11 @@ class RoomPresenceCandidateTest {
         assertThatThrownBy(() -> RoomPresenceCandidate.parse("1:2"))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void parse_throwsExceptionWhenMemberContainsInvalidNumber() {
+        assertThatThrownBy(() -> RoomPresenceCandidate.parse("1:user:3"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Invalid room presence candidate number");
+    }
 }
