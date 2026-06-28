@@ -17,7 +17,8 @@ public record AiReportRes(
         List<CustomReportRes> customReports,
         String errorMessage,
         LocalDateTime requestedAt,
-        LocalDateTime completedAt
+        LocalDateTime completedAt,
+        AiReportPdfStatusRes pdf
 ) {
 
     public AiReportRes(
@@ -45,7 +46,8 @@ public record AiReportRes(
                 List.of(),
                 errorMessage,
                 requestedAt,
-                completedAt
+                completedAt,
+                AiReportPdfStatusRes.notStarted()
         );
     }
 
@@ -54,6 +56,10 @@ public record AiReportRes(
     }
 
     public static AiReportRes from(AiReport report, Long viewerUserId) {
+        return from(report, viewerUserId, null);
+    }
+
+    public static AiReportRes from(AiReport report, Long viewerUserId, com.sisibibi.api.domain.report.entity.AiReportPdfExport export) {
         return new AiReportRes(
                 report.getId(),
                 report.getRoomId(),
@@ -76,7 +82,8 @@ public record AiReportRes(
                         .toList(),
                 report.getLastErrorMessage() == null ? report.getErrorMessage() : report.getLastErrorMessage(),
                 report.getRequestedAt(),
-                report.getCompletedAt()
+                report.getCompletedAt(),
+                export == null ? AiReportPdfStatusRes.notStarted() : AiReportPdfStatusRes.from(export)
         );
     }
 
