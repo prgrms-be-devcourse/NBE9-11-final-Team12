@@ -20,6 +20,8 @@ public interface AiReportPdfExportRepository extends JpaRepository<AiReportPdfEx
 
     Optional<AiReportPdfExport> findByRoomIdAndRequestedByUserId(Long roomId, Long requestedByUserId);
 
+    List<AiReportPdfExport> findByAiReportId(Long aiReportId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select pdfExport from AiReportPdfExport pdfExport where pdfExport.id = :id")
     Optional<AiReportPdfExport> findByIdForUpdate(@Param("id") Long id);
