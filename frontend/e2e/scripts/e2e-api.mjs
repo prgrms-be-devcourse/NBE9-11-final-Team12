@@ -2,6 +2,13 @@ const DEFAULT_API_BASE_URL = "http://localhost:8080"
 
 export const apiBaseUrl = process.env.E2E_API_BASE_URL ?? DEFAULT_API_BASE_URL
 
+/**
+ * @typedef {Object} E2eRequestOptions
+ * @property {string} [method]
+ * @property {unknown} [body]
+ * @property {number[]} [allowStatuses]
+ */
+
 export class E2eApiError extends Error {
   constructor(message, status, code, data) {
     super(message)
@@ -21,6 +28,14 @@ export class E2eApiClient {
     return [...this.cookies.entries()]
       .map(([name, value]) => `${name}=${value}`)
       .join("; ")
+  }
+
+  hasCookie(name) {
+    return this.cookies.has(name)
+  }
+
+  deleteCookie(name) {
+    this.cookies.delete(name)
   }
 
   saveCookies(response) {
@@ -51,7 +66,11 @@ export class E2eApiClient {
     return payload.data
   }
 
-  async request(path, { method = "GET", body, allowStatuses = [] } = {}) {
+  /**
+   * @param {string} path
+   * @param {E2eRequestOptions} [options]
+   */
+  async requestRaw(path, { method = "GET", body, allowStatuses = [] } = {}) {
     const headers = new Headers()
     if (body !== undefined) headers.set("Content-Type", "application/json")
     if (this.cookieHeader()) headers.set("Cookie", this.cookieHeader())
@@ -73,7 +92,22 @@ export class E2eApiClient {
     if (!response.ok && !allowStatuses.includes(response.status)) {
       throw new E2eApiError(payload.message ?? "API 요청 실패", response.status, payload.code, payload.data)
     }
-    return payload.data
+    return {
+      status: response.status,
+      ok: response.ok,
+      code: payload.code,
+      message: payload.message,
+      data: payload.data,
+    }
+  }
+
+  /**
+   * @param {string} path
+   * @param {E2eRequestOptions} [options]
+   */
+  async request(path, options) {
+    const response = await this.requestRaw(path, options)
+    return response.data
   }
 
   get(path, options) {
