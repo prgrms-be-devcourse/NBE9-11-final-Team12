@@ -4,7 +4,7 @@ import com.sisibibi.api.domain.usersanction.dto.event.UserSanctionChangedEvent;
 import com.sisibibi.api.domain.usersanction.dto.event.UserSanctionEventType;
 import com.sisibibi.api.domain.usersanction.entity.UserSanctionType;
 import com.sisibibi.api.global.realtime.RealtimeEventPublisher;
-import com.sisibibi.api.global.websocket.UserWebSocketDestinations;
+import com.sisibibi.api.global.websocket.destination.UserWebSocketDestinations;
 import com.sisibibi.api.global.websocket.WebSocketEventEnvelope;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

@@ -2,7 +2,7 @@ package com.sisibibi.api.domain.chat.event;
 
 import com.sisibibi.api.domain.chat.dto.event.ChatMessageChangedEvent;
 import com.sisibibi.api.global.realtime.RealtimeEventPublisher;
-import com.sisibibi.api.global.websocket.RoomWebSocketDestinations;
+import com.sisibibi.api.global.websocket.destination.RoomWebSocketDestinations;
 import com.sisibibi.api.global.websocket.WebSocketEventEnvelope;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

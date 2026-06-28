@@ -9,7 +9,7 @@ import com.sisibibi.api.domain.speech.dto.event.AiCounterIssueEventPayload;
 import com.sisibibi.api.domain.speech.dto.event.AiCounterIssueEventType;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.global.realtime.RealtimeEventPublisher;
-import com.sisibibi.api.global.websocket.RoomWebSocketDestinations;
+import com.sisibibi.api.global.websocket.destination.RoomWebSocketDestinations;
 import com.sisibibi.api.global.websocket.WebSocketEventEnvelope;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;

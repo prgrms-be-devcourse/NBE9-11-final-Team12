@@ -4,7 +4,7 @@ import com.sisibibi.api.domain.speech.dto.event.StageSummaryChangedEvent;
 import com.sisibibi.api.domain.speech.dto.event.StageSummaryEventPayload;
 import com.sisibibi.api.domain.speech.dto.event.StageSummaryEventType;
 import com.sisibibi.api.global.realtime.RealtimeEventPublisher;
-import com.sisibibi.api.global.websocket.RoomWebSocketDestinations;
+import com.sisibibi.api.global.websocket.destination.RoomWebSocketDestinations;
 import com.sisibibi.api.global.websocket.WebSocketEventEnvelope;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
