@@ -376,8 +376,44 @@ resource "aws_iam_role_policy_attachment" "speech_event_sqs_policy" {
   policy_arn = aws_iam_policy.speech_event_sqs_policy.arn
 }
 
+resource "aws_sqs_queue_policy" "allow_team12_ai_worker" {
+  queue_url = aws_sqs_queue.speech_event_queue.url
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Sid    = "AllowTeam12AIWorkerReadDelete"
+        Effect = "Allow"
+
+        Principal = {
+          AWS = "arn:aws:iam::878311411155:root"
+        }
+
+        Action = [
+          "sqs:ReceiveMessage",
+          "sqs:DeleteMessage"
+        ]
+
+        Resource = aws_sqs_queue.speech_event_queue.arn
+
+        Condition = {
+          ArnEquals = {
+            "aws:PrincipalArn" = var.team12_ai_worker_role_arn
+          }
+        }
+      }
+    ]
+  })
+}
+
 output "speech_event_queue_url" {
   value = aws_sqs_queue.speech_event_queue.url
+}
+
+output "speech_event_queue_arn" {
+  value = aws_sqs_queue.speech_event_queue.arn
 }
 
 output "speech_event_dlq_url" {

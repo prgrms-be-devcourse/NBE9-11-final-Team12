@@ -15,6 +15,7 @@ import com.sisibibi.api.domain.usersanction.dto.response.ActiveUserSanctionRes;
 import com.sisibibi.api.domain.usersanction.dto.response.UserSanctionRes;
 import com.sisibibi.api.domain.usersanction.entity.UserSanction;
 import com.sisibibi.api.domain.usersanction.entity.UserSanctionType;
+import com.sisibibi.api.domain.usersanction.outbox.UserAccountSuspensionRefreshTokenOutboxWriter;
 import com.sisibibi.api.domain.usersanction.repository.UserSanctionRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
@@ -43,6 +44,7 @@ public class UserSanctionService {
     private final SpeechReportRepository speechReportRepository;
     private final UserSanctionRepository userSanctionRepository;
     private final RoomParticipantForceLeaveService roomParticipantForceLeaveService;
+    private final UserAccountSuspensionRefreshTokenOutboxWriter refreshTokenOutboxWriter;
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
@@ -78,6 +80,7 @@ public class UserSanctionService {
         if (request.type() == UserSanctionType.ACCOUNT_SUSPENSION) {
             targetUser.ban();
             roomParticipantForceLeaveService.leaveAllJoinedRooms(userId);
+            refreshTokenOutboxWriter.record(savedSanction.getId(), userId, startsAt);
         }
         publishSanctionChangedEvent(
                 UserSanctionEventType.SANCTION_CREATED,
