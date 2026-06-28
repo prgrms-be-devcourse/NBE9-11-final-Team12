@@ -8,6 +8,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.sisibibi.api.domain.report.outbox.AiReportGenerationRequestOutboxWriter;
 import com.sisibibi.api.domain.room.dto.event.RoomClosedEvent;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
@@ -38,6 +39,9 @@ class RoomCloseCommandServiceTest {
   @Mock
   private SpeakingQueueService speakingQueueService;
 
+  @Mock
+  private AiReportGenerationRequestOutboxWriter aiReportGenerationRequestOutboxWriter;
+
   @InjectMocks
   private RoomCloseCommandService roomCloseCommandService;
 
@@ -63,6 +67,7 @@ class RoomCloseCommandServiceTest {
     ArgumentCaptor<RoomClosedEvent> eventCaptor =
         ArgumentCaptor.forClass(RoomClosedEvent.class);
     verify(eventPublisher).publishEvent(eventCaptor.capture());
+    verify(aiReportGenerationRequestOutboxWriter).record(1L, now);
     assertThat(eventCaptor.getValue().roomId()).isEqualTo(1L);
     assertThat(eventCaptor.getValue().closedAt()).isEqualTo(now);
   }
@@ -119,6 +124,7 @@ class RoomCloseCommandServiceTest {
     ArgumentCaptor<RoomClosedEvent> eventCaptor =
         ArgumentCaptor.forClass(RoomClosedEvent.class);
     verify(eventPublisher).publishEvent(eventCaptor.capture());
+    verify(aiReportGenerationRequestOutboxWriter).record(1L, now);
     assertThat(eventCaptor.getValue().roomId()).isEqualTo(1L);
     assertThat(eventCaptor.getValue().closedAt()).isEqualTo(now);
   }

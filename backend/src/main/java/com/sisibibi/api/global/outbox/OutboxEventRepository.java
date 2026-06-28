@@ -27,4 +27,12 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEvent, Long> 
       @Param("now") LocalDateTime now,
       Pageable pageable
   );
+
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("""
+        select event
+        from OutboxEvent event
+        where event.id = :eventId
+        """)
+  OutboxEvent findByIdForUpdate(@Param("eventId") Long eventId);
 }
