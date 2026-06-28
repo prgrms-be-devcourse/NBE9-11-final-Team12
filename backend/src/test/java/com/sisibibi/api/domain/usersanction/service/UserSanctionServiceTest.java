@@ -13,6 +13,7 @@ import com.sisibibi.api.domain.usersanction.dto.response.UserSanctionRes;
 import com.sisibibi.api.domain.usersanction.entity.UserSanction;
 import com.sisibibi.api.domain.usersanction.entity.UserSanctionState;
 import com.sisibibi.api.domain.usersanction.entity.UserSanctionType;
+import com.sisibibi.api.domain.usersanction.outbox.UserAccountSuspensionRefreshTokenOutboxWriter;
 import com.sisibibi.api.domain.usersanction.repository.UserSanctionRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
@@ -58,6 +59,10 @@ class UserSanctionServiceTest {
     @InjectMocks
     private UserSanctionService userSanctionService;
 
+    @Mock
+    private UserAccountSuspensionRefreshTokenOutboxWriter refreshTokenOutboxWriter;
+
+
     @Test
     void createSanction_savesRestrictionLinkedToResolvedReport() {
         User user = User.signup("user@example.com", "password", "user");
@@ -93,6 +98,7 @@ class UserSanctionServiceTest {
         assertThat(response.state()).isEqualTo(UserSanctionState.ACTIVE);
         verify(roomParticipantForceLeaveService, never()).leaveAllJoinedRooms(10L);
         verify(eventPublisher).publishEvent(any(UserSanctionChangedEvent.class));
+        verify(refreshTokenOutboxWriter, never()).record(any(), any(), any());
     }
 
     @Test
@@ -320,5 +326,44 @@ class UserSanctionServiceTest {
         ReflectionTestUtils.setField(sanction, "id", sanctionId);
         ReflectionTestUtils.setField(sanction, "createdAt", now);
         return sanction;
+    }
+
+    @Test
+    void createSanction_recordsRefreshTokenDeleteOutbox_whenAccountSuspensionCreated() {
+        User user = User.signup("user@example.com", "password", "user");
+        given(userRepository.findByIdForUpdate(10L)).willReturn(Optional.of(user));
+        given(userSanctionRepository.existsActive(
+            org.mockito.ArgumentMatchers.eq(10L),
+            org.mockito.ArgumentMatchers.eq(UserSanctionType.ACCOUNT_SUSPENSION),
+            any(LocalDateTime.class)
+        )).willReturn(false);
+        given(userSanctionRepository.save(any(UserSanction.class)))
+            .willAnswer(invocation -> {
+                UserSanction sanction = invocation.getArgument(0);
+                ReflectionTestUtils.setField(sanction, "id", 200L);
+                ReflectionTestUtils.setField(sanction, "createdAt", LocalDateTime.now());
+                return sanction;
+            });
+
+        UserSanctionRes response = userSanctionService.createSanction(
+            10L,
+            99L,
+            new UserSanctionCreateReq(
+                UserSanctionType.ACCOUNT_SUSPENSION,
+                "계정 정지",
+                null,
+                null
+            )
+        );
+
+        assertThat(response.sanctionId()).isEqualTo(200L);
+        assertThat(user.getStatus().name()).isEqualTo("BANNED");
+        verify(roomParticipantForceLeaveService).leaveAllJoinedRooms(10L);
+        verify(refreshTokenOutboxWriter).record(
+            org.mockito.ArgumentMatchers.eq(200L),
+            org.mockito.ArgumentMatchers.eq(10L),
+            any(LocalDateTime.class)
+        );
+        verify(eventPublisher).publishEvent(any(UserSanctionChangedEvent.class));
     }
 }

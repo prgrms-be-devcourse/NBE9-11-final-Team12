@@ -20,6 +20,7 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -71,11 +72,35 @@ public class AiReport {
     @Column(name = "error_message", length = 1000)
     private String errorMessage;
 
+    @Column(name = "publish_retry_count", nullable = false)
+    private int publishRetryCount;
+
+    @Column(name = "generation_retry_count", nullable = false)
+    private int generationRetryCount;
+
+    @Column(name = "last_error_code", length = 100)
+    private String lastErrorCode;
+
+    @Column(name = "last_error_message", length = 1000)
+    private String lastErrorMessage;
+
+    @Column(name = "processing_started_at")
+    private LocalDateTime processingStartedAt;
+
+    @Column(name = "processing_locked_until")
+    private LocalDateTime processingLockedUntil;
+
     @Column(name = "requested_at", nullable = false)
     private LocalDateTime requestedAt;
 
+    @Column(name = "queued_at")
+    private LocalDateTime queuedAt;
+
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
+
+    @Column(name = "failed_at")
+    private LocalDateTime failedAt;
 
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -86,18 +111,32 @@ public class AiReport {
     private LocalDateTime updatedAt;
 
     public static AiReport pending(Long roomId) {
-        return pending(roomId, List.of());
+        return requested(roomId);
     }
 
     public static AiReport pending(Long roomId, List<AiReportCustomPrompt> customPrompts) {
+        return requested(roomId, customPrompts);
+    }
+
+    public static AiReport requested(Long roomId) {
+        return requested(roomId, List.of());
+    }
+
+    public static AiReport requested(Long roomId, List<AiReportCustomPrompt> customPrompts) {
         AiReport report = new AiReport();
         report.roomId = roomId;
-        report.markPending(customPrompts);
+        report.markRequested(customPrompts);
         return report;
     }
 
     public boolean shouldSkipGeneration() {
-        return status == AiReportStatus.PENDING || status == AiReportStatus.COMPLETED;
+        return isGenerationInProgress() || status == AiReportStatus.COMPLETED;
+    }
+
+    public boolean isGenerationInProgress() {
+        return status == AiReportStatus.REQUESTED
+                || status == AiReportStatus.QUEUED
+                || status == AiReportStatus.PROCESSING;
     }
 
     public void retry() {
@@ -105,7 +144,45 @@ public class AiReport {
     }
 
     public void retry(List<AiReportCustomPrompt> customPrompts) {
-        markPending(customPrompts);
+        markRequested(customPrompts);
+    }
+
+    public void requestCustomReports(List<AiReportCustomPrompt> customPrompts) {
+        this.status = AiReportStatus.REQUESTED;
+        this.customPrompts = customPrompts == null ? List.of() : List.copyOf(customPrompts);
+        this.publishRetryCount = 0;
+        this.lastErrorCode = null;
+        this.lastErrorMessage = null;
+        this.processingStartedAt = null;
+        this.processingLockedUntil = null;
+        this.requestedAt = LocalDateTime.now();
+        this.queuedAt = null;
+        this.failedAt = null;
+    }
+
+    public void markProcessing(LocalDateTime startedAt, Duration lockDuration) {
+        LocalDateTime actualStartedAt = startedAt == null ? LocalDateTime.now() : startedAt;
+        this.status = AiReportStatus.PROCESSING;
+        this.processingStartedAt = actualStartedAt;
+        this.processingLockedUntil = actualStartedAt.plus(lockDuration == null ? Duration.ofMinutes(5) : lockDuration);
+        this.lastErrorCode = null;
+        this.lastErrorMessage = null;
+        this.failedAt = null;
+    }
+
+    public void markQueued() {
+        this.status = AiReportStatus.QUEUED;
+        this.lastErrorCode = null;
+        this.lastErrorMessage = null;
+        this.queuedAt = LocalDateTime.now();
+    }
+
+    public void markPublishFailed(String errorCode, String errorMessage) {
+        this.status = AiReportStatus.PUBLISH_FAILED;
+        this.publishRetryCount++;
+        this.lastErrorCode = truncate(errorCode, 100);
+        this.lastErrorMessage = truncate(errorMessage);
+        this.failedAt = LocalDateTime.now();
     }
 
     public void complete(AiReportGenerateRes response) {
@@ -117,6 +194,27 @@ public class AiReport {
         this.aiOpinion = response.aiOpinion();
         this.customReports = toCustomReports(this.customPrompts, response.customReports());
         this.errorMessage = null;
+        this.publishRetryCount = 0;
+        this.generationRetryCount = 0;
+        this.lastErrorCode = null;
+        this.lastErrorMessage = null;
+        this.processingStartedAt = null;
+        this.processingLockedUntil = null;
+        this.failedAt = null;
+        this.completedAt = LocalDateTime.now();
+    }
+
+    public void completeCustomReports(AiReportGenerateRes response) {
+        this.status = AiReportStatus.COMPLETED;
+        this.customReports = mergeReports(this.customReports, toCustomReports(this.customPrompts, response.customReports()));
+        this.errorMessage = null;
+        this.publishRetryCount = 0;
+        this.generationRetryCount = 0;
+        this.lastErrorCode = null;
+        this.lastErrorMessage = null;
+        this.processingStartedAt = null;
+        this.processingLockedUntil = null;
+        this.failedAt = null;
         this.completedAt = LocalDateTime.now();
     }
 
@@ -128,6 +226,8 @@ public class AiReport {
         this.customPrompts = mergePrompts(this.customPrompts, customPrompts);
         this.customReports = mergeReports(this.customReports, toCustomReports(userId, customPrompts, customReportPayloads));
         this.errorMessage = null;
+        this.lastErrorCode = null;
+        this.lastErrorMessage = null;
     }
 
     public void appendCustomReports(
@@ -138,13 +238,23 @@ public class AiReport {
     }
 
     public void fail(String errorMessage) {
-        this.status = AiReportStatus.FAILED;
-        this.errorMessage = truncate(errorMessage);
-        this.completedAt = null;
+        fail(null, errorMessage);
     }
 
-    private void markPending(List<AiReportCustomPrompt> customPrompts) {
-        this.status = AiReportStatus.PENDING;
+    public void fail(String errorCode, String errorMessage) {
+        this.status = AiReportStatus.GENERATION_FAILED;
+        this.errorMessage = truncate(errorMessage);
+        this.generationRetryCount++;
+        this.lastErrorCode = truncate(errorCode, 100);
+        this.lastErrorMessage = truncate(errorMessage);
+        this.processingStartedAt = null;
+        this.processingLockedUntil = null;
+        this.completedAt = null;
+        this.failedAt = LocalDateTime.now();
+    }
+
+    private void markRequested(List<AiReportCustomPrompt> customPrompts) {
+        this.status = AiReportStatus.REQUESTED;
         this.coreLine = null;
         this.keyIssues = List.of();
         this.customPrompts = customPrompts == null ? List.of() : List.copyOf(customPrompts);
@@ -153,16 +263,26 @@ public class AiReport {
         this.commonGround = null;
         this.aiOpinion = null;
         this.errorMessage = null;
+        this.lastErrorCode = null;
+        this.lastErrorMessage = null;
+        this.processingStartedAt = null;
+        this.processingLockedUntil = null;
         this.requestedAt = LocalDateTime.now();
+        this.queuedAt = null;
         this.completedAt = null;
+        this.failedAt = null;
     }
 
     private String truncate(String message) {
+        return truncate(message, 1000);
+    }
+
+    private String truncate(String message, int maxLength) {
         if (message == null) {
             return null;
         }
 
-        return message.length() > 1000 ? message.substring(0, 1000) : message;
+        return message.length() > maxLength ? message.substring(0, maxLength) : message;
     }
 
     private List<AiReportCustomReport> toCustomReports(

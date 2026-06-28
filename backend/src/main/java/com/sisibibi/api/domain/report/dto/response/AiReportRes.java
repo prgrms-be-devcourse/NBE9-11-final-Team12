@@ -74,7 +74,7 @@ public record AiReportRes(
                                 customReport.content()
                         ))
                         .toList(),
-                report.getErrorMessage(),
+                report.getLastErrorMessage() == null ? report.getErrorMessage() : report.getLastErrorMessage(),
                 report.getRequestedAt(),
                 report.getCompletedAt()
         );
