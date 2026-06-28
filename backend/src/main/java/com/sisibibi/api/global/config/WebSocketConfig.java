@@ -1,8 +1,8 @@
 package com.sisibibi.api.global.config;
 
-import com.sisibibi.api.global.websocket.RegistryWebSocketHandlerDecoratorFactory;
-import com.sisibibi.api.global.websocket.WebSocketAuthChannelInterceptor;
-import com.sisibibi.api.global.websocket.WebSocketAuthHandshakeInterceptor;
+import com.sisibibi.api.global.websocket.session.RegistryWebSocketHandlerDecoratorFactory;
+import com.sisibibi.api.global.websocket.auth.WebSocketAuthChannelInterceptor;
+import com.sisibibi.api.global.websocket.auth.WebSocketAuthHandshakeInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;

@@ -4,7 +4,7 @@ import com.sisibibi.api.domain.chat.dto.event.ChatMessageChangedEvent;
 import com.sisibibi.api.domain.chat.dto.event.ChatMessageEventPayload;
 import com.sisibibi.api.domain.chat.dto.event.ChatEventType;
 import com.sisibibi.api.global.realtime.RealtimeEventPublisher;
-import com.sisibibi.api.global.websocket.RoomWebSocketDestinations;
+import com.sisibibi.api.global.websocket.destination.RoomWebSocketDestinations;
 import com.sisibibi.api.global.websocket.WebSocketEventEnvelope;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;

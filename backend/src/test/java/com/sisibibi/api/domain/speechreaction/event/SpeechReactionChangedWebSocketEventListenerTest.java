@@ -4,7 +4,7 @@ import com.sisibibi.api.domain.speechreaction.dto.event.SpeechReactionChangedEve
 import com.sisibibi.api.domain.speechreaction.dto.event.SpeechReactionEventPayload;
 import com.sisibibi.api.domain.speechreaction.dto.event.SpeechReactionEventType;
 import com.sisibibi.api.global.realtime.RealtimeEventPublisher;
-import com.sisibibi.api.global.websocket.RoomWebSocketDestinations;
+import com.sisibibi.api.global.websocket.destination.RoomWebSocketDestinations;
 import com.sisibibi.api.global.websocket.WebSocketEventEnvelope;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
