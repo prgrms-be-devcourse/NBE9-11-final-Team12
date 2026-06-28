@@ -21,6 +21,7 @@ import java.util.Optional;
 public class WebSocketSessionRegistryEventListener {
 
     private final WebSocketSessionRegistry sessionRegistry;
+    private final RoomPresenceService roomPresenceService;
 
     @EventListener
     public void handleSessionConnect(SessionConnectEvent event) {
@@ -51,7 +52,7 @@ public class WebSocketSessionRegistryEventListener {
         }
 
         resolvePrincipal(accessor).ifPresent(principal ->
-                sessionRegistry.bindRoom(sessionId, principal.userId(), roomId.get())
+                bindRoomSession(sessionId, principal.userId(), roomId.get())
         );
     }
 
@@ -62,12 +63,23 @@ public class WebSocketSessionRegistryEventListener {
             return;
         }
 
+        for (Long roomId : state.roomIds()) {
+            if (sessionRegistry.findSessionIdsByRoomAndUser(roomId, state.userId()).isEmpty()) {
+                roomPresenceService.recordDisconnected(roomId, state.userId(), state.sessionId());
+            }
+        }
+
         log.debug(
                 "WebSocket session disconnected. sessionId={}, userId={}, roomIds={}",
                 state.sessionId(),
                 state.userId(),
                 state.roomIds()
         );
+    }
+
+    private void bindRoomSession(String sessionId, Long userId, Long roomId) {
+        sessionRegistry.bindRoom(sessionId, userId, roomId);
+        roomPresenceService.recordConnected(roomId, userId, sessionId);
     }
 
     private Optional<AuthPrincipal> resolvePrincipal(StompHeaderAccessor accessor) {

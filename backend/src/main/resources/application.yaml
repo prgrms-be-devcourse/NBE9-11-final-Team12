@@ -94,6 +94,13 @@ spring:
 app:
   frontend:
     url: ${FRONTEND_URL:http://localhost:3000}
+  websocket:
+    presence:
+      enabled: ${WEBSOCKET_PRESENCE_ENABLED:true}
+      disconnect-grace-period: ${WEBSOCKET_PRESENCE_DISCONNECT_GRACE_PERIOD:60s}
+      expiration-fixed-delay-ms: ${WEBSOCKET_PRESENCE_EXPIRATION_FIXED_DELAY_MS:5000}
+      expiration-batch-size: ${WEBSOCKET_PRESENCE_EXPIRATION_BATCH_SIZE:100}
+      max-expiration-failures: ${WEBSOCKET_PRESENCE_MAX_EXPIRATION_FAILURES:3}
   speaking:
     turn-duration: ${SPEAKING_TURN_DURATION:3m}
     queue:
