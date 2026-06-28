@@ -17,6 +17,8 @@ public class RedisRoomPresenceRepository {
 
     private static final String STATUS_CONNECTED = "CONNECTED";
     private static final String STATUS_DISCONNECTED = "DISCONNECTED";
+    private static final int MAX_SCAN_COUNT = 1000;
+    private static final int ROOM_DELETE_BATCH_SIZE = 1000;
 
     private static final DefaultRedisScript<Long> MARK_CONNECTED_SCRIPT =
             new DefaultRedisScript<>(
@@ -150,8 +152,18 @@ public class RedisRoomPresenceRepository {
     }
 
     public long deleteRoomPresence(Long roomId) {
-        List<String> keys = scanPresenceKeys("room:presence:{" + roomId + "}:*", Integer.MAX_VALUE);
-        if (keys.isEmpty()) {
+        long deletedCount = 0L;
+        List<String> keys;
+        do {
+            keys = scanPresenceKeys(roomPresencePattern(roomId), ROOM_DELETE_BATCH_SIZE);
+            deletedCount += deleteKeys(keys);
+        } while (keys.size() == ROOM_DELETE_BATCH_SIZE);
+
+        return deletedCount;
+    }
+
+    private long deleteKeys(List<String> keys) {
+        if (keys == null || keys.isEmpty()) {
             return 0L;
         }
 
@@ -160,8 +172,8 @@ public class RedisRoomPresenceRepository {
     }
 
     public long cleanupExpiredDisconnectedPresence(Instant cutoff, int limit) {
-        List<String> keys = scanPresenceKeys("room:presence:{*}:*", Math.max(1, limit));
-        long cleanedCount = 0L;
+        List<String> keys = scanPresenceKeys(allRoomPresencePattern(), Math.max(1, limit));
+        List<String> keysToDelete = new ArrayList<>();
         for (String key : keys) {
             List<Object> fields = redisTemplate.opsForHash()
                     .multiGet(key, List.of("status", "expiresAt"));
@@ -173,12 +185,12 @@ public class RedisRoomPresenceRepository {
             Long expiresAt = longValueOf(fields.get(1));
             if (STATUS_DISCONNECTED.equals(status)
                     && expiresAt != null
-                    && expiresAt <= cutoff.toEpochMilli()
-                    && Boolean.TRUE.equals(redisTemplate.delete(key))) {
-                cleanedCount++;
+                    && expiresAt <= cutoff.toEpochMilli()) {
+                keysToDelete.add(key);
             }
         }
-        return cleanedCount;
+
+        return deleteKeys(keysToDelete);
     }
 
     private String valueOf(Object value) {
@@ -207,6 +219,14 @@ public class RedisRoomPresenceRepository {
         return "room:presence:{" + roomId + "}:" + userId;
     }
 
+    private String roomPresencePattern(Long roomId) {
+        return "room:presence:{" + roomId + "}:*";
+    }
+
+    private String allRoomPresencePattern() {
+        return "room:presence:{*}:*";
+    }
+
     private String expirationsKey() {
         return "room:presence:expirations";
     }
@@ -216,11 +236,11 @@ public class RedisRoomPresenceRepository {
     }
 
     private List<String> scanPresenceKeys(String pattern, int limit) {
-        return redisTemplate.execute((RedisConnection connection) -> {
+        List<String> scannedKeys = redisTemplate.execute((RedisConnection connection) -> {
             List<String> keys = new ArrayList<>();
             ScanOptions options = ScanOptions.scanOptions()
                     .match(pattern)
-                    .count(Math.min(Math.max(1, limit), 1000))
+                    .count(Math.min(Math.max(1, limit), MAX_SCAN_COUNT))
                     .build();
             try (Cursor<byte[]> cursor = connection.keyCommands().scan(options)) {
                 while (cursor.hasNext() && keys.size() < limit) {
@@ -229,5 +249,6 @@ public class RedisRoomPresenceRepository {
             }
             return keys;
         });
+        return scannedKeys == null ? List.of() : scannedKeys;
     }
 }
