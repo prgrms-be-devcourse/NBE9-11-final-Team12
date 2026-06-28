@@ -1,5 +1,6 @@
 package com.sisibibi.api.domain.report.service;
 
+import com.sisibibi.api.domain.report.entity.AiReportCustomReport;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import org.junit.jupiter.api.Test;
 
@@ -28,7 +29,7 @@ class OpenHtmlAiReportPdfRendererTest {
                 "user@test.com", "테스터",
                 0, 0L, 0L, 0L, 0L,
                 "핵심 한 줄", List.of(), "공통 의견", "AI 요약", "AI 의견",
-                List.of(), List.of(),
+                List.of(), List.of(), List.of(),
                 LocalDateTime.now()
         );
         byte[] pdf = renderer.render(model);
@@ -43,6 +44,9 @@ class OpenHtmlAiReportPdfRendererTest {
         List<AiReportPdfModel.TopOpinion> conOpinions = List.of(
                 new AiReportPdfModel.TopOpinion(102L, 2L, "반대유저", SpeechStance.CON, "일자리 문제가 심각합니다.", 3L, LocalDateTime.now())
         );
+        List<AiReportCustomReport> customReports = List.of(
+                new AiReportCustomReport("경제적 영향 분석", "경제 측면에서 분석해줘", "경제 영향", "AI 도입으로 생산성은 향상되지만 초기 전환 비용이 상당합니다.")
+        );
         return new AiReportPdfModel(
                 1L, 10L, 20L,
                 "AI 기술 토론방", "AI의 미래는 어떻게 될까?", "인공지능 발전 방향에 대한 토론",
@@ -54,6 +58,7 @@ class OpenHtmlAiReportPdfRendererTest {
                 "AI 기술은 사회 전반에 걸쳐 큰 변화를 가져올 것으로 예상됩니다.",
                 "적절한 규제와 함께 발전시켜야 합니다.",
                 proOpinions, conOpinions,
+                customReports,
                 LocalDateTime.now()
         );
     }

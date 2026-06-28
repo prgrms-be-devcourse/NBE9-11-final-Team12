@@ -1,5 +1,6 @@
 package com.sisibibi.api.domain.report.service;
 
+import com.sisibibi.api.domain.report.entity.AiReportCustomReport;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 
 import java.time.LocalDateTime;
@@ -26,6 +27,7 @@ public record AiReportPdfModel(
         String aiOpinion,
         List<TopOpinion> proTopOpinions,
         List<TopOpinion> conTopOpinions,
+        List<AiReportCustomReport> customReports,
         LocalDateTime generatedAt
 ) {
 

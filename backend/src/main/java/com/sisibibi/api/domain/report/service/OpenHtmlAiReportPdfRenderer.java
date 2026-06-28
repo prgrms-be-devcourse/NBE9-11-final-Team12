@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.report.service;
 
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
+import com.sisibibi.api.domain.report.entity.AiReportCustomReport;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
@@ -29,7 +30,8 @@ public class OpenHtmlAiReportPdfRenderer implements AiReportPdfRenderer {
                     .replace("{{conPercent}}", String.valueOf(model.conPercent()))
                     .replace("{{keyIssues}}", renderKeyIssues(model))
                     .replace("{{proOpinions}}", renderOpinions(model.proTopOpinions()))
-                    .replace("{{conOpinions}}", renderOpinions(model.conTopOpinions()));
+                    .replace("{{conOpinions}}", renderOpinions(model.conTopOpinions()))
+                    .replace("{{customReports}}", renderCustomReports(model.customReports()));
 
             ByteArrayOutputStream output = new ByteArrayOutputStream();
             PdfRendererBuilder builder = new PdfRendererBuilder();
@@ -69,6 +71,24 @@ public class OpenHtmlAiReportPdfRenderer implements AiReportPdfRenderer {
                 .map(opinion -> "<article class=\"opinion\"><p>" + escape(opinion.content())
                         + "</p><span>공감 " + opinion.reactionCount() + "</span></article>")
                 .reduce("", String::concat);
+    }
+
+    private String renderCustomReports(List<AiReportCustomReport> customReports) {
+        if (customReports == null || customReports.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("<div class=\"section\">");
+        sb.append("<h2>커스텀 분석</h2>");
+        for (AiReportCustomReport report : customReports) {
+            sb.append("<div class=\"custom-report\">");
+            sb.append("<h3>").append(escape(report.requestLabel())).append("</h3>");
+            sb.append("<p class=\"custom-label\">").append(escape(report.resultLabel())).append("</p>");
+            sb.append("<p>").append(escape(report.content())).append("</p>");
+            sb.append("</div>");
+        }
+        sb.append("</div>");
+        return sb.toString();
     }
 
     private String escape(String value) {

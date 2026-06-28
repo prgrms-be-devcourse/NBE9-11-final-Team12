@@ -1,5 +1,6 @@
 package com.sisibibi.api.domain.report.service;
 
+import com.sisibibi.api.domain.report.entity.AiReportCustomReport;
 import com.sisibibi.api.domain.report.entity.AiReportPdfExport;
 import com.sisibibi.api.domain.report.notification.AiReportNotificationProperties;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
@@ -105,6 +106,7 @@ class AiReportPdfGenerationServiceTest {
                 "AI 의견",
                 List.of(new AiReportPdfModel.TopOpinion(1L, 5L, "유저A", SpeechStance.PRO, "찬성 의견", 3L, LocalDateTime.now())),
                 List.of(new AiReportPdfModel.TopOpinion(2L, 6L, "유저B", SpeechStance.CON, "반대 의견", 2L, LocalDateTime.now())),
+                List.of(new AiReportCustomReport("경제 분석", "경제 측면에서 분석해줘", "경제 영향", "AI 도입으로 생산성이 향상됩니다.")),
                 LocalDateTime.now()
         );
     }
