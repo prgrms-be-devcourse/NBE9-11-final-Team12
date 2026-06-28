@@ -27,11 +27,14 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-validation")
 	implementation("org.springframework.boot:spring-boot-starter-web")
 	implementation("org.springframework.boot:spring-boot-starter-websocket")
+	implementation("org.springframework.boot:spring-boot-starter-mail")
 	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.17")
 	implementation(platform("org.springframework.ai:spring-ai-bom:1.0.9"))
 	implementation("org.springframework.ai:spring-ai-starter-model-openai")
 	implementation(platform("software.amazon.awssdk:bom:2.25.70"))
 	implementation("software.amazon.awssdk:sqs")
+	implementation("com.openhtmltopdf:openhtmltopdf-pdfbox:1.0.10")
+	implementation("com.openhtmltopdf:openhtmltopdf-slf4j:1.0.10")
 	runtimeOnly("io.micrometer:micrometer-registry-prometheus")
 
 	// S3
