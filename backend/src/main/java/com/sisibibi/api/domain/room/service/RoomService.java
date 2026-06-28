@@ -163,17 +163,4 @@ public class RoomService {
     roomCloseCommandService.closeRoom(roomId, LocalDateTime.now());
   }
 
-  // 방 정원 검증 로직
-  private int resolveMaxParticipants(Integer maxParticipants) {
-    if (maxParticipants == null) {
-      return 100;
-    }
-
-    if (maxParticipants <= 0) {
-      throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
-    }
-
-    return maxParticipants;
-  }
-
 }

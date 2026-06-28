@@ -1,5 +1,6 @@
 package com.sisibibi.api.domain.room.service;
 
+import com.sisibibi.api.domain.report.outbox.AiReportGenerationRequestOutboxWriter;
 import com.sisibibi.api.domain.room.dto.event.RoomClosedEvent;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
@@ -21,6 +22,7 @@ public class RoomCloseCommandService {
   private final RoomRepository roomRepository;
   private final ApplicationEventPublisher eventPublisher;
   private final SpeakingQueueService speakingQueueService;
+  private final AiReportGenerationRequestOutboxWriter aiReportGenerationRequestOutboxWriter;
 
   @Transactional(propagation = Propagation.REQUIRES_NEW)
   public boolean closeRoom(Long roomId, LocalDateTime now) {
@@ -56,6 +58,7 @@ public class RoomCloseCommandService {
 
   private void closeSpeakingQueuesAndPublishEvent(Long roomId, LocalDateTime closedAt) {
     speakingQueueService.closeSpeakingQueuesWhenRoomClosed(roomId, closedAt);
+    aiReportGenerationRequestOutboxWriter.record(roomId, closedAt);
     eventPublisher.publishEvent(new RoomClosedEvent(roomId, closedAt));
   }
 }
