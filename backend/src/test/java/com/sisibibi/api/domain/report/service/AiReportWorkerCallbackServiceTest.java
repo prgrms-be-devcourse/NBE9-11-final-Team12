@@ -7,7 +7,10 @@ import com.sisibibi.api.domain.report.dto.response.AiReportWorkerProcessingRes;
 import com.sisibibi.api.domain.report.client.AiReportProperties;
 import com.sisibibi.api.domain.report.entity.AiReport;
 import com.sisibibi.api.domain.report.entity.AiReportCustomPrompt;
+import com.sisibibi.api.domain.report.entity.AiReportPdfExport;
 import com.sisibibi.api.domain.report.entity.AiReportStatus;
+import com.sisibibi.api.domain.report.outbox.AiReportPdfGenerationOutboxWriter;
+import com.sisibibi.api.domain.report.repository.AiReportPdfExportRepository;
 import com.sisibibi.api.domain.report.repository.AiReportRepository;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
@@ -34,6 +37,9 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -54,7 +60,13 @@ class AiReportWorkerCallbackServiceTest {
     private AiReportRepository aiReportRepository;
 
     @Mock
+    private AiReportPdfExportRepository aiReportPdfExportRepository;
+
+    @Mock
     private AiReportProperties aiReportProperties;
+
+    @Mock
+    private AiReportPdfGenerationOutboxWriter outboxWriter;
 
     @InjectMocks
     private AiReportWorkerCallbackService callbackService;
@@ -98,6 +110,7 @@ class AiReportWorkerCallbackServiceTest {
         report.markQueued();
         report.markProcessing(LocalDateTime.of(2026, 6, 25, 12, 0), Duration.ofMinutes(5));
         given(aiReportRepository.findByIdForUpdate(55L)).willReturn(Optional.of(report));
+        given(aiReportPdfExportRepository.findByAiReportId(55L)).willReturn(List.of());
 
         AiReportRes result = callbackService.complete(55L, new AiReportWorkerCompleteReq(
                 AiReportGenerationType.BASE_ONLY,
@@ -116,6 +129,42 @@ class AiReportWorkerCallbackServiceTest {
     }
 
     @Test
+    void complete_publishesPdfEventForRequesterExport_afterBaseReportCompletes() {
+        AiReport report = reportWithId(AiReport.requested(10L), 55L);
+        report.markQueued();
+        report.markProcessing(LocalDateTime.of(2026, 6, 25, 12, 0), Duration.ofMinutes(5));
+        AiReportPdfExport export = AiReportPdfExport.notStarted(55L, 10L, 7L);
+        ReflectionTestUtils.setField(export, "id", 99L);
+        given(aiReportRepository.findByIdForUpdate(55L)).willReturn(Optional.of(report));
+        given(aiReportPdfExportRepository.findByAiReportId(55L)).willReturn(List.of(export));
+
+        callbackService.complete(55L, new AiReportWorkerCompleteReq(
+                AiReportGenerationType.BASE_ONLY, "core", List.of("issue"), "summary", "common", "opinion", List.of()
+        ));
+
+        verify(outboxWriter).record(eq(99L), any(LocalDateTime.class));
+    }
+
+    @Test
+    void completeCustomOnly_doesNotPublishPdfEvent() {
+        AiReport report = reportWithId(AiReport.requested(10L), 55L);
+        report.complete(new com.sisibibi.api.domain.report.client.dto.AiReportGenerateRes(
+                "base core", List.of("base issue"), "base summary", "base common", "base opinion"
+        ));
+        report.requestCustomReports(List.of(new AiReportCustomPrompt(7L, "custom 1", "minority view")));
+        report.markQueued();
+        report.markProcessing(LocalDateTime.of(2026, 6, 25, 12, 0), Duration.ofMinutes(5));
+        given(aiReportRepository.findByIdForUpdate(55L)).willReturn(Optional.of(report));
+
+        callbackService.complete(55L, new AiReportWorkerCompleteReq(
+                AiReportGenerationType.CUSTOM_ONLY, null, List.of(), null, null, null,
+                List.of(new com.sisibibi.api.domain.report.client.dto.AiReportCustomReportPayload("custom result", "custom content"))
+        ));
+
+        verify(outboxWriter, never()).record(anyLong(), any(LocalDateTime.class));
+    }
+
+    @Test
     void complete_appendsCustomOnlyResultWithoutClearingBaseReport() {
         AiReport report = reportWithId(AiReport.requested(10L), 55L);
         report.complete(new com.sisibibi.api.domain.report.client.dto.AiReportGenerateRes(
@@ -129,6 +178,7 @@ class AiReportWorkerCallbackServiceTest {
         report.markQueued();
         report.markProcessing(LocalDateTime.of(2026, 6, 25, 12, 0), Duration.ofMinutes(5));
         given(aiReportRepository.findByIdForUpdate(55L)).willReturn(Optional.of(report));
+        // CUSTOM_ONLY does not trigger PDF event, no findByAiReportId call expected
 
         AiReportRes result = callbackService.complete(55L, new AiReportWorkerCompleteReq(
                 AiReportGenerationType.CUSTOM_ONLY,

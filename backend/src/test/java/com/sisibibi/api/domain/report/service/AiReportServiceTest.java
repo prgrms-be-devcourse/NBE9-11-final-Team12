@@ -3,6 +3,8 @@ package com.sisibibi.api.domain.report.service;
 import com.sisibibi.api.domain.report.dto.event.AiReportGenerationRequestedEvent;
 import com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq;
 import com.sisibibi.api.domain.report.dto.response.AiReportRes;
+import com.sisibibi.api.domain.report.entity.AiReportPdfExport;
+import com.sisibibi.api.domain.report.outbox.AiReportPdfGenerationOutboxWriter;
 import com.sisibibi.api.domain.report.prompt.CustomPromptCommand;
 import com.sisibibi.api.domain.report.prompt.CustomPromptValidator;
 import com.sisibibi.api.global.exception.CustomException;
@@ -15,12 +17,16 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -38,6 +44,12 @@ class AiReportServiceTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
+    @Mock
+    private AiReportPdfPersistenceService aiReportPdfPersistenceService;
+
+    @Mock
+    private AiReportPdfGenerationOutboxWriter outboxWriter;
+
     @InjectMocks
     private AiReportService aiReportService;
 
@@ -45,6 +57,10 @@ class AiReportServiceTest {
     void setUp() {
         lenient().when(customPromptValidator.normalizeAndScan(any(AiReportGenerateReq.class)))
                 .thenReturn(List.of());
+        AiReportPdfExport defaultExport = AiReportPdfExport.notStarted(55L, 10L, 7L);
+        ReflectionTestUtils.setField(defaultExport, "id", 1L);
+        lenient().when(aiReportPdfPersistenceService.createIfMissing(anyLong(), anyLong(), anyLong()))
+                .thenReturn(defaultExport);
     }
 
     @Test
@@ -85,7 +101,7 @@ class AiReportServiceTest {
             .extracting("errorCode")
             .isEqualTo(ErrorCode.AI_REPORT_CUSTOM_PROMPT_REQUIRED);
 
-        verify(eventPublisher, never()).publishEvent(any());
+        verify(eventPublisher, never()).publishEvent(any(AiReportGenerationRequestedEvent.class));
     }
 
     @Test
@@ -123,7 +139,32 @@ class AiReportServiceTest {
                 org.mockito.ArgumentMatchers.anyLong(),
                 org.mockito.ArgumentMatchers.<List<CustomPromptCommand>>any()
         );
-        verify(eventPublisher, never()).publishEvent(any());
+        verify(eventPublisher, never()).publishEvent(any(AiReportGenerationRequestedEvent.class));
+    }
+
+    @Test
+    void generateReport_createsRequesterPdfExport() {
+        AiReportRes requested = requestedResponse();
+        given(aiReportPersistenceService.requestCustomGeneration(10L, 7L, List.of()))
+                .willReturn(AiReportRequestResult.publish(requested, AiReportGenerationType.BASE_ONLY));
+
+        aiReportService.generateReport(10L, 7L, AiReportGenerateReq.empty());
+
+        verify(aiReportPdfPersistenceService).createIfMissing(55L, 10L, 7L);
+    }
+
+    @Test
+    void generateReport_recordsOutboxEvent_whenReportAlreadyCompleted() {
+        AiReportRes completed = new AiReportRes(55L, 10L, "COMPLETED", null, List.of(), null, null, null, null, null, null);
+        AiReportPdfExport export = AiReportPdfExport.notStarted(55L, 10L, 7L);
+        ReflectionTestUtils.setField(export, "id", 77L);
+        given(aiReportPersistenceService.requestCustomGeneration(10L, 7L, List.of()))
+                .willReturn(AiReportRequestResult.skip(completed));
+        given(aiReportPdfPersistenceService.createIfMissing(55L, 10L, 7L)).willReturn(export);
+
+        aiReportService.generateReport(10L, 7L, AiReportGenerateReq.empty());
+
+        verify(outboxWriter).record(eq(77L), any(LocalDateTime.class));
     }
 
     private AiReportRes requestedResponse() {

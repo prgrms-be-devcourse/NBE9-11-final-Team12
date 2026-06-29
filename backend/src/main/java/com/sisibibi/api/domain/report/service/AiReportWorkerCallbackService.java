@@ -15,6 +15,8 @@ import com.sisibibi.api.domain.report.entity.AiReport;
 import com.sisibibi.api.domain.report.entity.AiReportCustomPrompt;
 import com.sisibibi.api.domain.report.entity.AiReportStatus;
 import com.sisibibi.api.domain.report.prompt.CustomPromptCommand;
+import com.sisibibi.api.domain.report.outbox.AiReportPdfGenerationOutboxWriter;
+import com.sisibibi.api.domain.report.repository.AiReportPdfExportRepository;
 import com.sisibibi.api.domain.report.repository.AiReportRepository;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
@@ -44,7 +46,9 @@ public class AiReportWorkerCallbackService {
     private final TopicRepository topicRepository;
     private final SpeechRepository speechRepository;
     private final AiReportRepository aiReportRepository;
+    private final AiReportPdfExportRepository aiReportPdfExportRepository;
     private final AiReportProperties aiReportProperties;
+    private final AiReportPdfGenerationOutboxWriter outboxWriter;
 
     @Transactional
     public AiReportWorkerProcessingRes startProcessing(Long reportId, AiReportGenerationType generationType) {
@@ -102,6 +106,12 @@ public class AiReportWorkerCallbackService {
         }
 
         report.complete(response);
+
+        LocalDateTime now = LocalDateTime.now();
+        aiReportPdfExportRepository.findByAiReportId(report.getId()).stream()
+                .filter(export -> export.shouldStartGeneration())
+                .forEach(export -> outboxWriter.record(export.getId(), now));
+
         return AiReportRes.from(report);
     }
 

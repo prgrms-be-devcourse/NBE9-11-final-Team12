@@ -59,6 +59,32 @@ class AiReportSpeechSourceRepositoryTest {
                 .containsExactly("첫 번째 완료 발언", "두 번째 완료 발언");
     }
 
+    @Test
+    void countAiReportSourceSpeeches_countsOnlyValidSourceSpeeches() {
+        Speech pro1 = completedSpeech(1L, 10L, "찬성 1", SpeechStance.PRO, LocalDateTime.of(2026, 6, 22, 10, 0));
+        Speech pro2 = completedSpeech(1L, 20L, "찬성 2", SpeechStance.PRO, LocalDateTime.of(2026, 6, 22, 10, 1));
+        Speech con1 = completedSpeech(1L, 30L, "반대 1", SpeechStance.CON, LocalDateTime.of(2026, 6, 22, 10, 2));
+        Speech incomplete = Speech.createMainOpinion(1L, 40L, "준비 중", SpeechStance.PRO);
+        Speech deleted = completedSpeech(1L, 50L, "삭제됨", SpeechStance.PRO, LocalDateTime.of(2026, 6, 22, 10, 3));
+        Speech nullStance = completedSpeech(1L, 60L, "입장 없음", SpeechStance.CON, LocalDateTime.of(2026, 6, 22, 10, 4));
+        deleted.softDelete(LocalDateTime.of(2026, 6, 22, 10, 5));
+        ReflectionTestUtils.setField(nullStance, "stance", null);
+        speechRepository.saveAllAndFlush(List.of(pro1, pro2, con1, incomplete, deleted, nullStance));
+
+        assertThat(speechRepository.countAiReportSourceSpeeches(1L)).isEqualTo(3L);
+    }
+
+    @Test
+    void countAiReportSourceSpeechesByStance_countsOnlyMatchingStance() {
+        Speech pro1 = completedSpeech(1L, 10L, "찬성 1", SpeechStance.PRO, LocalDateTime.of(2026, 6, 22, 10, 0));
+        Speech pro2 = completedSpeech(1L, 20L, "찬성 2", SpeechStance.PRO, LocalDateTime.of(2026, 6, 22, 10, 1));
+        Speech con1 = completedSpeech(1L, 30L, "반대 1", SpeechStance.CON, LocalDateTime.of(2026, 6, 22, 10, 2));
+        speechRepository.saveAllAndFlush(List.of(pro1, pro2, con1));
+
+        assertThat(speechRepository.countAiReportSourceSpeechesByStance(1L, SpeechStance.PRO)).isEqualTo(2L);
+        assertThat(speechRepository.countAiReportSourceSpeechesByStance(1L, SpeechStance.CON)).isEqualTo(1L);
+    }
+
     private Speech completedSpeech(
             Long roomId,
             Long userId,

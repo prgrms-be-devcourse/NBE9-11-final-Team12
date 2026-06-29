@@ -10,6 +10,7 @@ public record SpeechCreateRes(
         Long userId,
         String content,
         SpeechStance stance,
+        SpeechStance speakingStance,
         SpeechStatus status
 ) {
 
@@ -20,6 +21,7 @@ public record SpeechCreateRes(
                 speech.getUserId(),
                 speech.getContent(),
                 speech.getStance(),
+                speech.getSpeakingStance(),
                 speech.getStatus()
         );
     }

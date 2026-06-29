@@ -3,6 +3,8 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Crown,
+  ChevronDown,
+  ChevronUp,
   Flag,
   History,
   ImageIcon,
@@ -54,6 +56,21 @@ const REPORT_REASONS: { value: SpeechReportReason; label: string }[] = [
 
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"]
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024
+type OpinionStance = SpeechStance | null
+
+const OPINION_STANCE_LABELS: Record<SpeechStance, string> = {
+  PRO: "찬성",
+  CON: "반대",
+}
+const ALL_OPINION_STANCE_OPTIONS: OpinionStance[] = ["PRO", null, "CON"]
+
+function stanceLabel(stance: OpinionStance) {
+  return stance === null ? "중립" : OPINION_STANCE_LABELS[stance]
+}
+
+function opinionStanceLabel(stance: OpinionStance) {
+  return `${stanceLabel(stance)} 의견`
+}
 
 function messageOf(error: unknown) {
   return error instanceof ApiError ? error.message : "요청 처리 중 오류가 발생했습니다."
@@ -115,7 +132,13 @@ export function MainStage({
   const [stageError, setStageError] = useState("")
   const [currentSpeaker, setCurrentSpeaker] = useState<StageCurrentSpeaker | null>(null)
   const [queueSummary, setQueueSummary] = useState<StageQueue | null>(null)
+  const [fullQueue, setFullQueue] = useState<StageQueue | null>(null)
+  const [showFullQueue, setShowFullQueue] = useState(false)
+  const [fullQueueLoading, setFullQueueLoading] = useState(false)
+  const [fullQueueError, setFullQueueError] = useState("")
+  const [queueBalanceNotice, setQueueBalanceNotice] = useState("")
   const [requestStatus, setRequestStatus] = useState<StageRequestStatus | null>(null)
+  const [requestStatusLoading, setRequestStatusLoading] = useState(false)
   const [stageSummary, setStageSummary] = useState<StageSummary | null>(null)
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [summaryError, setSummaryError] = useState("")
@@ -123,7 +146,8 @@ export function MainStage({
   const [counterIssueError, setCounterIssueError] = useState("")
   const [createOpen, setCreateOpen] = useState(false)
   const [content, setContent] = useState("")
-  const [stance, setStance] = useState<SpeechStance>("PRO")
+  const [stance, setStance] = useState<OpinionStance>("PRO")
+  const [stageRequestStance, setStageRequestStance] = useState<OpinionStance>(null)
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
   const [imagePreviewUrl, setImagePreviewUrl] = useState("")
   const [imageError, setImageError] = useState("")
@@ -155,6 +179,11 @@ export function MainStage({
     if (!expiresAt) return null
     return Math.ceil((new Date(expiresAt).getTime() - nowTimestamp) / 1000)
   }, [currentSpeaker, nowTimestamp])
+
+  const opinionStanceOptions = useMemo<OpinionStance[]>(() => {
+    const speakerStance = currentSpeaker?.currentSpeaker?.stance
+    return speakerStance ? [speakerStance, null] : ALL_OPINION_STANCE_OPTIONS
+  }, [currentSpeaker?.currentSpeaker?.stance])
 
   const rememberEvent = useCallback((eventId: string) => {
     if (handledEventIdsRef.current.includes(eventId)) return false
@@ -218,6 +247,41 @@ export function MainStage({
       setStageError(messageOf(rejected.reason))
     }
     if (requestSeq === stageRequestSeqRef.current) setStageLoading(false)
+  }, [liveEnabled, roomId])
+
+  const loadFullQueue = useCallback(async () => {
+    if (!liveEnabled) {
+      setFullQueue(null)
+      setFullQueueError("")
+      setFullQueueLoading(false)
+      return
+    }
+
+    setFullQueueLoading(true)
+    setFullQueueError("")
+    try {
+      const response = await stageApi.queue(roomId, 0, 100)
+      setFullQueue(response)
+    } catch (requestError) {
+      setFullQueueError(messageOf(requestError))
+    } finally {
+      setFullQueueLoading(false)
+    }
+  }, [liveEnabled, roomId])
+
+  const refreshMyRequestStatus = useCallback(async () => {
+    if (!liveEnabled) return
+
+    setRequestStatusLoading(true)
+    setStageError("")
+    try {
+      const response = await stageApi.myRequestStatus(roomId)
+      setRequestStatus(response)
+    } catch (requestError) {
+      setStageError(messageOf(requestError))
+    } finally {
+      setRequestStatusLoading(false)
+    }
   }, [liveEnabled, roomId])
 
   const loadStageSummary = useCallback(async (showLoading = true) => {
@@ -314,8 +378,9 @@ export function MainStage({
     stageRecoveryTimerRef.current = window.setTimeout(() => {
       stageRecoveryTimerRef.current = null
       void loadStage()
+      if (showFullQueue) void loadFullQueue()
     }, 250)
-  }, [loadStage])
+  }, [loadFullQueue, loadStage, showFullQueue])
 
   useEffect(() => {
     mountedRef.current = true
@@ -336,6 +401,11 @@ export function MainStage({
   useEffect(() => {
     void loadStage()
   }, [loadStage])
+
+  useEffect(() => {
+    if (!showFullQueue) return
+    void loadFullQueue()
+  }, [loadFullQueue, showFullQueue])
 
   useEffect(() => {
     void loadStageSummary()
@@ -361,9 +431,10 @@ export function MainStage({
     if (recoveryKey === 0) return
     void loadSpeeches()
     void loadStage()
+    if (showFullQueue) void loadFullQueue()
     void loadStageSummary(false)
     void loadCounterIssues()
-  }, [loadCounterIssues, loadSpeeches, loadStage, loadStageSummary, recoveryKey])
+  }, [loadCounterIssues, loadFullQueue, loadSpeeches, loadStage, loadStageSummary, recoveryKey, showFullQueue])
 
   useEffect(() => {
     if (!selectedImage) {
@@ -383,6 +454,12 @@ export function MainStage({
     const intervalId = window.setInterval(() => setNowTimestamp(Date.now()), 1000)
     return () => window.clearInterval(intervalId)
   }, [currentSpeaker?.currentSpeaker?.expiresAt])
+
+  useEffect(() => {
+    if (!queueBalanceNotice) return
+    const timerId = window.setTimeout(() => setQueueBalanceNotice(""), 6000)
+    return () => window.clearTimeout(timerId)
+  }, [queueBalanceNotice])
 
   useEffect(() => {
     if (!liveEnabled || stompConnected) return
@@ -406,6 +483,9 @@ export function MainStage({
       `/topic/rooms/${roomId}/stage/events`,
       (event) => {
         if (!rememberEvent(event.eventId)) return
+        if (event.eventType === "SPEAKER_ASSIGNED" && event.data.balancedAssignment) {
+          setQueueBalanceNotice("찬/반 균형이 일어나 대기열이 변경되었습니다.")
+        }
         scheduleStageRecovery()
       },
       setStageError,
@@ -506,6 +586,9 @@ export function MainStage({
   }
 
   const setCreateDialogOpen = (open: boolean) => {
+    if (open) {
+      setStance(currentSpeaker?.currentSpeaker?.stance ?? null)
+    }
     setCreateOpen(open)
     if (open) return
     setImageError("")
@@ -610,7 +693,7 @@ export function MainStage({
     setSubmitting(true)
     setStageError("")
     try {
-      await stageApi.requestTurn(roomId)
+      await stageApi.requestTurn(roomId, stageRequestStance)
       await loadStage()
     } catch (requestError) {
       setStageError(messageOf(requestError))
@@ -650,6 +733,7 @@ export function MainStage({
       setStageError("발언권을 받은 사용자만 의견을 작성할 수 있습니다.")
       return
     }
+    setStance(currentSpeaker?.currentSpeaker?.stance ?? null)
     setCreateOpen(true)
   }
 
@@ -674,6 +758,9 @@ export function MainStage({
       : []),
   ].sort((left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime())
   const latestCounterIssue = counterIssues[0] ?? null
+  const waitingPreviewItems = queueSummary?.items ?? []
+  const waitingFullItems = fullQueue?.items ?? waitingPreviewItems
+  const waitingTotalCount = queueSummary?.totalWaitingCount ?? 0
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -695,6 +782,11 @@ export function MainStage({
       <div className="border-b border-border/50 bg-muted/20 px-4 py-3">
         {stageError && <p className="mb-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{stageError}</p>}
         {counterIssueError && <p className="mb-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{counterIssueError}</p>}
+        {queueBalanceNotice && (
+          <p className="mb-2 rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 text-xs text-primary">
+            {queueBalanceNotice}
+          </p>
+        )}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0 flex flex-col gap-1">
             <div className="flex items-center gap-2">
@@ -708,6 +800,11 @@ export function MainStage({
                       ? `${currentSpeaker.currentSpeaker.nickname}님 발언 중`
                       : "현재 발언자가 없습니다"}
               </span>
+              {currentSpeaker?.hasCurrentSpeaker && currentSpeaker.currentSpeaker && (
+                <Badge variant="outline" className="text-[10px]">
+                  stance: {stanceLabel(currentSpeaker.currentSpeaker.stance)}
+                </Badge>
+              )}
               {currentSpeaker?.hasCurrentSpeaker && (
                 <Badge variant="outline" className="text-[10px]">
                   남은 시간 {formatRemainingTime(remainingSeconds)}
@@ -717,7 +814,7 @@ export function MainStage({
             <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
               <span className="flex items-center gap-1">
                 <Users className="size-3" />
-                대기 {queueSummary?.totalWaitingCount ?? 0}명
+                대기 {waitingTotalCount}명
               </span>
               {requestStatus?.hasRequest && (
                 <span>
@@ -727,7 +824,85 @@ export function MainStage({
                 </span>
               )}
               <span>기본 발언 시간 3분</span>
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                className="h-5 gap-1 px-1 text-[10px]"
+                disabled={!liveEnabled || requestStatusLoading}
+                onClick={refreshMyRequestStatus}
+              >
+                {requestStatusLoading && <Loader2 className="size-3 animate-spin" />}
+                내 순위 조회
+              </Button>
             </div>
+            {waitingTotalCount > 0 && (
+              <div className="mt-2 rounded-lg border border-border/60 bg-background/70 px-2.5 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="shrink-0 text-[11px] font-medium text-muted-foreground">대기열</span>
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="ghost"
+                    className="h-6 gap-1 px-1.5 text-[10px]"
+                    onClick={() => setShowFullQueue((current) => !current)}
+                  >
+                    {showFullQueue ? (
+                      <>
+                        접기 <ChevronUp className="size-3" />
+                      </>
+                    ) : (
+                      <>
+                        전체 조회 <ChevronDown className="size-3" />
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <div className="mt-1.5 space-y-1">
+                  {waitingPreviewItems.map((speaker) => (
+                    <div
+                      key={`${speaker.rank}-${speaker.userId}`}
+                      className="flex items-center justify-between gap-2 rounded-md px-1 py-0.5 text-[11px]"
+                    >
+                      <span className="min-w-0 flex-1 break-words font-medium text-foreground">
+                        {speaker.rank}. {speaker.nickname}
+                      </span>
+                      <Badge variant="outline" className="shrink-0 text-[10px]">
+                        {stanceLabel(speaker.stance)}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+                {showFullQueue && (
+                  <div className="mt-2 max-h-36 overflow-y-auto rounded-md border border-border/50 bg-muted/20 p-1.5">
+                    {fullQueueLoading ? (
+                      <div className="flex items-center gap-1.5 px-1 py-1 text-[11px] text-muted-foreground">
+                        <Loader2 className="size-3 animate-spin" />
+                        대기열 조회 중...
+                      </div>
+                    ) : fullQueueError ? (
+                      <p className="px-1 py-1 text-[11px] text-destructive">{fullQueueError}</p>
+                    ) : (
+                      <div className="space-y-1">
+                        {waitingFullItems.map((speaker) => (
+                          <div
+                            key={`${speaker.rank}-${speaker.userId}`}
+                            className="flex items-center justify-between gap-2 rounded-md px-1.5 py-1 text-[11px] text-muted-foreground"
+                          >
+                            <span className="min-w-0 flex-1 break-words font-medium text-foreground">
+                              {speaker.rank}. {speaker.nickname}
+                            </span>
+                            <Badge variant="outline" className="shrink-0 text-[10px]">
+                              {stanceLabel(speaker.stance)}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <div className="flex shrink-0 gap-2">
             {isCurrentUserSpeaking ? (
@@ -746,10 +921,27 @@ export function MainStage({
                 신청 취소
               </Button>
             ) : (
-              <Button size="sm" variant="outline" className="gap-1.5 text-xs" disabled={submitting || !liveEnabled} onClick={requestTurn}>
-                <Mic className="size-3.5" />
-                발언권 신청
-              </Button>
+              <>
+                <div className="grid grid-cols-3 overflow-hidden rounded-md border border-border">
+                  {(["PRO", null, "CON"] as OpinionStance[]).map((value) => (
+                    <Button
+                      key={value ?? "NEUTRAL"}
+                      type="button"
+                      size="sm"
+                      variant={stageRequestStance === value ? "default" : "ghost"}
+                      className="h-8 rounded-none px-3 text-xs"
+                      disabled={submitting || !liveEnabled}
+                      onClick={() => setStageRequestStance(value)}
+                    >
+                      {value === null ? "중립" : OPINION_STANCE_LABELS[value]}
+                    </Button>
+                  ))}
+                </div>
+                <Button size="sm" variant="outline" className="gap-1.5 text-xs" disabled={submitting || !liveEnabled} onClick={requestTurn}>
+                  <Mic className="size-3.5" />
+                  발언권 신청
+                </Button>
+              </>
             )}
           </div>
         </div>
@@ -869,12 +1061,15 @@ export function MainStage({
                         <div className="flex items-center gap-2">
                           <Avatar className="size-7"><AvatarFallback className="text-[10px]">U{speech.userId}</AvatarFallback></Avatar>
                           <div>
-                            <p className="text-xs font-semibold">사용자 #{speech.userId}</p>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <p className="text-xs font-semibold">사용자 #{speech.userId}</p>
+                              <Badge variant="outline" className="text-[10px]">stance: {stanceLabel(speech.speakingStance)}</Badge>
+                            </div>
                             <p className="text-[10px] text-muted-foreground">{new Date(speech.createdAt).toLocaleString("ko-KR")}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          {speech.stance && <Badge variant="outline" className="text-[10px]">{speech.stance === "PRO" ? "찬성" : "반대"}</Badge>}
+                          <Badge variant="outline" className="text-[10px]">{opinionStanceLabel(speech.stance)}</Badge>
                           <Badge variant="secondary" className="text-[10px]">{speechStatusLabel(speech.status)}</Badge>
                         </div>
                       </>
@@ -920,12 +1115,12 @@ export function MainStage({
 
       <Dialog open={createOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>메인 의견 작성</DialogTitle><DialogDescription>발언권 시간 내에 찬반 입장과 의견을 입력해주세요.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>메인 의견 작성</DialogTitle><DialogDescription>허용된 입장으로 의견을 입력해주세요.</DialogDescription></DialogHeader>
           <form className="flex flex-col gap-4" onSubmit={createSpeech}>
             {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
             {imageError && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{imageError}</p>}
-            <div className="grid grid-cols-2 gap-2">
-              {(["PRO", "CON"] as SpeechStance[]).map((value) => <Button key={value} type="button" variant={stance === value ? "default" : "outline"} onClick={() => setStance(value)}>{value === "PRO" ? "찬성" : "반대"}</Button>)}
+            <div className={`grid gap-2 ${opinionStanceOptions.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
+              {opinionStanceOptions.map((value) => <Button key={value ?? "NEUTRAL"} type="button" variant={stance === value ? "default" : "outline"} onClick={() => setStance(value)}>{value === null ? "중립" : OPINION_STANCE_LABELS[value]}</Button>)}
             </div>
             <textarea value={content} onChange={(event) => setContent(event.target.value)} rows={7} maxLength={2000} placeholder="의견을 입력하세요." className="resize-none rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
             <div className="space-y-2">

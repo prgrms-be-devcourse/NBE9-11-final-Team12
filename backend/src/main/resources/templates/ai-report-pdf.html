@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+  <style type="text/css">
+    body { font-family: "Noto Sans KR", sans-serif; margin: 0; color: #111827; }
+    .header { background: #102456; color: white; padding: 28px 36px; }
+    .header h1 { margin: 0 0 8px; font-size: 28px; }
+    .stats { display: table; width: 100%; background: #1f3a8a; color: white; padding: 12px 36px; box-sizing: border-box; }
+    .stat { display: table-cell; width: 33%; font-weight: 700; }
+    .section { padding: 20px 36px; border-bottom: 1px solid #e5e7eb; }
+    .callout { border: 1px solid #93c5fd; border-left: 5px solid #2563eb; background: #eff6ff; padding: 14px; }
+    .columns { display: table; width: 100%; table-layout: fixed; }
+    .column { display: table-cell; width: 50%; padding-right: 12px; vertical-align: top; }
+    .opinion { border: 1px solid #d1d5db; border-top: 4px solid #2563eb; padding: 12px; margin: 10px 0; }
+    .con .opinion { border-top-color: #e11d48; }
+    .summary { background: #f8fafc; border: 1px solid #dbeafe; padding: 14px; }
+    .common { background: #fff7ed; border: 1px solid #fed7aa; padding: 14px; }
+    .custom-report { border: 1px solid #d1d5db; border-left: 4px solid #7c3aed; padding: 14px; margin: 10px 0; }
+    .custom-report h3 { margin: 0 0 6px; font-size: 14px; color: #7c3aed; }
+    .custom-label { font-size: 12px; color: #6b7280; margin: 0 0 8px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>ISSUETOK AI 토론 분석</div>
+    <h1>AI 토론 리포트</h1>
+    <div>{{roomTitle}}</div>
+  </div>
+  <div class="stats">
+    <div class="stat">참여자 {{participantCount}}</div>
+    <div class="stat">의견 {{opinionCount}}</div>
+    <div class="stat">공감 {{reactionCount}}</div>
+  </div>
+  <div class="section">
+    <h2>핵심 한 줄</h2>
+    <div class="callout">{{coreLine}}</div>
+  </div>
+  <div class="section">
+    <h2>관점 분포</h2>
+    <p>찬성 {{proPercent}}% / 반대 {{conPercent}}%</p>
+  </div>
+  <div class="section">
+    <h2>핵심 쟁점</h2>
+    <ul>{{keyIssues}}</ul>
+  </div>
+  <div class="section columns">
+    <div class="column pro">
+      <h2>찬성 의견</h2>
+      {{proOpinions}}
+    </div>
+    <div class="column con">
+      <h2>반대 의견</h2>
+      {{conOpinions}}
+    </div>
+  </div>
+  <div class="section">
+    <h2>AI 종합 정리</h2>
+    <div class="summary">
+      <p>{{aiSummary}}</p>
+      <p>{{aiOpinion}}</p>
+    </div>
+  </div>
+  <div class="section">
+    <h2>공통 의견</h2>
+    <div class="common">{{commonGround}}</div>
+  </div>
+  {{customReports}}
+</body>
+</html>

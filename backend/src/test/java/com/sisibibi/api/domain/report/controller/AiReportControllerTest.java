@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.report.controller;
 
 import com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq;
+import com.sisibibi.api.domain.report.dto.response.AiReportPdfStatusRes;
 import com.sisibibi.api.domain.report.dto.response.AiReportRes;
 import com.sisibibi.api.domain.report.service.AiReportService;
 import com.sisibibi.api.global.exception.CustomException;
@@ -93,7 +94,8 @@ class AiReportControllerTest {
                 List.of(),
                 null,
                 LocalDateTime.of(2026, 6, 22, 13, 0),
-                null
+                null,
+                AiReportPdfStatusRes.notStarted()
         );
     }
 }

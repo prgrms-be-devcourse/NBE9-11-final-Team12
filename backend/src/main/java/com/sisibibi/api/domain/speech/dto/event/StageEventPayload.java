@@ -14,16 +14,25 @@ public record StageEventPayload(
         LocalDateTime assignedAt,
         LocalDateTime expiresAt,
         StageTurnEndReason endReason,
+        boolean balancedAssignment,
         LocalDateTime occurredAt
 ) {
 
     public static StageEventPayload from(SpeakingQueue speakingQueue) {
-        return from(speakingQueue, null);
+        return from(speakingQueue, null, false);
     }
 
     public static StageEventPayload from(
             SpeakingQueue speakingQueue,
             StageTurnEndReason endReason
+    ) {
+        return from(speakingQueue, endReason, false);
+    }
+
+    public static StageEventPayload from(
+            SpeakingQueue speakingQueue,
+            StageTurnEndReason endReason,
+            boolean balancedAssignment
     ) {
         return new StageEventPayload(
                 speakingQueue.getRoomId(),
@@ -34,6 +43,7 @@ public record StageEventPayload(
                 speakingQueue.getAssignedAt(),
                 speakingQueue.getExpiresAt(),
                 endReason,
+                balancedAssignment,
                 LocalDateTime.now()
         );
     }

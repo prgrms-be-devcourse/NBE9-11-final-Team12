@@ -1,5 +1,6 @@
 package com.sisibibi.api.domain.speech.dto.response;
 
+import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import java.util.List;
 
 public record StageQueueRes(
@@ -23,7 +24,8 @@ public record StageQueueRes(
     public record WaitingSpeaker(
             int rank,
             Long userId,
-            String nickname
+            String nickname,
+            SpeechStance stance
     ) {
     }
 }

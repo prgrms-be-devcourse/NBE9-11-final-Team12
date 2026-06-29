@@ -12,6 +12,7 @@ import com.sisibibi.api.domain.speech.dto.event.SpeechEventType;
 import com.sisibibi.api.domain.speech.dto.response.*;
 import com.sisibibi.api.domain.speech.entity.SpeakingQueue;
 import com.sisibibi.api.domain.speech.entity.Speech;
+import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speechreaction.repository.SpeechReactionRepository;
@@ -76,12 +77,14 @@ public class SpeechService {
         validateContent(command.content(), "create", roomId, userId, null);
         SpeakingQueue currentSpeaker =
                 speakingQueuePersistenceService.validateCurrentSpeaker(roomId, userId);
+        validateOpinionStance(currentSpeaker, command.stance());
 
         Speech speech = Speech.createMainOpinion(
                 roomId,
                 userId,
                 command.content(),
                 command.stance(),
+                currentSpeaker.getStance(),
                 currentSpeaker.getAssignedAt()
         );
 
@@ -239,6 +242,20 @@ public class SpeechService {
     private void validateRoomActive(Room room, LocalDateTime now) {
         if (!room.isActiveAt(now)) {
             throw new CustomException(ErrorCode.ROOM_CLOSED);
+        }
+    }
+
+    private void validateOpinionStance(
+            SpeakingQueue currentSpeaker,
+            SpeechStance opinionStance
+    ) {
+        SpeechStance speakingStance = currentSpeaker.getStance();
+        if (speakingStance == null) {
+            return;
+        }
+
+        if (opinionStance != null && opinionStance != speakingStance) {
+            throw new CustomException(ErrorCode.INVALID_STANCE);
         }
     }
 

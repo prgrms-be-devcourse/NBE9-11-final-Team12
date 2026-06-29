@@ -24,6 +24,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -94,7 +95,12 @@ public class SpeakingQueueService {
                 speakingQueue.getExpiresAt()
         ));
         assigned.ifPresent(speakingQueue ->
-                publishStageChanged(StageEventType.SPEAKER_ASSIGNED, speakingQueue));
+                publishStageChanged(
+                        StageEventType.SPEAKER_ASSIGNED,
+                        speakingQueue,
+                        null,
+                        assignmentResult.balancedAssignment()
+                ));
         return assigned;
     }
 
@@ -331,10 +337,19 @@ public class SpeakingQueueService {
             SpeakingQueue speakingQueue,
             StageTurnEndReason endReason
     ) {
+        publishStageChanged(type, speakingQueue, endReason, false);
+    }
+
+    private void publishStageChanged(
+            StageEventType type,
+            SpeakingQueue speakingQueue,
+            StageTurnEndReason endReason,
+            boolean balancedAssignment
+    ) {
         eventPublisher.publishEvent(new StageChangedEvent(
                 type,
                 speakingQueue.getRoomId(),
-                StageEventPayload.from(speakingQueue, endReason)
+                StageEventPayload.from(speakingQueue, endReason, balancedAssignment)
         ));
     }
 
@@ -439,13 +454,16 @@ public class SpeakingQueueService {
                 redisSpeakingQueueRepository.findWaitingUserIds(roomId, start, end);
         Map<Long, String> nicknames =
                 speakingQueuePersistenceService.findNicknamesByUserIds(userIds);
+        Map<Long, SpeechStance> stances =
+                speakingQueuePersistenceService.findWaitingStancesByUserIds(roomId, userIds);
         List<StageQueueRes.WaitingSpeaker> items =
                 IntStream.range(0, userIds.size())
                         .mapToObj(index -> waitingSpeaker(
                                 resolvedOffset,
                                 index,
                                 userIds.get(index),
-                                nicknames
+                                nicknames,
+                                stances
                         ))
                         .toList();
 
@@ -475,13 +493,20 @@ public class SpeakingQueueService {
                 .toList();
         Map<Long, String> nicknames =
                 speakingQueuePersistenceService.findNicknamesByUserIds(userIds);
+        Map<Long, SpeechStance> stances = new HashMap<>();
+        waitingQueues.forEach(waitingQueue ->
+                stances.putIfAbsent(
+                        waitingQueue.getUserId(),
+                        waitingQueue.getStance()
+                ));
         List<StageQueueRes.WaitingSpeaker> items =
                 IntStream.range(0, waitingQueues.size())
                         .mapToObj(index -> waitingSpeaker(
                                 resolvedOffset,
                                 index,
                                 waitingQueues.get(index).getUserId(),
-                                nicknames
+                                nicknames,
+                                stances
                         ))
                         .toList();
 
@@ -535,12 +560,14 @@ public class SpeakingQueueService {
             int offset,
             int index,
             Long userId,
-            Map<Long, String> nicknames
+            Map<Long, String> nicknames,
+            Map<Long, SpeechStance> stances
     ) {
         return new StageQueueRes.WaitingSpeaker(
                 offset + index + 1,
                 userId,
-                nicknames.get(userId)
+                nicknames.get(userId),
+                stances.get(userId)
         );
     }
 

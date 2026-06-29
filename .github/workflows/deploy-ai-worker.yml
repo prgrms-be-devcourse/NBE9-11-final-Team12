@@ -17,8 +17,8 @@ permissions:
   packages: write
 
 jobs:
-  buildImageAndPush:
-    name: Build and push AI Worker image
+  buildImagePushAndDeploy:
+    name: Build, push, and deploy AI Worker image
     runs-on: ubuntu-latest
 
     steps:
@@ -50,3 +50,125 @@ jobs:
           tags: |
             ghcr.io/${{ steps.export_owner.outputs.owner_lc }}/${{ env.IMAGE_NAME }}:latest
             ghcr.io/${{ steps.export_owner.outputs.owner_lc }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Configure personal AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.PERSONAL_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.PERSONAL_AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.PERSONAL_AWS_REGION }}
+
+      - name: Encode AI Worker secrets
+        env:
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          AI_REPORT_WORKER_TOKEN: ${{ secrets.AI_REPORT_WORKER_TOKEN }}
+        run: |
+          echo "GHCR_TOKEN_B64=$(printf '%s' "$GHCR_TOKEN" | base64 -w0)" >> "$GITHUB_ENV"
+          echo "AI_REPORT_WORKER_TOKEN_B64=$(printf '%s' "$AI_REPORT_WORKER_TOKEN" | base64 -w0)" >> "$GITHUB_ENV"
+
+      - name: Restart AI Worker through SSM
+        env:
+          AI_WORKER_INSTANCE_ID: ${{ secrets.AI_WORKER_INSTANCE_ID }}
+        run: |
+          set -euo pipefail
+
+          PING_STATUS=$(aws ssm describe-instance-information \
+            --filters "Key=InstanceIds,Values=$AI_WORKER_INSTANCE_ID" \
+            --query "InstanceInformationList[0].PingStatus" \
+            --output text)
+
+          if [ "$PING_STATUS" != "Online" ]; then
+            echo "AI Worker instance is not online through SSM. Start the instance and rerun this workflow."
+            exit 0
+          fi
+
+          DEPLOY_SCRIPT=$(cat << 'SCRIPT_EOF'
+          set -Eeuo pipefail
+
+          SCRIPT_TS="$(date +%Y%m%d_%H%M%S)"
+          LOG="/tmp/ssm-ai-worker-${SCRIPT_TS}.log"
+
+          exec > >(awk '{ fflush(); print strftime("[%Y-%m-%d %H:%M:%S]"), $0 }' | tee -a "$LOG")
+          exec 2> >(awk '{ fflush(); print strftime("[%Y-%m-%d %H:%M:%S]"), $0 }' | tee -a "$LOG" >&2)
+
+          echo "===== AI Worker Deploy Start ====="
+
+          [[ -f /etc/ai-worker/ai-worker.env.template ]] || {
+            echo "/etc/ai-worker/ai-worker.env.template is missing"
+            exit 1
+          }
+
+          [[ -f /opt/ai-worker/run-worker.sh ]] || {
+            echo "/opt/ai-worker/run-worker.sh is missing"
+            exit 1
+          }
+
+          sudo cp /etc/ai-worker/ai-worker.env.template /etc/ai-worker/ai-worker.env
+          printf '%s' "${{ env.AI_REPORT_WORKER_TOKEN_B64 }}" \
+            | base64 -d \
+            | sudo sed 's/^/AI_REPORT_WORKER_TOKEN=/' \
+            | sudo tee -a /etc/ai-worker/ai-worker.env >/dev/null
+          sudo chown root:root /etc/ai-worker/ai-worker.env
+          sudo chmod 600 /etc/ai-worker/ai-worker.env
+
+          printf '%s' "${{ env.GHCR_TOKEN_B64 }}" \
+            | base64 -d \
+            | sudo docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
+
+          sudo systemctl restart ai-worker.service
+          sudo systemctl status ai-worker.service --no-pager
+          sudo docker ps --filter name=ai-report-worker
+
+          echo "===== AI Worker Deploy Complete ====="
+          SCRIPT_EOF
+          )
+
+          PARAMS=$(jq -nc --arg s "$DEPLOY_SCRIPT" '{"commands":[$s]}')
+
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$AI_WORKER_INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy AI Worker $GITHUB_SHA" \
+            --parameters "$PARAMS" \
+            --query "Command.CommandId" \
+            --output text)
+
+          echo "SSM Command ID: $COMMAND_ID"
+
+          WAIT_MAX=900
+          WAIT_INTERVAL=10
+          WAIT_ELAPSED=0
+
+          while (( WAIT_ELAPSED < WAIT_MAX )); do
+            CMD_STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$AI_WORKER_INSTANCE_ID" \
+              --query 'Status' \
+              --output text 2>/dev/null || echo "Unknown")
+
+            echo "Current status: $CMD_STATUS"
+
+            if [[ "$CMD_STATUS" != "InProgress" && "$CMD_STATUS" != "Pending" ]]; then
+              break
+            fi
+
+            sleep "$WAIT_INTERVAL"
+            WAIT_ELAPSED=$((WAIT_ELAPSED + WAIT_INTERVAL))
+          done
+
+          INVOCATION=$(aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$AI_WORKER_INSTANCE_ID")
+
+          STATUS=$(echo "$INVOCATION" | jq -r '.Status')
+
+          echo "===== stdout ====="
+          echo "$INVOCATION" | jq -r '.StandardOutputContent'
+          echo "===== stderr ====="
+          echo "$INVOCATION" | jq -r '.StandardErrorContent'
+          echo "=================="
+          echo "Status: $STATUS"
+
+          if [ "$STATUS" != "Success" ]; then
+            exit 1
+          fi

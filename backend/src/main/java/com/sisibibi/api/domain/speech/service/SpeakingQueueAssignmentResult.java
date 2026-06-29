@@ -6,7 +6,8 @@ import java.util.Optional;
 
 public record SpeakingQueueAssignmentResult(
         Optional<SpeakingQueue> assignedRequest,
-        List<SpeakingQueue> canceledRequests
+        List<SpeakingQueue> canceledRequests,
+        boolean balancedAssignment
 ) {
 
     public SpeakingQueueAssignmentResult {
@@ -14,13 +15,25 @@ public record SpeakingQueueAssignmentResult(
     }
 
     public static SpeakingQueueAssignmentResult empty() {
-        return new SpeakingQueueAssignmentResult(Optional.empty(), List.of());
+        return new SpeakingQueueAssignmentResult(Optional.empty(), List.of(), false);
     }
 
     public static SpeakingQueueAssignmentResult of(
             Optional<SpeakingQueue> assignedRequest,
             List<SpeakingQueue> canceledRequests
     ) {
-        return new SpeakingQueueAssignmentResult(assignedRequest, canceledRequests);
+        return of(assignedRequest, canceledRequests, false);
+    }
+
+    public static SpeakingQueueAssignmentResult of(
+            Optional<SpeakingQueue> assignedRequest,
+            List<SpeakingQueue> canceledRequests,
+            boolean balancedAssignment
+    ) {
+        return new SpeakingQueueAssignmentResult(
+                assignedRequest,
+                canceledRequests,
+                balancedAssignment
+        );
     }
 }
