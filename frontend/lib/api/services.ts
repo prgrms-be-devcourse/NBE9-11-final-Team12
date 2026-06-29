@@ -231,9 +231,9 @@ export const aiCounterIssueApi = {
 
 export const aiReportApi = {
   get: (roomId: number) => api.get<AiReport>(`/api/v1/rooms/${roomId}/ai-report`),
-  generate: (roomId: number, body?: AiReportGenerateRequest) =>
+  generate: (roomId: number, body: AiReportGenerateRequest) =>
     api.post<AiReport>(
       `/api/v1/rooms/${roomId}/ai-report`,
-      body ?? { customPrompts: [] },
+      body,
     ),
 }
