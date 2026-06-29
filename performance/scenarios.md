@@ -268,3 +268,64 @@ HTTP API 테스트와 분리해 실행한다. 연결 수, 메시지 전송 주�
 - Prometheus/Grafana 도입
 - 성능 병목 리팩토링
 - CI 성능 테스트 gate 적용
+
+## 8. 목표 동시접속자 기준 테스트
+
+현재 목표 규모는 10개 토론방, 방당 50~100명, 총 500~1000명이다.
+
+이를 성능 테스트에서는 다음으로 나눠 본다.
+
+```text
+동시접속자 = WebSocket 연결 수와 화면 유지 사용자 수
+RPS = 화면 조회/상태 확인 요청 수
+TPS = 상태 변경 요청 수
+```
+
+권장 1차 목표:
+
+| 항목 | 목표 |
+| --- | --- |
+| HTTP 읽기 RPS | 100~300 RPS |
+| 발언권 신청 TPS | 10~50 TPS |
+| 채팅 메시지 TPS | 10~30 TPS |
+| WebSocket 연결 | 500~1000 connections |
+| 실패율 | 1% 미만 |
+| HTTP p95 | 1초 미만 |
+| HTTP p99 | 2초 미만 |
+
+테스트 중 병목 판단 순서:
+
+```text
+1. k6 실패율과 p95/p99 확인
+2. Grafana HTTP p95/p99 by URI에서 느린 API 확인
+3. HikariCP pending이 튀면 DB 커넥션 풀 병목 의심
+4. MySQL threads/slow query가 튀면 쿼리 또는 인덱스 병목 의심
+5. Redis timeout/ops 급증 확인
+6. JVM heap/GC pause 확인
+7. Host CPU/Memory 확인
+8. Application logs에서 예외와 timeout 확인
+```
+
+## 9. 목표 규모 WebSocket 시나리오
+
+### 목적
+
+10개 토론방에 방당 50~100명의 사용자가 접속했을 때 WebSocket 연결, STOMP 구독, 채팅 브로드캐스트가 유지되는지 확인한다.
+
+### 기준
+
+| 구분 | 기준 |
+| --- | --- |
+| 방 수 | 10개 |
+| 방당 동시 접속자 | 50~100명 |
+| 총 동시 접속자 | 500~1000명 |
+| 채팅 발생량 | 500명 기준 약 50 TPS, 1000명 기준 약 100 TPS |
+| 실패율 | 5% 미만 |
+| STOMP 연결 p95 | 2초 미만 |
+
+### 병목 판단
+
+- WebSocket 연결 실패가 증가하면 서버 thread, WebSocket handshake, 인증 필터를 확인한다.
+- 메시지 수신 실패가 증가하면 STOMP broker, 브로드캐스트 경로, 채팅 저장 로직을 확인한다.
+- HTTP API p95가 함께 증가하면 DB connection pool 또는 MySQL 병목 가능성이 높다.
+- Redis ops/sec가 급증하고 응답이 느려지면 발언권/인증/제재 캐시 경로를 분리해서 확인한다.

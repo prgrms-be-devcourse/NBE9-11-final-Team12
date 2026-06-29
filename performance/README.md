@@ -433,7 +433,8 @@ Grafana 관리자 비밀번호는 저장소에 기본값을 두지 않는다. `m
 | Grafana | `http://localhost:3001` | `monitoring/.env` 설정값 |
 | Prometheus | `http://localhost:9091` | 없음 |
 
-Grafana에는 Prometheus와 Loki datasource, `Sisibibi Local Overview` 대시보드가 자동 등록된다.
+Grafana에는 Prometheus와 Loki datasource, `Sisibibi Local Overview`,
+`Sisibibi Performance Triage` 대시보드가 자동 등록된다.
 
 호스트 포트는 프로젝트 로컬 기본값이며 컨테이너 내부 포트와 별개다. 충돌하면 실행 시 변경할 수 있다.
 
@@ -465,7 +466,8 @@ SPRING_PROFILES_ACTIVE=local,monitoring ./gradlew bootRun
 1. Backend의 `http://localhost:8080/actuator/prometheus`에서 메트릭이 반환되는지 확인
 2. Prometheus `Status → Targets`에서 `sisibibi-api`가 `UP`인지 확인
 3. Grafana `Dashboards → Sisibibi → Sisibibi Local Overview` 확인
-4. API를 호출한 뒤 HTTP, JVM, CPU, 로그 패널이 갱신되는지 확인
+4. 성능 테스트 중에는 `Dashboards → Sisibibi → Sisibibi Performance Triage` 확인
+5. API를 호출한 뒤 HTTP, JVM, CPU, 로그 패널이 갱신되는지 확인
 
 Prometheus 컨테이너는 로컬 IDE에서 실행한 Backend를 `host.docker.internal:8080`으로 수집한다.
 
@@ -530,3 +532,237 @@ Backend, Prometheus, Grafana, Loki를 하나의 이미지로 빌드하지 않는
 - 실패율
 - 병목 추정
 - 후속 작업
+
+## 목표 규모 성능 테스트 실행 절차
+
+### 1. 목표 RPS/TPS 산정
+
+현재 목표 서비스 규모는 다음과 같이 둔다.
+
+```text
+토론방: 10개
+방당 동시 접속자: 50~100명
+총 동시 접속자: 500~1000명
+```
+
+동시접속자 수는 그대로 RPS가 아니다. 사용자가 몇 초마다 어떤 요청을 보내는지 기준으로 환산한다.
+
+| 구분 | 가정 | 목표 부하 |
+| --- | --- | --- |
+| 화면 상태 조회 | 사용자당 10~30초에 1회 | 30~100 RPS |
+| 의견 목록/상세 갱신 | 사용자당 10~20초에 1회 | 50~100 RPS |
+| 내 정보/제재/신뢰도 등 보조 조회 | 사용자당 30~60초에 1회 | 10~30 RPS |
+| WebSocket 연결 | 접속자 수와 동일 | 500~1000 connections |
+| 채팅 메시지 | 방당 1~3 msg/s | 10~30 TPS |
+| 발언권 신청 burst | 이벤트성 집중 요청 | 10~50 TPS |
+
+따라서 1차 목표는 다음으로 본다.
+
+```text
+HTTP 읽기/상태 API: 100~300 RPS
+쓰기 API: 10~50 TPS
+WebSocket: 500~1000 연결 유지
+채팅: 10~30 TPS
+```
+
+### 2. 테스트 데이터 생성
+
+성능 테스트용 데이터는 일반 local 초기 데이터와 분리한다.
+
+```bash
+# 프로젝트 루트에서 실행
+# 운영 DB에서 실행 금지
+docker exec -i sisibibi-mysql mysql -uroot -proot sisibibi < performance/sql/seed-performance-data.sql
+```
+
+생성되는 데이터:
+
+| 항목 | 범위/수량 |
+| --- | --- |
+| 사용자 | `100000~101199`, 1200명 |
+| 토론방 | `900001~900010`, 10개 |
+| 발언권 순번 | 방당 1개, 총 10개 |
+| 방 참여자 | 방당 100명, 총 1000명 |
+| 의견 | 방당 50개, 총 500개 |
+| 공감 | 의견당 20개, 총 약 10000개 |
+
+### 3. HTTP 목표 부하 테스트
+
+`target-scale-read.js`는 iteration 1회에 HTTP 요청 10개를 보낸다.
+
+```bash
+# 약 300 HTTP RPS
+BASE_URL=http://localhost:8080 \
+ROOM_IDS=900001,900002,900003,900004,900005,900006,900007,900008,900009,900010 \
+USER_ID_BASE=100000 \
+USER_COUNT=1000 \
+RATE=30 \
+DURATION=5m \
+PRE_ALLOCATED_VUS=100 \
+MAX_VUS=500 \
+TOKEN_VERSION=0 \
+k6 run performance/k6/target-scale-read.js
+```
+
+단계별 권장값:
+
+| 단계 | RATE | 예상 HTTP RPS | DURATION |
+| --- | ---: | ---: | --- |
+| Smoke | 3 | 30 | 30s |
+| Baseline | 10 | 100 | 3m |
+| Load | 30 | 300 | 5m |
+| Stress | 50~100 | 500~1000 | 1~3m |
+
+### 4. 발언권 TPS 테스트
+
+```bash
+BASE_URL=http://localhost:8080 \
+ROOM_IDS=900001,900002,900003,900004,900005,900006,900007,900008,900009,900010 \
+USER_ID_BASE=100000 \
+USER_COUNT=1000 \
+RATE=30 \
+DURATION=1m \
+PRE_ALLOCATED_VUS=80 \
+MAX_VUS=300 \
+TOKEN_VERSION=0 \
+k6 run performance/k6/target-scale-stage.js
+```
+
+`RATE=30`은 발언권 신청 약 30 TPS다.
+
+주의:
+
+- 같은 사용자·방 조합은 중복 신청으로 409가 발생할 수 있다.
+- 순수 생성 TPS를 다시 측정하려면 cleanup 후 seed를 재실행한다.
+- 409 같은 비즈니스 거절은 서버 장애가 아니므로 별도 지표로 해석한다.
+
+### 5. 테스트 데이터 삭제
+
+```bash
+docker exec -i sisibibi-mysql mysql -uroot -proot sisibibi < performance/sql/cleanup-performance-data.sql
+```
+
+삭제 대상은 `[PERF]` prefix와 지정 ID 범위만 사용한다.
+
+## Grafana에서 확인할 지표
+
+로컬 모니터링 실행:
+
+```bash
+cd monitoring
+cp .env.example .env
+# .env의 GRAFANA_ADMIN_PASSWORD 확인
+docker compose --env-file .env -f docker-compose.monitoring.yml up -d
+```
+
+Backend는 `monitoring` profile을 켜야 파일 로그와 actuator 메트릭이 정상 수집된다.
+
+```bash
+cd backend
+SPRING_PROFILES_ACTIVE=local,monitoring ./gradlew bootRun
+```
+
+Grafana:
+
+```text
+http://localhost:3001
+Dashboard: Sisibibi Performance Triage
+```
+
+성능 테스트 중 우선 확인할 패널:
+
+| 패널 | 보는 이유 |
+| --- | --- |
+| HTTP RPS | k6 목표 부하가 실제 서버에 들어오는지 확인 |
+| HTTP p95/p99 by URI | 느린 API 식별 |
+| HTTP 4xx/5xx | 비즈니스 거절과 서버 오류 분리 |
+| HikariCP Connections | DB 커넥션 풀 포화 여부 확인 |
+| MySQL Threads / Slow Queries | DB 병목 확인 |
+| Redis Ops / Hit Ratio | Redis 부하와 캐시 효율 확인 |
+| JVM Heap / GC Pause | GC 또는 메모리 병목 확인 |
+| Host CPU / Memory | 로컬/서버 자원 한계 확인 |
+| Application Logs | 예외와 timeout 원인 확인 |
+
+대시보드가 보이지 않으면 Grafana provisioning 볼륨 상태가 꼬였을 수 있다. 로컬에서만 다음 순서로 초기화한다.
+
+```bash
+cd monitoring
+docker compose --env-file .env -f docker-compose.monitoring.yml down
+docker volume rm monitoring_grafana-data
+docker compose --env-file .env -f docker-compose.monitoring.yml up -d
+```
+
+운영 서버에서는 볼륨 삭제를 하지 않는다.
+
+## 운영 모니터링 확장 방향
+
+운영 서버에서는 로컬처럼 Prometheus와 Grafana를 같은 EC2에 무겁게 띄우는 방식보다 다음 중 하나를 선택한다.
+
+1. Grafana Cloud + Alloy/Agent remote_write
+2. 별도 모니터링 서버에 Prometheus/Grafana 구성
+
+권장 방향은 Grafana Cloud 또는 별도 모니터링 서버다.
+
+운영에서 추가로 수집할 대상:
+
+- Spring Boot actuator `/actuator/prometheus`
+- Node exporter
+- MySQL exporter
+- Redis exporter
+- 애플리케이션 로그 또는 Loki/Promtail
+
+운영 주의사항:
+
+- `/actuator/prometheus`는 외부 공개하지 않는다.
+- Nginx 또는 보안 그룹으로 내부 수집기만 접근 가능하게 제한한다.
+- 부하 테스트는 Smoke → Baseline → Load 순서로 진행한다.
+- Stress 테스트는 팀 합의와 중단 기준을 먼저 정한다.
+
+### 목표 규모 WebSocket 테스트
+
+10개 방에 50~100명씩 접속하는 구조는 `target-scale-websocket.js`로 검증한다.
+WebSocket 연결 종료 테스트 후에는 서버의 연결 종료 처리로 참가자가 `LEFT`가 될 수 있으므로, 재실행 전 seed SQL을 다시 실행해 참가 상태를 `JOINED`로 복구한다.
+
+```bash
+docker exec -i sisibibi-mysql mysql -uroot -proot sisibibi < performance/sql/seed-performance-data.sql
+```
+
+```bash
+# 10개 방 × 50명 = 500 WebSocket 연결
+BASE_URL=http://localhost:8080 \
+ROOM_IDS=900001,900002,900003,900004,900005,900006,900007,900008,900009,900010 \
+USER_ID_BASE=100000 USERS_PER_ROOM=100 \
+VUS=500 MAX_DURATION=2m CONNECTION_DURATION_SECONDS=90 MESSAGE_INTERVAL_SECONDS=10 \
+k6 run performance/k6/target-scale-websocket.js
+```
+
+```bash
+# 10개 방 × 100명 = 1000 WebSocket 연결
+BASE_URL=http://localhost:8080 \
+ROOM_IDS=900001,900002,900003,900004,900005,900006,900007,900008,900009,900010 \
+USER_ID_BASE=100000 USERS_PER_ROOM=100 \
+VUS=1000 MAX_DURATION=2m CONNECTION_DURATION_SECONDS=90 MESSAGE_INTERVAL_SECONDS=10 \
+k6 run performance/k6/target-scale-websocket.js
+```
+
+`MESSAGE_INTERVAL_SECONDS=10`이면 500명 기준 약 50 chat TPS, 1000명 기준 약 100 chat TPS가 발생한다.
+채팅 Rate Limiter 정책보다 짧게 설정하면 정상적인 정책 거절이 발생할 수 있다.
+
+### Grafana에서 확인할 지표
+
+`Sisibibi Performance Triage` 대시보드에서 다음 순서로 확인한다.
+
+1. HTTP RPS, p95/p99 지연 시간
+2. HTTP 4xx/5xx 증가 여부
+3. HikariCP active/pending connection
+4. MySQL thread, slow query
+5. Redis ops/sec, hit ratio
+6. JVM heap, GC pause
+7. 애플리케이션 로그에서 예외 발생 여부
+
+HTTP p95/p99 패널은 `http.server.requests` histogram bucket을 사용한다.
+`http_server_requests_seconds_bucket`이 보이지 않으면 백엔드를 `local,monitoring` 프로필로 재시작해야 한다.
+
+```bash
+SPRING_PROFILES_ACTIVE=local,monitoring ./gradlew bootRun
+```

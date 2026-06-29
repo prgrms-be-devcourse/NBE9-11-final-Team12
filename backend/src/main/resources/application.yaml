@@ -10,6 +10,11 @@ management:
     metrics:
       export:
         enabled: true
+  metrics:
+    distribution:
+      # Grafana에서 엔드포인트별 p95/p99를 histogram_quantile로 계산하기 위한 설정
+      percentiles-histogram:
+        http.server.requests: true
 
 spring:
   application:

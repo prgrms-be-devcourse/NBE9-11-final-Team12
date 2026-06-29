@@ -53,6 +53,37 @@ services:
     command:
       - -config.file=/etc/promtail/config.yml
 
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.1
+    container_name: sisibibi-node-exporter
+    restart: unless-stopped
+    mem_limit: 128m
+    command:
+      - --path.rootfs=/host
+    volumes:
+      - /:/host:ro
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    container_name: sisibibi-redis-exporter
+    restart: unless-stopped
+    mem_limit: 128m
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      REDIS_ADDR: ${REDIS_EXPORTER_ADDR:-redis://host.docker.internal:26379}
+
+  mysqld-exporter:
+    image: prom/mysqld-exporter:v0.14.0
+    container_name: sisibibi-mysqld-exporter
+    restart: unless-stopped
+    mem_limit: 128m
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      DATA_SOURCE_NAME: ${MYSQL_EXPORTER_USER:-root}:${MYSQL_EXPORTER_PASSWORD:-root}@(${MYSQL_EXPORTER_ADDR:-host.docker.internal:23306})/
+
   grafana:
     image: grafana/grafana:11.1.0
     container_name: sisibibi-grafana
