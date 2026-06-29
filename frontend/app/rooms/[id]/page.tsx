@@ -179,7 +179,8 @@ export default function RoomDetailPage() {
   const snapshotRecoveryTimerRef = useRef<number | null>(null)
   const [disconnectGraceExceeded, setDisconnectGraceExceeded] = useState(false)
   const [roomTimerNow, setRoomTimerNow] = useState(() => Date.now())
-  const liveRoomActive = joined && roomView?.status === "OPEN"
+  const effectiveRoomStatus = roomView?.status ?? syncState?.roomStatus
+  const liveRoomActive = joined && effectiveRoomStatus === "OPEN"
 
   const rememberEvent = useCallback((eventId: string) => {
     if (handledEventIdsRef.current.includes(eventId)) return false
@@ -240,6 +241,11 @@ export default function RoomDetailPage() {
       : current)
 
     if (state.canSubscribe) {
+      setParticipationError("")
+      return
+    }
+
+    if (state.canJoin) {
       setParticipationError("")
       return
     }
@@ -308,6 +314,12 @@ export default function RoomDetailPage() {
   const ensureJoined = useCallback(async (clearJoinedOnFailure = true) => {
     setParticipationError("")
     try {
+      const currentState = await loadRoomSyncState()
+      if (currentState?.canSubscribe) {
+        setJoined(true)
+        return true
+      }
+
       await roomApi.join(roomId)
       const state = await loadRoomSyncState()
       setJoined(state ? state.myParticipantStatus === "JOINED" : true)
@@ -478,10 +490,12 @@ export default function RoomDetailPage() {
     }
 
     window.addEventListener("focus", recoverVisibleSnapshot)
+    window.addEventListener("pageshow", recoverVisibleSnapshot)
     document.addEventListener("visibilitychange", recoverVisibleSnapshot)
 
     return () => {
       window.removeEventListener("focus", recoverVisibleSnapshot)
+      window.removeEventListener("pageshow", recoverVisibleSnapshot)
       document.removeEventListener("visibilitychange", recoverVisibleSnapshot)
       if (roomRecoveryTimerRef.current !== null) {
         window.clearTimeout(roomRecoveryTimerRef.current)
@@ -515,8 +529,8 @@ export default function RoomDetailPage() {
           ? "실시간 연결 중입니다."
           : ""
 
-  const roomRemainingTimeLabel = roomView?.status === "OPEN"
-    ? formatRemainingRoomTime(roomView.endedAt, roomTimerNow)
+  const roomRemainingTimeLabel = effectiveRoomStatus === "OPEN"
+    ? formatRemainingRoomTime(roomView?.endedAt, roomTimerNow)
     : roomView
       ? "토론 종료"
       : null
@@ -536,12 +550,12 @@ export default function RoomDetailPage() {
           </Link>
 
           <div className="flex min-w-0 flex-1 items-center gap-2">
-            <Badge className={`gap-1.5 shrink-0 text-[11px] ${roomView?.status === "OPEN"
+            <Badge className={`gap-1.5 shrink-0 text-[11px] ${effectiveRoomStatus === "OPEN"
               ? "bg-primary/20 text-primary border-primary/30"
               : "bg-muted text-muted-foreground border-border"
               }`}>
-              <span className={`size-1.5 rounded-full ${roomView?.status === "OPEN" ? "bg-primary animate-live-pulse" : "bg-muted-foreground"}`} />
-              {roomView?.status === "OPEN" ? "LIVE" : "CLOSED"}
+              <span className={`size-1.5 rounded-full ${effectiveRoomStatus === "OPEN" ? "bg-primary animate-live-pulse" : "bg-muted-foreground"}`} />
+              {effectiveRoomStatus === "OPEN" ? "LIVE" : "CLOSED"}
             </Badge>
             <h1 className="truncate text-sm font-semibold text-foreground">
               {roomView?.title ?? "토론방"}
@@ -754,7 +768,7 @@ export default function RoomDetailPage() {
                           realtimeStatus={realtimeStatus}
                           recoveryKey={recoveryKey}
                         />
-                      ) : <ChatUnavailable closed={roomView?.status === "CLOSED"} />}
+                      ) : <ChatUnavailable closed={effectiveRoomStatus === "CLOSED"} />}
                     </TabsContent>
                   </Tabs>
                 </div>
@@ -779,7 +793,7 @@ export default function RoomDetailPage() {
                         realtimeStatus={realtimeStatus}
                         recoveryKey={recoveryKey}
                       />
-                    ) : <ChatUnavailable closed={roomView?.status === "CLOSED"} />}
+                    ) : <ChatUnavailable closed={effectiveRoomStatus === "CLOSED"} />}
                   </div>
                 </div>
               </div>
