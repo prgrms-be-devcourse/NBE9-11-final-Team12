@@ -22,6 +22,7 @@ import type {
   RoomParticipant,
   RoomParticipantCount,
   RoomCreateResponse,
+  RoomRanking,
   RoomSummary,
   RoomTitlePreview,
   SpeechCursorPage,
@@ -73,6 +74,7 @@ export const topicApi = {
 export const roomApi = {
   list: () => api.get<RoomSummary[]>("/api/v1/rooms"),
   open: () => api.get<RoomSummary[]>("/api/v1/rooms/open"),
+  ranking: () => api.get<RoomRanking[]>("/api/v1/rooms/ranking"),
   detail: (roomId: number) => api.get<RoomDetail>(`/api/v1/rooms/${roomId}`),
   join: (roomId: number) => api.post(`/api/v1/rooms/${roomId}/participants`),
   leave: (roomId: number) => api.post<void>(`/api/v1/rooms/${roomId}/participants/out`),
