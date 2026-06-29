@@ -28,6 +28,7 @@ public class AiReportGenerationRequestOutboxPublisher implements OutboxEventPubl
     return eventType == OutboxEventType.AI_REPORT_GENERATION_REQUESTED;
   }
 
+  // 이벤트 발행
   @Override
   public void publish(OutboxEvent event) {
     Long roomId = roomIdFrom(event);
