@@ -1,14 +1,17 @@
 package com.sisibibi.api.domain.room.controller;
 
 import com.sisibibi.api.domain.room.dto.response.RoomDetailRes;
+import com.sisibibi.api.domain.room.dto.response.RoomSyncStateRes;
 import com.sisibibi.api.domain.room.dto.response.RoomSummaryRes;
 import com.sisibibi.api.domain.room.service.RoomService;
 import com.sisibibi.api.global.response.ApiResponse;
+import com.sisibibi.api.global.security.AuthPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -46,6 +49,20 @@ public class RoomController {
       @PathVariable @Positive Long roomId
   ) {
     RoomDetailRes response = roomService.getRoom(roomId);
+
+    return ResponseEntity.ok(ApiResponse.ok(response));
+  }
+
+  @Operation(
+      summary = "?좊줎諛?화면 동기화 상태 조회",
+      description = "재연결, 포커스 복귀, 새로고침 후 화면 모드와 참여 상태를 보정합니다."
+  )
+  @GetMapping("/{roomId}/sync-state")
+  public ResponseEntity<ApiResponse<RoomSyncStateRes>> getRoomSyncState(
+      @PathVariable @Positive Long roomId,
+      @AuthenticationPrincipal AuthPrincipal principal
+  ) {
+    RoomSyncStateRes response = roomService.getRoomSyncState(roomId, principal.userId());
 
     return ResponseEntity.ok(ApiResponse.ok(response));
   }

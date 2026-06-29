@@ -170,6 +170,8 @@ export function MainStage({
   const handledEventIdsRef = useRef<string[]>([])
   const speechesRecoveryTimerRef = useRef<number | null>(null)
   const stageRecoveryTimerRef = useRef<number | null>(null)
+  const locallyCreatedSpeechIdsRef = useRef<Map<number, number>>(new Map())
+  const localSpeechCleanupTimerRef = useRef<number | null>(null)
 
   const isCurrentUserSpeaking =
     Boolean(user && currentSpeaker?.currentSpeaker?.userId === user.userId)
@@ -189,6 +191,27 @@ export function MainStage({
     if (handledEventIdsRef.current.includes(eventId)) return false
     handledEventIdsRef.current = [...handledEventIdsRef.current.slice(-199), eventId]
     return true
+  }, [])
+
+  const rememberLocalSpeech = useCallback((speechId: number) => {
+    locallyCreatedSpeechIdsRef.current.set(speechId, Date.now() + 5000)
+    if (localSpeechCleanupTimerRef.current !== null) {
+      window.clearTimeout(localSpeechCleanupTimerRef.current)
+    }
+    localSpeechCleanupTimerRef.current = window.setTimeout(() => {
+      localSpeechCleanupTimerRef.current = null
+      const now = Date.now()
+      locallyCreatedSpeechIdsRef.current.forEach((expiresAt, id) => {
+        if (expiresAt <= now) locallyCreatedSpeechIdsRef.current.delete(id)
+      })
+    }, 5500)
+  }, [])
+
+  const consumeLocalSpeechEvent = useCallback((speechId: number) => {
+    const expiresAt = locallyCreatedSpeechIdsRef.current.get(speechId)
+    if (!expiresAt) return false
+    locallyCreatedSpeechIdsRef.current.delete(speechId)
+    return expiresAt > Date.now()
   }, [])
 
   const loadSpeeches = useCallback(async () => {
@@ -394,6 +417,11 @@ export function MainStage({
       summaryInFlightRoomIdRef.current = null
       counterIssueInFlightRoomIdRef.current = null
       counterIssueReloadPendingRef.current = false
+      locallyCreatedSpeechIdsRef.current.clear()
+      if (localSpeechCleanupTimerRef.current !== null) {
+        window.clearTimeout(localSpeechCleanupTimerRef.current)
+        localSpeechCleanupTimerRef.current = null
+      }
     }
   }, [])
 
@@ -504,13 +532,14 @@ export function MainStage({
       `/topic/rooms/${roomId}/speeches/events`,
       (event) => {
         if (!rememberEvent(event.eventId)) return
+        if (event.eventType === "SPEECH_CREATED" && consumeLocalSpeechEvent(event.data.speechId)) return
         scheduleSpeechesRecovery()
       },
       setError,
     )
 
     return unsubscribe
-  }, [liveEnabled, rememberEvent, roomId, scheduleSpeechesRecovery, stompConnection])
+  }, [consumeLocalSpeechEvent, liveEnabled, rememberEvent, roomId, scheduleSpeechesRecovery, stompConnection])
 
   useEffect(() => {
     if (!liveEnabled || !stompConnection) return
@@ -613,6 +642,7 @@ export function MainStage({
     setImageError("")
     try {
       const speech = await speechApi.create(roomId, { content: content.trim(), stance })
+      rememberLocalSpeech(speech.speechId)
 
       if (selectedImage) {
         const upload = await speechApi.createImageUploadUrl(speech.speechId, {

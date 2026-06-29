@@ -2,16 +2,21 @@ package com.sisibibi.api.domain.room.controller;
 
 import com.sisibibi.api.ApiApplication;
 import com.sisibibi.api.domain.room.dto.response.RoomDetailRes;
+import com.sisibibi.api.domain.room.dto.response.RoomSyncStateRes;
 import com.sisibibi.api.domain.room.dto.response.RoomSummaryRes;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
 import com.sisibibi.api.domain.room.service.RoomService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.exception.GlobalExceptionHandler;
+import com.sisibibi.api.global.security.AuthPrincipal;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -38,6 +43,11 @@ class RoomControllerTest {
 
   @MockitoBean
   private RoomService roomService;
+
+  @AfterEach
+  void tearDown() {
+    SecurityContextHolder.clearContext();
+  }
 
   @Test
   void getOpenRooms_returnsOk() throws Exception {
@@ -147,5 +157,74 @@ class RoomControllerTest {
     mockMvc.perform(get("/api/v1/rooms/{roomId}", 0L))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
+  }
+
+  @Test
+  void getRoomSyncState_returnsLiveState_whenJoinedOpenRoom() throws Exception {
+    SecurityContextHolder.getContext().setAuthentication(
+        new UsernamePasswordAuthenticationToken(
+            new AuthPrincipal(2L, "user@example.com", "USER"),
+            null,
+            List.of()
+        )
+    );
+    given(roomService.getRoomSyncState(10L, 2L))
+        .willReturn(new RoomSyncStateRes(
+            10L,
+            RoomStatus.OPEN,
+            "JOINED",
+            3,
+            false,
+            true,
+            true,
+            "LIVE"
+        ));
+
+    mockMvc.perform(get("/api/v1/rooms/{roomId}/sync-state", 10L))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value(200))
+        .andExpect(jsonPath("$.code").value("SUCCESS"))
+        .andExpect(jsonPath("$.data.roomId").value(10))
+        .andExpect(jsonPath("$.data.roomStatus").value("OPEN"))
+        .andExpect(jsonPath("$.data.myParticipantStatus").value("JOINED"))
+        .andExpect(jsonPath("$.data.participantCount").value(3))
+        .andExpect(jsonPath("$.data.canJoin").value(false))
+        .andExpect(jsonPath("$.data.canSubscribe").value(true))
+        .andExpect(jsonPath("$.data.canWrite").value(true))
+        .andExpect(jsonPath("$.data.readMode").value("LIVE"));
+
+    verify(roomService).getRoomSyncState(10L, 2L);
+  }
+
+  @Test
+  void getRoomSyncState_returnsBlockedState_whenClosedRoom() throws Exception {
+    SecurityContextHolder.getContext().setAuthentication(
+        new UsernamePasswordAuthenticationToken(
+            new AuthPrincipal(2L, "user@example.com", "USER"),
+            null,
+            List.of()
+        )
+    );
+    given(roomService.getRoomSyncState(10L, 2L))
+        .willReturn(new RoomSyncStateRes(
+            10L,
+            RoomStatus.CLOSED,
+            "LEFT",
+            0,
+            false,
+            false,
+            false,
+            "BLOCKED"
+        ));
+
+    mockMvc.perform(get("/api/v1/rooms/{roomId}/sync-state", 10L))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.roomStatus").value("CLOSED"))
+        .andExpect(jsonPath("$.data.myParticipantStatus").value("LEFT"))
+        .andExpect(jsonPath("$.data.canSubscribe").value(false))
+        .andExpect(jsonPath("$.data.canWrite").value(false))
+        .andExpect(jsonPath("$.data.readMode").value("BLOCKED"));
+
+    verify(roomService).getRoomSyncState(10L, 2L);
   }
 }
