@@ -121,12 +121,14 @@ class StageControllerTest {
                         new StageQueueRes.WaitingSpeaker(
                                 1,
                                 10L,
-                                "logic_hunter"
+                                "logic_hunter",
+                                SpeechStance.PRO
                         ),
                         new StageQueueRes.WaitingSpeaker(
                                 2,
                                 20L,
-                                "dream_catcher"
+                                "dream_catcher",
+                                SpeechStance.CON
                         )
                 )
         );
@@ -144,10 +146,12 @@ class StageControllerTest {
                 .andExpect(jsonPath("$.data.items[0].userId").value(10))
                 .andExpect(jsonPath("$.data.items[0].nickname")
                         .value("logic_hunter"))
+                .andExpect(jsonPath("$.data.items[0].stance").value("PRO"))
                 .andExpect(jsonPath("$.data.items[1].rank").value(2))
                 .andExpect(jsonPath("$.data.items[1].userId").value(20))
                 .andExpect(jsonPath("$.data.items[1].nickname")
-                        .value("dream_catcher"));
+                        .value("dream_catcher"))
+                .andExpect(jsonPath("$.data.items[1].stance").value("CON"));
     }
 
     @Test
@@ -160,12 +164,14 @@ class StageControllerTest {
                         new StageQueueRes.WaitingSpeaker(
                                 3,
                                 30L,
-                                "neon_wave"
+                                "neon_wave",
+                                null
                         ),
                         new StageQueueRes.WaitingSpeaker(
                                 4,
                                 40L,
-                                "open_mind"
+                                "open_mind",
+                                SpeechStance.PRO
                         )
                 )
         );

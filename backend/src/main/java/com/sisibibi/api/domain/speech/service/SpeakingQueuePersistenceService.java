@@ -23,8 +23,10 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -202,6 +204,29 @@ public class SpeakingQueuePersistenceService {
     }
 
     @Transactional(readOnly = true)
+    public Map<Long, SpeechStance> findWaitingStancesByUserIds(
+            Long roomId,
+            List<Long> userIds
+    ) {
+        if (userIds.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<Long, SpeechStance> stances = new HashMap<>();
+        speakingQueueRepository.findByRoomIdAndUserIdInAndStatus(
+                        roomId,
+                        userIds,
+                        SpeakingQueueStatus.WAITING
+                )
+                .forEach(speakingQueue ->
+                        stances.putIfAbsent(
+                                speakingQueue.getUserId(),
+                                speakingQueue.getStance()
+                        ));
+        return stances;
+    }
+
+    @Transactional(readOnly = true)
     public Optional<SpeakingQueue> findCurrentSpeakerForRedisProjection(Long roomId) {
         return speakingQueueRepository.findByRoomIdAndStatus(
                 roomId,
@@ -341,9 +366,10 @@ public class SpeakingQueuePersistenceService {
         }
 
         List<SpeakingQueue> canceledRequests = new ArrayList<>();
-        Optional<SpeakingQueue> waitingRequest = findNextWaitingRequest(roomId);
+        Optional<NextWaitingRequest> waitingRequest = findNextWaitingRequest(roomId);
         while (waitingRequest.isPresent()) {
-            SpeakingQueue nextSpeaker = waitingRequest.get();
+            NextWaitingRequest nextWaitingRequest = waitingRequest.get();
+            SpeakingQueue nextSpeaker = nextWaitingRequest.speakingQueue();
             if (!isJoinedParticipant(roomId, nextSpeaker.getUserId())) {
                 nextSpeaker.cancel(assignedAt);
                 canceledRequests.add(nextSpeaker);
@@ -352,7 +378,11 @@ public class SpeakingQueuePersistenceService {
             }
 
             nextSpeaker.assign(assignedAt, expiresAt);
-            return SpeakingQueueAssignmentResult.of(Optional.of(nextSpeaker), canceledRequests);
+            return SpeakingQueueAssignmentResult.of(
+                    Optional.of(nextSpeaker),
+                    canceledRequests,
+                    nextWaitingRequest.balanced()
+            );
         }
 
         return SpeakingQueueAssignmentResult.of(Optional.empty(), canceledRequests);
@@ -459,17 +489,26 @@ public class SpeakingQueuePersistenceService {
         );
     }
 
-    private Optional<SpeakingQueue> findNextWaitingRequest(Long roomId) {
+    private Optional<NextWaitingRequest> findNextWaitingRequest(Long roomId) {
+        Optional<SpeakingQueue> firstWaitingRequest =
+                speakingQueueRepository
+                        .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+                                roomId,
+                                SpeakingQueueStatus.WAITING
+                        );
         Optional<SpeakingQueue> balancedRequest = findOppositeStanceWaitingRequest(roomId);
         if (balancedRequest.isPresent()) {
-            return balancedRequest;
+            boolean balanced =
+                    firstWaitingRequest.isPresent()
+                            && !Objects.equals(
+                                    firstWaitingRequest.get().getId(),
+                                    balancedRequest.get().getId()
+                            );
+            return Optional.of(new NextWaitingRequest(balancedRequest.get(), balanced));
         }
 
-        return speakingQueueRepository
-                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
-                        roomId,
-                        SpeakingQueueStatus.WAITING
-                );
+        return firstWaitingRequest
+                .map(speakingQueue -> new NextWaitingRequest(speakingQueue, false));
     }
 
     private Optional<SpeakingQueue> findOppositeStanceWaitingRequest(Long roomId) {
@@ -492,6 +531,12 @@ public class SpeakingQueuePersistenceService {
                         SpeakingQueueStatus.WAITING,
                         oppositeStance.get()
                 );
+    }
+
+    private record NextWaitingRequest(
+            SpeakingQueue speakingQueue,
+            boolean balanced
+    ) {
     }
 
     @Transactional

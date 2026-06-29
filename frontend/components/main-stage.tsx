@@ -3,6 +3,8 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Crown,
+  ChevronDown,
+  ChevronUp,
   Flag,
   History,
   ImageIcon,
@@ -130,7 +132,13 @@ export function MainStage({
   const [stageError, setStageError] = useState("")
   const [currentSpeaker, setCurrentSpeaker] = useState<StageCurrentSpeaker | null>(null)
   const [queueSummary, setQueueSummary] = useState<StageQueue | null>(null)
+  const [fullQueue, setFullQueue] = useState<StageQueue | null>(null)
+  const [showFullQueue, setShowFullQueue] = useState(false)
+  const [fullQueueLoading, setFullQueueLoading] = useState(false)
+  const [fullQueueError, setFullQueueError] = useState("")
+  const [queueBalanceNotice, setQueueBalanceNotice] = useState("")
   const [requestStatus, setRequestStatus] = useState<StageRequestStatus | null>(null)
+  const [requestStatusLoading, setRequestStatusLoading] = useState(false)
   const [stageSummary, setStageSummary] = useState<StageSummary | null>(null)
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [summaryError, setSummaryError] = useState("")
@@ -241,6 +249,41 @@ export function MainStage({
     if (requestSeq === stageRequestSeqRef.current) setStageLoading(false)
   }, [liveEnabled, roomId])
 
+  const loadFullQueue = useCallback(async () => {
+    if (!liveEnabled) {
+      setFullQueue(null)
+      setFullQueueError("")
+      setFullQueueLoading(false)
+      return
+    }
+
+    setFullQueueLoading(true)
+    setFullQueueError("")
+    try {
+      const response = await stageApi.queue(roomId, 0, 100)
+      setFullQueue(response)
+    } catch (requestError) {
+      setFullQueueError(messageOf(requestError))
+    } finally {
+      setFullQueueLoading(false)
+    }
+  }, [liveEnabled, roomId])
+
+  const refreshMyRequestStatus = useCallback(async () => {
+    if (!liveEnabled) return
+
+    setRequestStatusLoading(true)
+    setStageError("")
+    try {
+      const response = await stageApi.myRequestStatus(roomId)
+      setRequestStatus(response)
+    } catch (requestError) {
+      setStageError(messageOf(requestError))
+    } finally {
+      setRequestStatusLoading(false)
+    }
+  }, [liveEnabled, roomId])
+
   const loadStageSummary = useCallback(async (showLoading = true) => {
     if (!liveEnabled) {
       setStageSummary(null)
@@ -335,8 +378,9 @@ export function MainStage({
     stageRecoveryTimerRef.current = window.setTimeout(() => {
       stageRecoveryTimerRef.current = null
       void loadStage()
+      if (showFullQueue) void loadFullQueue()
     }, 250)
-  }, [loadStage])
+  }, [loadFullQueue, loadStage, showFullQueue])
 
   useEffect(() => {
     mountedRef.current = true
@@ -357,6 +401,11 @@ export function MainStage({
   useEffect(() => {
     void loadStage()
   }, [loadStage])
+
+  useEffect(() => {
+    if (!showFullQueue) return
+    void loadFullQueue()
+  }, [loadFullQueue, showFullQueue])
 
   useEffect(() => {
     void loadStageSummary()
@@ -382,9 +431,10 @@ export function MainStage({
     if (recoveryKey === 0) return
     void loadSpeeches()
     void loadStage()
+    if (showFullQueue) void loadFullQueue()
     void loadStageSummary(false)
     void loadCounterIssues()
-  }, [loadCounterIssues, loadSpeeches, loadStage, loadStageSummary, recoveryKey])
+  }, [loadCounterIssues, loadFullQueue, loadSpeeches, loadStage, loadStageSummary, recoveryKey, showFullQueue])
 
   useEffect(() => {
     if (!selectedImage) {
@@ -404,6 +454,12 @@ export function MainStage({
     const intervalId = window.setInterval(() => setNowTimestamp(Date.now()), 1000)
     return () => window.clearInterval(intervalId)
   }, [currentSpeaker?.currentSpeaker?.expiresAt])
+
+  useEffect(() => {
+    if (!queueBalanceNotice) return
+    const timerId = window.setTimeout(() => setQueueBalanceNotice(""), 6000)
+    return () => window.clearTimeout(timerId)
+  }, [queueBalanceNotice])
 
   useEffect(() => {
     if (!liveEnabled || stompConnected) return
@@ -427,6 +483,9 @@ export function MainStage({
       `/topic/rooms/${roomId}/stage/events`,
       (event) => {
         if (!rememberEvent(event.eventId)) return
+        if (event.eventType === "SPEAKER_ASSIGNED" && event.data.balancedAssignment) {
+          setQueueBalanceNotice("찬/반 균형이 일어나 대기열이 변경되었습니다.")
+        }
         scheduleStageRecovery()
       },
       setStageError,
@@ -699,6 +758,9 @@ export function MainStage({
       : []),
   ].sort((left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime())
   const latestCounterIssue = counterIssues[0] ?? null
+  const waitingPreviewItems = queueSummary?.items ?? []
+  const waitingFullItems = fullQueue?.items ?? waitingPreviewItems
+  const waitingTotalCount = queueSummary?.totalWaitingCount ?? 0
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -720,6 +782,11 @@ export function MainStage({
       <div className="border-b border-border/50 bg-muted/20 px-4 py-3">
         {stageError && <p className="mb-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{stageError}</p>}
         {counterIssueError && <p className="mb-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{counterIssueError}</p>}
+        {queueBalanceNotice && (
+          <p className="mb-2 rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 text-xs text-primary">
+            {queueBalanceNotice}
+          </p>
+        )}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0 flex flex-col gap-1">
             <div className="flex items-center gap-2">
@@ -747,7 +814,7 @@ export function MainStage({
             <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
               <span className="flex items-center gap-1">
                 <Users className="size-3" />
-                대기 {queueSummary?.totalWaitingCount ?? 0}명
+                대기 {waitingTotalCount}명
               </span>
               {requestStatus?.hasRequest && (
                 <span>
@@ -757,7 +824,78 @@ export function MainStage({
                 </span>
               )}
               <span>기본 발언 시간 3분</span>
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                className="h-5 gap-1 px-1 text-[10px]"
+                disabled={!liveEnabled || requestStatusLoading}
+                onClick={refreshMyRequestStatus}
+              >
+                {requestStatusLoading && <Loader2 className="size-3 animate-spin" />}
+                내 순위 조회
+              </Button>
             </div>
+            {waitingTotalCount > 0 && (
+              <div className="mt-2 rounded-lg border border-border/60 bg-background/70 px-2.5 py-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                    <span className="shrink-0 text-[11px] font-medium text-muted-foreground">대기열</span>
+                    {waitingPreviewItems.map((speaker) => (
+                      <Badge key={`${speaker.rank}-${speaker.userId}`} variant="outline" className="max-w-32 text-[10px]">
+                        <span className="truncate">
+                          {speaker.rank}. {speaker.nickname} · {stanceLabel(speaker.stance)}
+                        </span>
+                      </Badge>
+                    ))}
+                  </div>
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="ghost"
+                    className="h-6 gap-1 px-1.5 text-[10px]"
+                    onClick={() => setShowFullQueue((current) => !current)}
+                  >
+                    {showFullQueue ? (
+                      <>
+                        접기 <ChevronUp className="size-3" />
+                      </>
+                    ) : (
+                      <>
+                        전체 조회 <ChevronDown className="size-3" />
+                      </>
+                    )}
+                  </Button>
+                </div>
+                {showFullQueue && (
+                  <div className="mt-2 max-h-36 overflow-y-auto rounded-md border border-border/50 bg-muted/20 p-1.5">
+                    {fullQueueLoading ? (
+                      <div className="flex items-center gap-1.5 px-1 py-1 text-[11px] text-muted-foreground">
+                        <Loader2 className="size-3 animate-spin" />
+                        대기열 조회 중...
+                      </div>
+                    ) : fullQueueError ? (
+                      <p className="px-1 py-1 text-[11px] text-destructive">{fullQueueError}</p>
+                    ) : (
+                      <div className="grid gap-1 sm:grid-cols-2">
+                        {waitingFullItems.map((speaker) => (
+                          <div
+                            key={`${speaker.rank}-${speaker.userId}`}
+                            className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] text-muted-foreground"
+                          >
+                            <span className="w-5 shrink-0 text-right font-medium text-foreground">{speaker.rank}</span>
+                            <span className="min-w-0 truncate">{speaker.nickname}</span>
+                            <Badge variant="outline" className="ml-auto text-[10px]">
+                              {stanceLabel(speaker.stance)}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <div className="flex shrink-0 gap-2">
             {isCurrentUserSpeaking ? (

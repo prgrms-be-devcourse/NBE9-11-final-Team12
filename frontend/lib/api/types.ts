@@ -308,6 +308,7 @@ export type StageQueue = {
     rank: number
     userId: number
     nickname: string
+    stance: SpeechStance | null
   }[]
 }
 
@@ -385,9 +386,10 @@ export type StageEvent = WebSocketEventEnvelope<
     assignedAt: string | null
     expiresAt: string | null
     endReason: "COMPLETED" | "EXPIRED" | null
+    balancedAssignment: boolean
     occurredAt: string
   },
-  "SPEAKING_REQUESTED" | "SPEAKING_CANCELED" | "SPEAKER_ASSIGNED" | "SPEAKER_COMPLETED" | "SPEAKER_EXPIRED"
+  "SPEAKING_REQUESTED" | "SPEAKING_CANCELED" | "SPEAKER_ASSIGNED" | "SPEAKER_IDLE_WARNED" | "SPEAKER_COMPLETED" | "SPEAKER_EXPIRED"
 >
 
 export type StageSummaryEvent = WebSocketEventEnvelope<

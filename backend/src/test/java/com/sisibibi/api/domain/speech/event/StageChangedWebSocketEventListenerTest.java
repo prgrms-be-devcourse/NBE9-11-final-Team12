@@ -34,6 +34,7 @@ class StageChangedWebSocketEventListenerTest {
                 LocalDateTime.of(2026, 6, 18, 12, 0),
                 LocalDateTime.of(2026, 6, 18, 12, 2),
                 null,
+                false,
                 LocalDateTime.of(2026, 6, 18, 12, 0)
         );
         StageChangedEvent event = new StageChangedEvent(
@@ -67,6 +68,7 @@ class StageChangedWebSocketEventListenerTest {
                 null,
                 null,
                 null,
+                false,
                 LocalDateTime.of(2026, 6, 18, 12, 0)
         );
         StageChangedEvent event = new StageChangedEvent(
