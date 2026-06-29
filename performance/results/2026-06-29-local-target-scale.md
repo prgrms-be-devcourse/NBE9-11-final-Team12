@@ -1825,3 +1825,152 @@ RUN_SCENARIOS=rate-300 bash performance/k6/run-stage-request-rate-scenarios.sh
 | 운영 목표 | 50~100 TPS |
 | 순간 집중(stress) | 200~300 TPS |
 | 추가 한계 탐색 | 400 TPS 이상은 별도 테스트 |
+
+
+## 28. DB 커넥션·WebSocket 병목 재정리
+
+### 28.1 이번 라운드에서 먼저 수정한 부분
+
+혼합 부하 스크립트 자체에 실제 서버 병목과 무관한 왜곡 요인이 있었다.
+
+- `readApis`가 방 참여자와 무관한 사용자 ID를 사용하고 있었다.
+  - 일부 조회가 `ROOM_PARTICIPATION_REQUIRED`로 실패할 수 있는 구조였다.
+  - 방별 참여 사용자 범위에 맞게 `roomId`와 `userId`를 같이 매핑하도록 수정했다.
+- WebSocket k6 스크립트가 브라우저 쿠키와 다르게 동작하고 있었다.
+  - WebSocket handshake에 cookie jar를 사용하도록 수정했다.
+- 로컬 DB에 성능용 seed 데이터가 없으면 `USER_NOT_FOUND`가 발생한다.
+  - `cleanup-performance-data.sql` 이후 `seed-performance-data.sql`을 다시 실행해 기준 데이터를 맞췄다.
+
+이 세 가지를 먼저 정리한 뒤 다시 측정해야 실제 병목을 볼 수 있다.
+
+### 28.2 성능 프로필 상향
+
+이번 라운드에서는 일반 local 기본값을 바꾸지 않고 `performance` profile만 상향했다.
+
+```yaml
+spring.datasource.hikari.maximum-pool-size = 40
+spring.datasource.hikari.minimum-idle = 20
+app.websocket.channel.inbound.core-pool-size = 8
+app.websocket.channel.inbound.max-pool-size = 32
+app.websocket.channel.outbound.core-pool-size = 8
+app.websocket.channel.outbound.max-pool-size = 32
+app.websocket.channel.inbound.queue-capacity = 5000
+app.websocket.channel.outbound.queue-capacity = 5000
+app.websocket.heartbeat.pool-size = 8
+```
+
+적용 확인:
+
+- `hikaricp_connections_max = 40`
+- `clientInboundChannelExecutor core = 8`
+- `clientOutboundChannelExecutor core = 8`
+
+### 28.3 기준 혼합 부하 재측정
+
+실행값:
+
+```bash
+READ_RATE=25
+WRITE_RATE=25
+STAGE_RATE=50
+WS_VUS=500
+DURATION=60s
+```
+
+의미:
+
+- HTTP 약 `323.88 req/s`
+- WebSocket 동시 연결 `500`
+- 채팅 수신 약 `4,556 msg/s`
+
+결과:
+
+| 항목 | 값 |
+| --- | ---: |
+| HTTP 실패율 | `0%` |
+| HTTP p95 | `38.67ms` |
+| HTTP p99 | `107.96ms` |
+| WebSocket 실패율 | `0%` |
+| WebSocket connect p95 | `286ms` |
+| Hikari pending max | `0` |
+| Hikari active max | `23` |
+| WS inbound queue max | `20,646` |
+| WS outbound queue max | `20,646` |
+
+판단:
+
+- 목표 규모 수준에서는 현재 로컬 환경도 안정적으로 처리한다.
+- 이전에 보였던 실패는 병목이 아니라 시나리오 오류 영향이 컸다.
+- 발언권 단독 경로는 이미 `300 TPS`까지 안정적으로 확인했으므로, 현재 우선 병목은 발언권이 아니다.
+
+### 28.4 스트레스 혼합 부하 한계 탐색
+
+실행값:
+
+```bash
+READ_RATE=50
+WRITE_RATE=50
+STAGE_RATE=100
+WS_VUS=1000
+DURATION=60s
+```
+
+의미:
+
+- HTTP 약 `617.16 req/s`
+- WebSocket 동시 연결 `1000`
+- 채팅 수신 약 `4,474 msg/s`
+
+결과:
+
+| 항목 | 값 |
+| --- | ---: |
+| HTTP 실패율 | `0%` |
+| HTTP p95 | `417.46ms` |
+| HTTP p99 | `1.02s` |
+| WebSocket 실패율 | `49.5%` |
+| WebSocket connect p95 | `664ms` |
+| dropped iterations | `27` |
+| Hikari pending max | `167` |
+| Hikari active max | `40` |
+| WS inbound queue max | `20,367` |
+| WS outbound queue max | `20,367` |
+
+세부 해석:
+
+- HTTP는 5xx 없이 버티지만 p95가 `417ms`까지 상승했다.
+- Hikari active가 `40`으로 꽉 차고 pending이 `167`까지 증가했다.
+  - 즉 DB 커넥션 대기가 확실히 발생했다.
+- WebSocket은 handshake와 subscribe 자체는 성공했지만, 약 절반 세션에서 send/receive가 완료되지 못했다.
+  - executor queue가 `20k` 이상 쌓여 메시지 처리 적체가 발생한 것으로 보는 편이 타당하다.
+
+### 28.5 이번 기준에서의 병목 판단
+
+현재 로컬 한계 탐색 기준에서 우선순위는 다음과 같다.
+
+1. **DB 커넥션 대기**
+   - 근거: `hikaricp_connections_pending max = 167`
+   - 의미: 단순 thread 부족이 아니라 DB에 들어가는 요청이 커넥션 풀에서 대기한다.
+
+2. **WebSocket 메시지 처리 적체**
+   - 근거: `executor_queued_tasks max ≈ 20k`, `mixed_ws_failure_rate = 49.5%`
+   - 의미: 연결은 열리지만 메시지 송수신 완료가 밀린다.
+
+3. **Simple Broker 기반 fan-out 한계 가능성**
+   - 근거: 1000 세션 / 4k+ msg/s 구간에서 send/receive 실패 증가
+   - 현재 단계에서는 executor 적체와 같이 나타나므로, 다음 실험에서는 broker relay 여부를 분리해서 봐야 한다.
+
+### 28.6 지금 결론
+
+- 발언권 신청 경로는 단독 `300 TPS`까지 확인되었으므로 현재 1차 병목으로 보지 않는다.
+- 현재 프로젝트의 실제 혼합 부하 병목은 **DB 커넥션 대기 + WebSocket 채널 적체**다.
+- 이번 라운드 상향으로 목표 규모(`HTTP 300+ RPS`, `WS 500`)는 통과했다.
+- 스트레스 구간(`HTTP 600+ RPS`, `WS 1000`)부터는 DB와 WebSocket이 동시에 한계에 진입한다.
+
+### 28.7 다음 개선 후보
+
+1. 조회/쓰기 API slow query 수집 후 query cost 먼저 절감
+2. Room/Stage/Speech 조회에서 불필요한 DB round-trip 제거
+3. WebSocket outbound fan-out 구조 점검
+4. 필요 시 broker relay(Redis pub/sub 또는 외부 broker) 검토
+5. 운영 서버에서는 DB max connection, CPU core, GC, broker 구조까지 함께 다시 측정

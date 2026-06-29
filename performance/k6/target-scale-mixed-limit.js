@@ -3,7 +3,7 @@ import ws from "k6/ws";
 import { check } from "k6";
 import exec from "k6/execution";
 import { Counter, Rate, Trend } from "k6/metrics";
-import { accessToken, authParams } from "./lib/auth.js";
+import { authCookieJar, authParams } from "./lib/auth.js";
 
 // 실제 병목 확인용 혼합 부하 테스트
 // 준비:
@@ -103,8 +103,9 @@ export const options = {
 
 export function readApis() {
     const iteration = scenarioIteration();
-    const userId = userIdBase + (iteration % 1000);
-    const roomId = roomIds[iteration % roomIds.length];
+    const roomIndex = iteration % roomIds.length;
+    const roomId = roomIds[roomIndex];
+    const userId = userIdBase + roomIndex * usersPerRoom + (iteration % usersPerRoom);
     const speechId = speechIdBase + (iteration % speechCount);
 
     get("/api/v1/users/me", userId, "GET /api/v1/users/me", [200]);
@@ -180,9 +181,9 @@ export function websocketChat() {
         wsUrl,
         {
             headers: {
-                Cookie: `accessToken=${accessToken(userId)}`,
                 Origin: frontendOrigin,
             },
+            jar: authCookieJar(baseUrl, userId),
             tags: { name: "WS /api/v1/ws", workload: "mixed-websocket", roomId: String(roomId) },
         },
         (socket) => {
