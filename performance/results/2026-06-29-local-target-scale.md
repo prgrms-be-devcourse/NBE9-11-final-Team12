@@ -2313,3 +2313,113 @@ WebSocket 채팅 전송 중 발생하는 `CustomException`을 사용자 전용 �
 2. 2배 부하 구간은 API별 slow query와 DB lock wait를 함께 수집해 원인을 좁힌다.
 3. 채팅 fan-out이 더 커질 경우 Simple Broker 한계를 재측정하고 외부 broker relay를 검토한다.
 4. 현재 k6 테스트는 로컬 클라이언트와 서버가 같은 장비에서 실행되므로, 운영 부하 테스트에서는 k6 실행 위치를 서버와 분리한다.
+
+## 31. Grafana 발표용 8080 목표 혼합 부하 재측정
+
+### 31.1 재측정 이유
+
+로컬 Prometheus 설정은 현재 백엔드 scrape target을 `host.docker.internal:8080`으로 바라본다.
+따라서 18080 포트에서 실행한 성능 프로필 테스트는 k6 결과는 남지만 Grafana 대시보드에는 백엔드 애플리케이션 지표가 표시되지 않는다.
+
+발표 자료용 그래프 확보를 위해 이번 테스트는 8080 포트에서 실행 중인 백엔드를 대상으로 다시 측정했다.
+
+확인한 수집 상태:
+
+```text
+Prometheus target: host.docker.internal:8080
+up: 1
+Hikari max connections: 10
+WebSocket inbound executor core size: 4
+WebSocket outbound executor core size: 4
+```
+
+주의할 점:
+
+- 이번 결과는 Grafana 캡처를 위한 8080 기본 로컬 설정 기준이다.
+- 18080에서 측정한 `performance` 프로필 결과와 직접 비교하면 안 된다.
+- 튜닝 후 개선 그래프가 필요하면 백엔드 자체를 8080 포트에서 `local,monitoring,performance` 프로필로 실행한 뒤 같은 시나리오를 다시 실행한다.
+
+### 31.2 실행 조건
+
+```bash
+ENABLE_WEBSOCKET=true
+READ_RATE=50
+WRITE_RATE=50
+STAGE_RATE=100
+WS_VUS=1000
+DURATION=60s
+CONNECTION_DURATION_SECONDS=60
+MESSAGE_INTERVAL_SECONDS=5
+BASE_URL=http://localhost:8080
+```
+
+의미:
+
+- REST 조회 계열 약 435 RPS
+- REST 쓰기 계열 약 100 RPS
+- 발언권 신청 약 100 TPS
+- WebSocket 동시 연결 1000명
+- WebSocket 메시지 전송 약 185 msg/s
+
+### 31.3 결과
+
+| 항목 | 값 |
+| --- | ---: |
+| HTTP 요청 수 | `38,883` |
+| HTTP 처리량 | `634.92 req/s` |
+| HTTP 실패율 | `0%` |
+| HTTP p95 | `370.67ms` |
+| HTTP p99 | `638.69ms` |
+| WebSocket 연결 수 | `1,000` |
+| WebSocket 실패율 | `0%` |
+| STOMP connect p95 | `1.17s` |
+| WebSocket sent | `11,308` |
+| WebSocket received | `300,342` |
+| dropped iterations | `31` |
+
+판단:
+
+- 8080 기본 로컬 설정에서도 목표 혼합 부하는 통과했다.
+- Grafana에서는 이 테스트 시간대의 HTTP latency, Hikari connection, JVM memory, WebSocket executor, Redis/MySQL exporter 지표를 발표 자료로 캡처할 수 있다.
+- 다만 기본 설정은 Hikari 10, WebSocket executor 4라서 운영 목표치 검증보다는 발표용 baseline 그래프 성격이 강하다.
+
+### 31.4 운영 서버 간단 테스트 시나리오
+
+운영 서버에서는 로컬과 달리 k6 실행 위치를 서버와 분리한다.
+동일 EC2 안에서 k6를 실행하면 애플리케이션 CPU, 네트워크, DB 자원을 함께 사용하므로 실제 병목 판단이 흐려진다.
+
+권장 순서:
+
+| 단계 | 목적 | 예시 부하 | 중단 기준 |
+| --- | --- | --- | --- |
+| Smoke | 배포 정상 확인 | `WS 50`, `REST 50 RPS`, `3분` | 5xx 발생 |
+| Baseline | 정상 운영 기준 | `WS 500`, `REST 300 RPS`, `5분` | p95 1s 초과 |
+| Target | 목표 규모 검증 | `WS 1000`, `REST 600 RPS`, `10분` | p95 3s 초과 또는 5xx 1% 초과 |
+| Stress | 한계 탐색 | Target의 `1.5x → 2x` 단계 상승 | p95 5s 초과, dropped iteration 증가, DB pending 증가 |
+
+운영 테스트 전제:
+
+- 테스트 전용 사용자, 토론방, 의견 데이터를 별도 prefix 또는 ID 범위로 생성한다.
+- 운영 사용자 데이터와 섞지 않는다.
+- 테스트 종료 후 cleanup SQL 또는 관리자 도구로 테스트 데이터를 제거한다.
+- 비용과 장애 영향을 줄이기 위해 사전 공지된 짧은 시간대에 수행한다.
+
+### 31.5 2배 부하 이후 병목 분리 방향
+
+2배 부하에서 HTTP p95가 먼저 커졌으므로 다음 분석은 WebSocket 전체가 아니라 HTTP API별 병목 분리가 우선이다.
+
+확인 순서:
+
+1. k6 `handleSummary` 또는 scenario tag 기준으로 느린 API를 분리한다.
+2. MySQL slow query log 또는 performance schema에서 같은 시간대 query latency를 확인한다.
+3. `SHOW ENGINE INNODB STATUS`, lock wait 지표, Hikari pending thread를 함께 본다.
+4. 느린 API가 조회라면 index, paging, N+1을 먼저 확인한다.
+5. 느린 API가 쓰기라면 unique constraint 충돌, 비관적 락 대기, 트랜잭션 범위를 확인한다.
+6. WebSocket은 연결 실패보다 broadcast 수신량 감소와 executor queue 증가 여부를 확인한다.
+
+현재 기준 다음 우선순위:
+
+1. 2배 부하에서 API별 p95/p99를 분리한다.
+2. 느린 API의 slow query와 lock wait를 같은 시간축으로 맞춘다.
+3. 병목이 DB라면 index/쿼리/락 범위를 줄인다.
+4. 병목이 WebSocket fan-out이면 Simple Broker 한계와 외부 broker relay 도입 여부를 판단한다.
