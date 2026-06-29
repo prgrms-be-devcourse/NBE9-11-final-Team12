@@ -34,6 +34,8 @@ dependencies {
 	implementation(platform("software.amazon.awssdk:bom:2.25.70"))
 	implementation("software.amazon.awssdk:sqs")
 	implementation("software.amazon.awssdk:ec2")
+	implementation("net.javacrumbs.shedlock:shedlock-spring:6.3.1")
+	implementation("net.javacrumbs.shedlock:shedlock-provider-redis-spring:6.3.1")
 	implementation("com.openhtmltopdf:openhtmltopdf-pdfbox:1.0.10")
 	implementation("com.openhtmltopdf:openhtmltopdf-slf4j:1.0.10")
 	runtimeOnly("io.micrometer:micrometer-registry-prometheus")

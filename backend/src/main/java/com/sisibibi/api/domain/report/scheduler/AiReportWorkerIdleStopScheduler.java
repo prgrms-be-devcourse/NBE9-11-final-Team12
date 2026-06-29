@@ -5,6 +5,7 @@ import com.sisibibi.api.domain.report.worker.AiReportWorkerEc2Service;
 import com.sisibibi.api.domain.report.worker.AiReportWorkerQueueMonitor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -31,6 +32,11 @@ public class AiReportWorkerIdleStopScheduler {
     private LocalDateTime idleStartedAt;
 
     @Scheduled(fixedDelayString = "${app.ai-report.worker.ec2.idle-check-fixed-delay-ms:60000}")
+    @SchedulerLock(
+            name = "aiReportWorkerIdleStopScheduler",
+            lockAtMostFor = "PT5M",
+            lockAtLeastFor = "PT30S"
+    )
     public void stopWorkerWhenQueueIsIdle() {
         if (!properties.isEnabled()) {
             idleStartedAt = null;
