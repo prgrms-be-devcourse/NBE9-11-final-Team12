@@ -231,6 +231,71 @@ k6 run performance/k6/core-api-mixed.js
 
 읽기와 쓰기는 서로 다른 사용자 범위를 사용한다. 두 범위를 겹치게 설정하면 쓰기 상태가 읽기 시나리오와 충돌할 수 있다.
 
+### 5. 목표 규모 혼합 부하
+
+`target-scale-mixed-limit.js`는 REST 조회, REST 쓰기, 발언권 신청, WebSocket 채팅을 동시에 발생시키는 목표 규모 테스트다.
+
+이 스크립트의 `READ_RATE`, `WRITE_RATE`, `STAGE_RATE`도 HTTP 요청 수가 아니라 시나리오 반복 수다.
+
+```text
+readApis 1회 = GET 9개
+writeApis 1회 = 공감 등록, 공감 취소, 신고 요청으로 최대 3개
+stageRequests 1회 = 발언권 신청 1개
+```
+
+따라서 예상 원시 HTTP RPS는 대략 다음처럼 계산한다.
+
+```text
+예상 HTTP RPS
+= READ_RATE * 9
++ WRITE_RATE * 2~3
++ STAGE_RATE
+```
+
+예시:
+
+| 목적 | READ_RATE | WRITE_RATE | STAGE_RATE | 예상 HTTP RPS |
+| --- | ---: | ---: | ---: | ---: |
+| 기준 부하 | 25 | 25 | 50 | 약 325~350 |
+| 한계 탐색 | 200 | 50 | 100 | 약 2,000 이상 |
+
+실행 예시:
+
+```bash
+BASE_URL=http://localhost:8080 \
+ROOM_IDS=900001,900002,900003,900004,900005,900006,900007,900008,900009,900010 \
+USER_ID_BASE=100000 \
+USERS_PER_ROOM=100 \
+SPEECH_ID_BASE=910001 \
+SPEECH_COUNT=500 \
+READ_RATE=25 \
+WRITE_RATE=25 \
+STAGE_RATE=50 \
+DURATION=1m \
+WS_VUS=500 \
+WS_MAX_DURATION=90s \
+CONNECTION_DURATION_SECONDS=60 \
+MESSAGE_INTERVAL_SECONDS=5 \
+k6 run performance/k6/target-scale-mixed-limit.js
+```
+
+발언권 신청은 테스트마다 누적 상태가 남기 쉬우므로 반복 실행 전 성능 데이터를 다시 초기화한다.
+
+```bash
+docker exec -i sisibibi-mysql mysql -uroot -proot sisibibi < performance/sql/cleanup-performance-data.sql
+docker exec -i sisibibi-mysql mysql -uroot -proot sisibibi < performance/sql/seed-performance-data.sql
+```
+
+성능 테스트에서는 외부 AI 호출 실패가 병목 해석을 흐릴 수 있다.
+로컬에서 OpenAI 키가 없거나 AI 서버가 없으면 발언권 종료 후 반대 쟁점 생성, 스테이지 요약, 오프토픽 리뷰가 실패 로그를 만들 수 있다.
+AI 기능 자체를 측정하는 테스트가 아니라면 다음처럼 가능한 기능은 끄고 실행한다.
+
+```bash
+STAGE_SUMMARY_ENABLED=false
+OFF_TOPIC_AI_REVIEW_ENABLED=false
+AI_REPORT_QUEUE_RETRY_ENABLED=false
+```
+
 ## 인증 전용 스크립트
 
 로그인만 측정:

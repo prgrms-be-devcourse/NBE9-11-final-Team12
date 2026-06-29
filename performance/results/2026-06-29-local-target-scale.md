@@ -1466,3 +1466,180 @@ histogram_quantile(
 - `sisibibi_chat_websocket_publish_seconds_*`
 
 이 비교로 채팅 병목이 DB 저장인지 브로드캐스트 발행인지 분리한다.
+
+## 26. 채팅 계측 후 혼합 부하 재측정
+
+### 26.1 목적
+
+채팅 경로를 `chat_messages` 저장 시간과 WebSocket 발행 시간으로 나눈 뒤, 목표 규모 혼합 부하에서 실제 병목이 어디인지 다시 확인했다.
+
+혼합 부하는 다음 요청을 동시에 발생시킨다.
+
+```text
+REST 조회
+REST 쓰기
+발언권 신청
+WebSocket 채팅 연결·구독·전송·수신
+```
+
+### 26.2 RATE 해석
+
+`target-scale-mixed-limit.js`의 `READ_RATE`, `WRITE_RATE`, `STAGE_RATE`는 HTTP 요청 수가 아니라 시나리오 반복 수다.
+
+```text
+readApis 1회 = GET 9개
+writeApis 1회 = 공감 등록, 공감 취소, 신고 요청으로 최대 3개
+stageRequests 1회 = 발언권 신청 1개
+```
+
+따라서 예상 원시 HTTP RPS는 다음과 같이 계산한다.
+
+```text
+예상 HTTP RPS
+= READ_RATE * 9
++ WRITE_RATE * 2~3
++ STAGE_RATE
+```
+
+예시:
+
+| 목적 | READ_RATE | WRITE_RATE | STAGE_RATE | 예상 HTTP RPS |
+| --- | ---: | ---: | ---: | ---: |
+| 기준 부하 | 25 | 25 | 50 | 약 325~350 |
+| 한계 탐색 | 200 | 50 | 100 | 약 2,000 이상 |
+
+### 26.3 한계 탐색 결과
+
+조건:
+
+```bash
+READ_RATE=200
+WRITE_RATE=50
+STAGE_RATE=100
+WS_VUS=500
+DURATION=1m
+CONNECTION_DURATION_SECONDS=60
+MESSAGE_INTERVAL_SECONDS=5
+```
+
+결과:
+
+| 항목 | 결과 |
+| --- | ---: |
+| 실제 HTTP 처리량 | 약 613 req/s |
+| HTTP 실패율 | 0% |
+| HTTP p95 | 1.72s |
+| HTTP p99 | 2.17s |
+| dropped iterations | 8,875 |
+| WebSocket 연결 수 | 500 |
+| WebSocket 전송 메시지 | 5,655 |
+| WebSocket 수신 메시지 | 14,512 |
+| WebSocket failure rate | 0.79% |
+
+Prometheus 확인:
+
+| 지표 | 결과 |
+| --- | ---: |
+| `sisibibi_chat_message_save_seconds` 평균 | 약 1.7ms |
+| `sisibibi_chat_message_save_seconds_max` | 약 120ms |
+| `sisibibi_chat_websocket_publish_seconds` 평균 | 약 0.21ms |
+| `sisibibi_chat_websocket_publish_seconds_max` | 약 45ms |
+| Hikari active max | 10 |
+| Hikari pending max | 194 |
+| WebSocket executor queued max | 125,166 |
+
+해석:
+
+```text
+채팅 저장 평균과 WebSocket 발행 평균은 낮다.
+하지만 목표 부하가 로컬 처리량을 초과하면서 Hikari pending connection과 WebSocket executor queue가 크게 증가했다.
+현재 한계 탐색 조건에서는 특정 채팅 저장 로직보다 전체 애플리케이션 자원 경합이 먼저 나타난다.
+```
+
+### 26.4 기준 부하 결과
+
+조건:
+
+```bash
+READ_RATE=25
+WRITE_RATE=25
+STAGE_RATE=50
+WS_VUS=500
+DURATION=1m
+CONNECTION_DURATION_SECONDS=60
+MESSAGE_INTERVAL_SECONDS=5
+```
+
+결과:
+
+| 항목 | 결과 |
+| --- | ---: |
+| 실제 HTTP 처리량 | 약 323 req/s |
+| HTTP 실패율 | 0% |
+| HTTP p95 | 48.61ms |
+| HTTP p99 | 166.28ms |
+| WebSocket 연결 수 | 500 |
+| WebSocket connect p95 | 479.04ms |
+| WebSocket 전송 메시지 | 4,821 |
+| WebSocket 수신 메시지 | 202,258 |
+| WebSocket failure rate | 26.08% |
+
+Prometheus 확인:
+
+| 지표 | 결과 |
+| --- | ---: |
+| `sisibibi_chat_message_save_seconds` 평균 | 약 1.3ms |
+| `sisibibi_chat_websocket_publish_seconds` 평균 | 약 0.16ms |
+| 주요 REST API p95 | 약 36~135ms |
+| HTTP 5xx | 0 |
+
+해석:
+
+```text
+HTTP는 목표 기준 부하에서 안정적이다.
+채팅 저장과 WebSocket 발행도 평균 기준으로 병목으로 보이지 않는다.
+다만 k6 WebSocket 세션 실패율이 26.08%로 높게 나왔고, 동시에 메시지 수신량은 20만 건 이상이었다.
+따라서 이 수치는 서버가 메시지를 전혀 처리하지 못했다는 의미라기보다, 테스트 스크립트의 세션 판정 조건, ERROR frame, 구독 완료 전 송신, 수신 타임아웃 중 어느 지점인지 분리 확인이 필요하다.
+```
+
+### 26.5 추가 계측
+
+`target-scale-mixed-limit.js`에 WebSocket 실패 원인을 분리하는 지표를 추가했다.
+
+| 지표 | 의미 |
+| --- | --- |
+| `mixed_ws_handshake_failure_rate` | WebSocket 101 upgrade 실패 |
+| `mixed_ws_connect_frame_failure_rate` | STOMP CONNECTED frame 미수신 |
+| `mixed_ws_subscribe_failure_rate` | SUBSCRIBE frame 전송 전 실패 |
+| `mixed_ws_send_failure_rate` | SEND frame 전송 전 실패 |
+| `mixed_ws_receive_failure_rate` | MESSAGE frame 미수신 |
+| `mixed_ws_error_frame_rate` | STOMP ERROR frame 또는 socket error 발생 |
+
+다음 테스트에서는 `mixed_ws_failure_rate` 하나만 보지 않고 위 지표를 함께 확인한다.
+
+### 26.6 주의사항
+
+발언권 신청·종료 경로는 AI 반대 쟁점 생성과 스테이지 요약을 트리거할 수 있다.
+로컬에 AI 키 또는 AI 서버가 없으면 OpenAI 401 같은 실패 로그가 발생하고, 성능 테스트 결과 해석을 흐릴 수 있다.
+
+AI 기능 자체를 측정하는 목적이 아니라면 가능한 옵션은 끄고 실행한다.
+
+```bash
+STAGE_SUMMARY_ENABLED=false
+OFF_TOPIC_AI_REVIEW_ENABLED=false
+AI_REPORT_QUEUE_RETRY_ENABLED=false
+```
+
+현재 `ai-counter-issue`에는 별도 enabled 옵션이 없으므로, 발언권 종료 흐름을 포함한 테스트에서는 AI 반대 쟁점 생성 실패 로그가 남을 수 있다.
+이 부분은 성능 테스트 전용 설정 추가 후보로 분리한다.
+
+### 26.7 다음 판단
+
+| 항목 | 판단 |
+| --- | --- |
+| REST 조회·쓰기 | 기준 부하에서는 안정적 |
+| 채팅 저장 | 현재 계측 기준 병목 아님 |
+| WebSocket 발행 | 현재 계측 기준 병목 아님 |
+| WebSocket 세션 실패율 | 원인 분리 계측 후 재측정 필요 |
+| 발언권 부하 | AI 실패 경로를 제거하거나 분리한 뒤 재측정 필요 |
+| 운영 서버 테스트 | 로컬 한계와 별도로 운영 서버 스펙, DB 스펙, Hikari pool, WebSocket executor 설정을 함께 기록해야 함 |

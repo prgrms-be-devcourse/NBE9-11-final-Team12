@@ -13,6 +13,11 @@ import { accessToken, authParams } from "./lib/auth.js";
 // 목적:
 // - REST 조회, REST 쓰기, 발언권 신청, WebSocket 채팅을 동시에 발생시켜 자원 경합을 확인한다.
 // - 단독 API 성능이 아니라 실제 서비스에 가까운 혼합 부하에서 p95/p99, 실패율, dropped iteration을 본다.
+// 주의:
+// - READ_RATE, WRITE_RATE, STAGE_RATE는 HTTP 요청 수가 아니라 k6 시나리오 반복 수다.
+// - readApis 1회는 9개 GET 요청을 호출한다.
+// - writeApis 1회는 공감 성공 여부에 따라 2~3개 쓰기 요청을 호출한다.
+// - 예상 원시 HTTP RPS는 대략 READ_RATE * 9 + WRITE_RATE * 2~3 + STAGE_RATE로 계산한다.
 
 const baseUrl = __ENV.BASE_URL || "http://localhost:8080";
 const wsUrl = baseUrl.replace(/^http/, "ws") + "/api/v1/ws";
@@ -30,6 +35,12 @@ const messageIntervalSeconds = Number(__ENV.MESSAGE_INTERVAL_SECONDS || "5");
 
 const mixedHttpFailureRate = new Rate("mixed_http_failure_rate");
 const mixedWsFailureRate = new Rate("mixed_ws_failure_rate");
+const mixedWsHandshakeFailureRate = new Rate("mixed_ws_handshake_failure_rate");
+const mixedWsConnectFrameFailureRate = new Rate("mixed_ws_connect_frame_failure_rate");
+const mixedWsSubscribeFailureRate = new Rate("mixed_ws_subscribe_failure_rate");
+const mixedWsSendFailureRate = new Rate("mixed_ws_send_failure_rate");
+const mixedWsReceiveFailureRate = new Rate("mixed_ws_receive_failure_rate");
+const mixedWsErrorFrameRate = new Rate("mixed_ws_error_frame_rate");
 const mixedHttpDuration = new Trend("mixed_http_duration", true);
 const mixedWsConnectDuration = new Trend("mixed_ws_connect_duration", true);
 const mixedReadRequests = new Counter("mixed_read_requests");
@@ -163,6 +174,7 @@ export function websocketChat() {
     let subscribed = false;
     let sent = false;
     let received = false;
+    let errorFrameReceived = false;
 
     const response = ws.connect(
         wsUrl,
@@ -202,13 +214,15 @@ export function websocketChat() {
                 }
 
                 if (message.startsWith("ERROR")) {
-                    mixedWsFailureRate.add(true, { roomId: String(roomId) });
+                    errorFrameReceived = true;
+                    mixedWsErrorFrameRate.add(true, { roomId: String(roomId) });
                     socket.close();
                 }
             });
 
             socket.on("error", () => {
-                mixedWsFailureRate.add(true, { roomId: String(roomId) });
+                errorFrameReceived = true;
+                mixedWsErrorFrameRate.add(true, { roomId: String(roomId) });
             });
 
             socket.setInterval(() => {
@@ -240,7 +254,16 @@ export function websocketChat() {
     const upgraded = check(response, {
         "mixed websocket upgraded": (result) => result?.status === 101,
     });
-    const ok = upgraded && stompReady && subscribed && sent && received;
+    mixedWsHandshakeFailureRate.add(!upgraded, { roomId: String(roomId) });
+    mixedWsConnectFrameFailureRate.add(!stompReady, { roomId: String(roomId) });
+    mixedWsSubscribeFailureRate.add(!subscribed, { roomId: String(roomId) });
+    mixedWsSendFailureRate.add(!sent, { roomId: String(roomId) });
+    mixedWsReceiveFailureRate.add(!received, { roomId: String(roomId) });
+    if (!errorFrameReceived) {
+        mixedWsErrorFrameRate.add(false, { roomId: String(roomId) });
+    }
+
+    const ok = upgraded && stompReady && subscribed && sent && received && !errorFrameReceived;
     mixedWsFailureRate.add(!ok, { roomId: String(roomId) });
 }
 
