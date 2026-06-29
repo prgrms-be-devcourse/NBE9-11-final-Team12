@@ -2089,3 +2089,227 @@ clientOutboundChannelExecutor core = 8
 2. HTTP p95/p99가 안정화되는지
 3. WebSocket queue가 줄어드는지
 4. mixed stress에서 WebSocket 실패율이 사라지는지
+
+## 30. 성능 프로필 적용 후 재측정
+
+### 30.1 측정 목적
+
+29번 측정에서 로컬 기본 설정은 다음 한계가 확인되었다.
+
+```text
+Hikari max = 10
+WebSocket inbound/outbound core = 4
+```
+
+이번에는 성능 프로필을 적용해 DB 커넥션 풀과 WebSocket executor를 확대한 뒤 동일 조건을 재측정했다.
+
+실행 프로필:
+
+```bash
+SPRING_PROFILES_ACTIVE=local,monitoring,performance
+SERVER_PORT=18080
+```
+
+확인된 설정:
+
+```text
+hikaricp_connections_max = 40
+clientInboundChannelExecutor core = 8
+clientOutboundChannelExecutor core = 8
+webSocketHeartbeatTaskScheduler core = 8
+```
+
+로컬 IDE 서버가 8080에서 이미 실행 중이어서, 성능 프로필 서버는 18080 포트로 별도 실행했다.
+
+### 30.2 REST-only 재측정
+
+실행값:
+
+```bash
+ENABLE_WEBSOCKET=false
+READ_RATE=50
+WRITE_RATE=50
+STAGE_RATE=100
+DURATION=60s
+```
+
+결과:
+
+| 항목 | 값 |
+| --- | ---: |
+| HTTP 요청 수 | `39,152` |
+| HTTP 처리량 | `652.13 req/s` |
+| HTTP 실패율 | `0%` |
+| HTTP p95 | `29.83ms` |
+| HTTP p99 | `81.69ms` |
+
+기존 로컬 기본 설정과 비교:
+
+| 항목 | 기본 설정 | 성능 프로필 |
+| --- | ---: | ---: |
+| Hikari max | `10` | `40` |
+| HTTP p95 | `192.35ms` | `29.83ms` |
+| HTTP p99 | `348.65ms` | `81.69ms` |
+| HTTP 실패율 | `0%` | `0%` |
+
+판단:
+
+- REST-only 병목은 Hikari pool 10개 제한의 영향이 컸다.
+- 성능 프로필에서 Hikari max를 40으로 올리자 같은 650 RPS 구간의 p95가 크게 낮아졌다.
+- 현재 목표 부하 기준에서는 DB 커넥션 풀 40이 로컬 단일 인스턴스 테스트에 더 적합하다.
+
+### 30.3 WebSocket-only 재측정
+
+실행값:
+
+```bash
+VUS=1000
+CONNECTION_DURATION_SECONDS=60
+MESSAGE_INTERVAL_SECONDS=5
+```
+
+결과:
+
+| 항목 | 값 |
+| --- | ---: |
+| WebSocket 연결 수 | `1000` |
+| WebSocket 실패율 | `0%` |
+| STOMP connect p95 | `630ms` |
+| sent | `11,657` |
+| received | `1,102,260` |
+| receive throughput | `18,181 msg/s` |
+
+기존 로컬 기본 설정과 비교:
+
+| 항목 | 기본 설정 | 성능 프로필 |
+| --- | ---: | ---: |
+| WebSocket 실패율 | `0%` | `0%` |
+| STOMP connect p95 | `649.04ms` | `630ms` |
+| received | `1,058,924` | `1,102,260` |
+| receive throughput | 약 `17k msg/s` | 약 `18k msg/s` |
+
+판단:
+
+- WebSocket 단독 1000명은 기존 설정에서도 실패하지 않았고, 성능 프로필에서도 안정적이었다.
+- 이 구간의 핵심 문제는 연결 실패가 아니라 혼합 부하에서 REST와 WebSocket 처리가 동시에 몰릴 때의 처리 지연이다.
+
+### 30.4 목표 혼합 부하 재측정
+
+실행값:
+
+```bash
+ENABLE_WEBSOCKET=true
+READ_RATE=50
+WRITE_RATE=50
+STAGE_RATE=100
+WS_VUS=1000
+DURATION=60s
+CONNECTION_DURATION_SECONDS=60
+MESSAGE_INTERVAL_SECONDS=5
+```
+
+결과:
+
+| 항목 | 값 |
+| --- | ---: |
+| HTTP 요청 수 | `38,800` |
+| HTTP 처리량 | `631.13 req/s` |
+| HTTP 실패율 | `0%` |
+| HTTP p95 | `417.46ms` |
+| HTTP p99 | `774.55ms` |
+| WebSocket 실패율 | `0%` |
+| STOMP connect p95 | `1.28s` |
+| WebSocket sent | `11,445` |
+| WebSocket received | `401,242` |
+| dropped iterations | `39` |
+
+기존 혼합 스트레스와 비교:
+
+| 항목 | 기본 설정 | 성능 프로필 |
+| --- | ---: | ---: |
+| HTTP p95 | `417.46ms` | `417.46ms` |
+| HTTP p99 | `1.02s` | `774.55ms` |
+| HTTP 실패율 | `0%` | `0%` |
+| WebSocket 실패율 | `49.5%` | `0%` |
+| dropped iterations | `27` | `39` |
+
+판단:
+
+- 성능 프로필 적용 후 같은 목표 혼합 부하에서 WebSocket 실패율이 사라졌다.
+- HTTP p99도 낮아졌다.
+- 목표 규모인 `1000 WS + HTTP 600 RPS 내외`는 로컬 성능 프로필 기준 통과로 본다.
+
+### 30.5 2배 혼합 부하 한계 탐색
+
+실행값:
+
+```bash
+ENABLE_WEBSOCKET=true
+READ_RATE=100
+WRITE_RATE=100
+STAGE_RATE=200
+WS_VUS=1000
+DURATION=60s
+CONNECTION_DURATION_SECONDS=60
+MESSAGE_INTERVAL_SECONDS=5
+```
+
+결과:
+
+| 항목 | 값 |
+| --- | ---: |
+| HTTP 요청 수 | `58,049` |
+| HTTP 처리량 | `913.19 req/s` |
+| HTTP 실패율 | `0.01%` |
+| HTTP p95 | `3.81s` |
+| HTTP p99 | `4.48s` |
+| WebSocket 실패율 | `0%` |
+| STOMP connect p95 | `1.12s` |
+| WebSocket sent | `11,574` |
+| WebSocket received | `58,522` |
+| dropped iterations | `3,406` |
+
+판단:
+
+- 2배 혼합 부하는 한계 구간이다.
+- WebSocket 연결 자체는 실패하지 않았지만 HTTP p95가 3초를 초과했다.
+- k6도 VU를 계속 늘리다가 `Insufficient VUs` 경고와 dropped iteration이 발생했다.
+- 즉 이 구간은 정상 운영 목표라기보다 한계 탐색 결과로 보는 것이 맞다.
+
+### 30.6 병목 판단
+
+이번 재측정 기준 병목은 다음과 같이 정리한다.
+
+1. 목표 부하에서는 성능 프로필 적용으로 DB 커넥션 병목과 WebSocket 실패가 완화되었다.
+2. 2배 부하에서는 HTTP 지연이 먼저 커졌다.
+3. WebSocket은 연결 실패보다 메시지 broadcast 처리량이 혼합 부하에서 크게 흔들렸다.
+4. 채팅 Rate Limit 예외가 WebSocket handler에서 ERROR stack trace로 남아 로그 노이즈와 운영 혼선을 만들었다.
+
+### 30.7 코드 보완
+
+WebSocket 채팅 전송 중 발생하는 `CustomException`을 사용자 전용 에러 큐로 응답하도록 처리했다.
+
+```text
+기존:
+채팅 rate limit 초과
+→ @MessageMapping 예외 발생
+→ 서버 ERROR stack trace 기록
+
+변경:
+채팅 rate limit 초과
+→ @MessageExceptionHandler 처리
+→ /user/queue/errors 로 ApiResponse 에러 전송
+```
+
+효과:
+
+- 정책상 예상 가능한 거절을 서버 장애처럼 기록하지 않는다.
+- 운영 로그에서 실제 장애와 사용자 정책 위반을 구분하기 쉬워진다.
+- 프론트는 `/user/queue/errors`를 구독해 채팅 전송 실패 사유를 표시할 수 있다.
+
+### 30.8 다음 개선 후보
+
+1. 운영 서버에서도 `performance` 수준의 Hikari/WebSocket executor 설정을 환경 변수로 조정한다.
+2. 2배 부하 구간은 API별 slow query와 DB lock wait를 함께 수집해 원인을 좁힌다.
+3. 채팅 fan-out이 더 커질 경우 Simple Broker 한계를 재측정하고 외부 broker relay를 검토한다.
+4. 현재 k6 테스트는 로컬 클라이언트와 서버가 같은 장비에서 실행되므로, 운영 부하 테스트에서는 k6 실행 위치를 서버와 분리한다.

@@ -7,6 +7,7 @@ import com.sisibibi.api.domain.chat.service.ChatService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.exception.GlobalExceptionHandler;
+import com.sisibibi.api.global.response.ApiResponse;
 import com.sisibibi.api.global.security.AuthPrincipal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -22,6 +23,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -132,6 +134,21 @@ class ChatMessageControllerTest {
                         .with(authPrincipal(2L)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void handleCustomException_returnsWebSocketErrorResponse() {
+        ChatMessageController controller = new ChatMessageController(chatService);
+
+        ApiResponse<Void> response = controller.handleCustomException(
+                new CustomException(ErrorCode.CHAT_RATE_LIMIT_EXCEEDED)
+        );
+
+        assertThat(response.getStatus())
+                .isEqualTo(ErrorCode.CHAT_RATE_LIMIT_EXCEEDED.getStatus().value());
+        assertThat(response.getCode()).isEqualTo("CHAT_RATE_LIMIT_EXCEEDED");
+        assertThat(response.getMessage()).isEqualTo(ErrorCode.CHAT_RATE_LIMIT_EXCEEDED.getMessage());
+        assertThat(response.getData()).isNull();
     }
 
     private UsernamePasswordAuthenticationToken authToken(Long userId) {

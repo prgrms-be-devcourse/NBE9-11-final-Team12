@@ -17,6 +17,8 @@ import java.security.Principal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
+import org.springframework.messaging.handler.annotation.MessageExceptionHandler;
+import org.springframework.messaging.simp.annotation.SendToUser;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.Authentication;
@@ -46,6 +48,18 @@ public class ChatMessageController {
     ) {
         AuthPrincipal authPrincipal = resolvePrincipal(principal);
         chatService.createMessage(roomId, authPrincipal.userId(), request.content());
+    }
+
+    @MessageExceptionHandler(CustomException.class)
+    @SendToUser("/queue/errors")
+    public ApiResponse<Void> handleCustomException(CustomException exception) {
+        ErrorCode errorCode = exception.getErrorCode();
+
+        return ApiResponse.error(
+                errorCode.getStatus(),
+                errorCode.name(),
+                errorCode.getMessage()
+        );
     }
 
     @Operation(
