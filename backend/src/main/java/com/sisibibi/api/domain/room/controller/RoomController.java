@@ -54,7 +54,7 @@ public class RoomController {
   }
 
   @Operation(
-      summary = "?좊줎諛?화면 동기화 상태 조회",
+      summary = "토론방 화면 동기화 상태 조회",
       description = "재연결, 포커스 복귀, 새로고침 후 화면 모드와 참여 상태를 보정합니다."
   )
   @GetMapping("/{roomId}/sync-state")
