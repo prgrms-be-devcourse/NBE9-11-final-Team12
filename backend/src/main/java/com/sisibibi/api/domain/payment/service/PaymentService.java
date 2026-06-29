@@ -33,7 +33,7 @@ public class PaymentService {
   private final AiReportRepository aiReportRepository;
   private final CustomPromptValidator customPromptValidator;
   private final PaymentClient paymentClient;
-  private final CustomAiReportGenerationOutboxWriter outboxWriter;
+  private final PaymentCompletionService paymentCompletionService;
 
   private static final long CUSTOM_AI_REPORT_PRICE = 3000L;
 
@@ -90,33 +90,7 @@ public class PaymentService {
         request.amount()
     );
 
-    return completePayment(userId, approval);
-  }
-
-  @Transactional
-  public PaymentRes completePayment(Long userId, PaymentApproval approval) {
-    Payment payment = paymentRepository.findByOrderIdAndUserId(approval.orderId(), userId)
-        .orElseThrow(() -> new CustomException(ErrorCode.PAYMENT_NOT_FOUND));
-
-    if (payment.getStatus() == PaymentStatus.COMPLETED) {
-      return PaymentRes.from(payment);
-    }
-
-    if (payment.getStatus() != PaymentStatus.PENDING) {
-      throw new CustomException(ErrorCode.PAYMENT_FAILED);
-    }
-
-    validateAmount(payment, approval.amount());
-    payment.complete(approval.paymentKey());
-
-    CustomAiReportRequest customRequest = customAiReportRequestRepository
-        .findByIdAndUserId(payment.getTargetId(), userId)
-        .orElseThrow(() -> new CustomException(ErrorCode.AI_REPORT_NOT_FOUND));
-
-    customRequest.markPaid();
-    outboxWriter.record(customRequest.getId(), LocalDateTime.now());
-
-    return PaymentRes.from(payment);
+    return paymentCompletionService.completePayment(userId, approval);
   }
 
   @Transactional(readOnly = true)
@@ -159,14 +133,11 @@ public class PaymentService {
         });
   }
 
-  @Transactional
-  public PaymentRes recoverApprovedPayment(Long userId, RecoverPaymentReq request) {
-    validatePaymentKeyNotUsedByAnotherOrder(
-        userId,
-        new ConfirmPaymentReq(request.orderId(), request.paymentKey(), request.amount())
-    );
 
-    return completePayment(
+
+  @Transactional(readOnly = true)
+  public PaymentRes recoverApprovedPayment(Long userId, RecoverPaymentReq request) {
+    return paymentCompletionService.completePayment(
         userId,
         new PaymentApproval(request.paymentKey(), request.orderId(), request.amount())
     );
