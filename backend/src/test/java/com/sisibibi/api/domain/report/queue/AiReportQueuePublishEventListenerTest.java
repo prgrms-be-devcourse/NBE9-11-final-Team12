@@ -3,6 +3,7 @@ package com.sisibibi.api.domain.report.queue;
 import com.sisibibi.api.domain.report.dto.event.AiReportGenerationRequestedEvent;
 import com.sisibibi.api.domain.report.service.AiReportGenerationType;
 import com.sisibibi.api.domain.report.service.AiReportPersistenceService;
+import com.sisibibi.api.domain.report.worker.AiReportWorkerEc2Service;
 import com.sisibibi.api.global.exception.ErrorCode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,6 +26,9 @@ class AiReportQueuePublishEventListenerTest {
     @Mock
     private AiReportPersistenceService aiReportPersistenceService;
 
+    @Mock
+    private AiReportWorkerEc2Service aiReportWorkerEc2Service;
+
     @InjectMocks
     private AiReportQueuePublishEventListener listener;
 
@@ -42,6 +46,7 @@ class AiReportQueuePublishEventListenerTest {
         assertThat(messageCaptor.getValue().generationType()).isEqualTo(AiReportGenerationType.BASE_ONLY);
         assertThat(messageCaptor.getValue().idempotencyKey()).isEqualTo("ai-report-55-v1");
         verify(aiReportPersistenceService).markQueued(55L);
+        verify(aiReportWorkerEc2Service).startWorkerIfEnabled();
         verifyNoMoreInteractions(aiReportPersistenceService);
     }
 
@@ -60,5 +65,6 @@ class AiReportQueuePublishEventListenerTest {
                 ErrorCode.AI_REPORT_QUEUE_PUBLISH_FAILED.name(),
                 ErrorCode.AI_REPORT_QUEUE_PUBLISH_FAILED.getMessage()
         );
+        verifyNoMoreInteractions(aiReportWorkerEc2Service);
     }
 }

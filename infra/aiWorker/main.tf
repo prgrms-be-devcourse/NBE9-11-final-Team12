@@ -261,12 +261,6 @@ resource "aws_instance" "ai_worker" {
   associate_public_ip_address = true
   iam_instance_profile        = aws_iam_instance_profile.ai_worker_profile.name
 
-
-  instance_market_options {
-    market_type = "spot"
-  }
-
-
   root_block_device {
     volume_type = "gp3"
     volume_size = var.root_volume_size

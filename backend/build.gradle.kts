@@ -33,6 +33,7 @@ dependencies {
 	implementation("org.springframework.ai:spring-ai-starter-model-openai")
 	implementation(platform("software.amazon.awssdk:bom:2.25.70"))
 	implementation("software.amazon.awssdk:sqs")
+	implementation("software.amazon.awssdk:ec2")
 	implementation("com.openhtmltopdf:openhtmltopdf-pdfbox:1.0.10")
 	implementation("com.openhtmltopdf:openhtmltopdf-slf4j:1.0.10")
 	runtimeOnly("io.micrometer:micrometer-registry-prometheus")

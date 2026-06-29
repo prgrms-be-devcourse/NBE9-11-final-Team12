@@ -8,6 +8,7 @@ import com.sisibibi.api.domain.report.queue.AiReportQueueMessage;
 import com.sisibibi.api.domain.report.queue.AiReportQueueProperties;
 import com.sisibibi.api.domain.report.queue.AiReportQueuePublisher;
 import com.sisibibi.api.domain.report.repository.AiReportRepository;
+import com.sisibibi.api.domain.report.worker.AiReportWorkerEc2Service;
 import com.sisibibi.api.global.exception.ErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,6 +41,9 @@ class AiReportPublishRetryServiceTest {
     @Mock
     private AiReportPersistenceService aiReportPersistenceService;
 
+    @Mock
+    private AiReportWorkerEc2Service aiReportWorkerEc2Service;
+
     private AiReportQueueProperties properties;
     private AiReportPublishRetryService service;
 
@@ -53,7 +57,8 @@ class AiReportPublishRetryServiceTest {
                 aiReportRepository,
                 aiReportQueuePublisher,
                 aiReportPersistenceService,
-                properties
+                properties,
+                aiReportWorkerEc2Service
         );
     }
 
@@ -77,6 +82,7 @@ class AiReportPublishRetryServiceTest {
         assertThat(messageCaptor.getValue().roomId()).isEqualTo(10L);
         assertThat(messageCaptor.getValue().generationType()).isEqualTo(AiReportGenerationType.BASE_ONLY);
         verify(aiReportPersistenceService).markQueued(55L);
+        verify(aiReportWorkerEc2Service).startWorkerIfEnabled();
     }
 
     @Test
@@ -104,6 +110,7 @@ class AiReportPublishRetryServiceTest {
         verify(aiReportQueuePublisher).publish(messageCaptor.capture());
         assertThat(messageCaptor.getValue().generationType()).isEqualTo(AiReportGenerationType.CUSTOM_ONLY);
         verify(aiReportPersistenceService).markQueued(56L);
+        verify(aiReportWorkerEc2Service).startWorkerIfEnabled();
     }
 
     @Test
@@ -131,6 +138,7 @@ class AiReportPublishRetryServiceTest {
                 ErrorCode.AI_REPORT_QUEUE_PUBLISH_FAILED.name(),
                 ErrorCode.AI_REPORT_QUEUE_PUBLISH_FAILED.getMessage()
         );
+        verifyNoInteractions(aiReportWorkerEc2Service);
     }
 
     @Test

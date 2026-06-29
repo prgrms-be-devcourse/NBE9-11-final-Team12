@@ -2,6 +2,7 @@ package com.sisibibi.api.domain.report.queue;
 
 import com.sisibibi.api.domain.report.dto.event.AiReportGenerationRequestedEvent;
 import com.sisibibi.api.domain.report.service.AiReportPersistenceService;
+import com.sisibibi.api.domain.report.worker.AiReportWorkerEc2Service;
 import com.sisibibi.api.global.config.AsyncConfig;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +19,7 @@ public class AiReportQueuePublishEventListener {
 
     private final AiReportQueuePublisher aiReportQueuePublisher;
     private final AiReportPersistenceService aiReportPersistenceService;
+    private final AiReportWorkerEc2Service aiReportWorkerEc2Service;
 
     @Async(AsyncConfig.DOMAIN_EVENT_TASK_EXECUTOR)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -25,6 +27,7 @@ public class AiReportQueuePublishEventListener {
         try {
             aiReportQueuePublisher.publish(event.toQueueMessage());
             aiReportPersistenceService.markQueued(event.reportId());
+            aiReportWorkerEc2Service.startWorkerIfEnabled();
         } catch (RuntimeException publishException) {
             log.warn(
                     "Failed to publish AI report generation message. reportId={}, roomId={}, generationType={}",

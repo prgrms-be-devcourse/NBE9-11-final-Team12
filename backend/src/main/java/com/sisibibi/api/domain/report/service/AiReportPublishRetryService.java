@@ -6,6 +6,7 @@ import com.sisibibi.api.domain.report.queue.AiReportQueueMessage;
 import com.sisibibi.api.domain.report.queue.AiReportQueueProperties;
 import com.sisibibi.api.domain.report.queue.AiReportQueuePublisher;
 import com.sisibibi.api.domain.report.repository.AiReportRepository;
+import com.sisibibi.api.domain.report.worker.AiReportWorkerEc2Service;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +30,7 @@ public class AiReportPublishRetryService {
     private final AiReportQueuePublisher aiReportQueuePublisher;
     private final AiReportPersistenceService aiReportPersistenceService;
     private final AiReportQueueProperties aiReportQueueProperties;
+    private final AiReportWorkerEc2Service aiReportWorkerEc2Service;
 
     public int republishStaleRequests() {
         return republishStaleRequests(LocalDateTime.now());
@@ -64,6 +66,7 @@ public class AiReportPublishRetryService {
                     resolveGenerationType(report)
             ));
             aiReportPersistenceService.markQueued(report.getId());
+            aiReportWorkerEc2Service.startWorkerIfEnabled();
             return true;
         } catch (RuntimeException publishException) {
             log.warn(

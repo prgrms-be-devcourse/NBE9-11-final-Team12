@@ -171,6 +171,16 @@ app:
         stale-threshold: ${AI_REPORT_QUEUE_RETRY_STALE_THRESHOLD:30s}
         batch-size: ${AI_REPORT_QUEUE_RETRY_BATCH_SIZE:20}
         max-retry-count: ${AI_REPORT_QUEUE_RETRY_MAX_RETRY_COUNT:5}
+    worker:
+      ec2:
+        enabled: ${AI_REPORT_WORKER_EC2_ENABLED:false}
+        region: ${AI_REPORT_WORKER_EC2_REGION:ap-northeast-2}
+        instance-id: ${AI_REPORT_WORKER_EC2_INSTANCE_ID:}
+        access-key-id: ${AI_REPORT_WORKER_EC2_ACCESS_KEY_ID:}
+        secret-access-key: ${AI_REPORT_WORKER_EC2_SECRET_ACCESS_KEY:}
+        idle-stop-enabled: ${AI_REPORT_WORKER_EC2_IDLE_STOP_ENABLED:true}
+        idle-timeout: ${AI_REPORT_WORKER_EC2_IDLE_TIMEOUT:10m}
+        idle-check-fixed-delay-ms: ${AI_REPORT_WORKER_EC2_IDLE_CHECK_FIXED_DELAY_MS:60000}
   prompt-guard:
     base-url: ${PROMPT_GUARD_BASE_URL:}
     scan-path: ${PROMPT_GUARD_SCAN_PATH:/scan}
