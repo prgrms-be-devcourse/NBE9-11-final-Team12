@@ -245,12 +245,12 @@ export default function RoomDetailPage() {
     }
 
     if (state.roomStatus === "CLOSED") {
-      setParticipationError("?좊줎諛⑹씠 醫낅즺?섏뿀?듬땲??")
+      setParticipationError("토론방이 종료되었습니다.")
       return
     }
 
     if (state.myParticipantStatus !== "JOINED") {
-      setParticipationError("?좊줎諛⑹뿉 李몄뿬 以묒씤 ?곹깭媛 ?꾨떃?덈떎.")
+      setParticipationError("토론방에 참여 중인 상태가 아닙니다.")
     }
   }, [])
 
@@ -260,7 +260,7 @@ export default function RoomDetailPage() {
       applySyncState(state)
       return state
     } catch (error) {
-      setParticipationError(error instanceof ApiError ? error.message : "?좊줎諛?李몄뿬 ?곹깭瑜?遺덈윭?ㅼ? 紐삵뻽?듬땲??")
+      setParticipationError(error instanceof ApiError ? error.message : "토론방 참여 상태를 불러오지 못했습니다.")
       return null
     }
   }, [applySyncState, roomId])
