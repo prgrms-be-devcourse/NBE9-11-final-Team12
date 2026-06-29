@@ -1052,3 +1052,130 @@ HTTP 조회/쓰기/발언권 신청 증가
 
 현재 단계에서 바로 확인된 가장 명확한 수정 후보는 WebSocket 채널 executor 설정이다.
 단, executor pool만 키우면 DB 대기가 더 커질 수 있으므로 적용 후 같은 혼합 부하로 재측정해야 한다.
+
+## 21. WebSocket executor 튜닝 후 재측정
+
+### 21.1 적용한 변경
+
+혼합 부하에서 WebSocket executor pool size가 1로 동작하고 큐가 100,000건 이상 적체되는 것이 확인되어 WebSocket 채널 executor 설정을 명시했다.
+
+| 설정 | 변경 후 기본값 |
+| --- | ---: |
+| inbound core pool size | 4 |
+| inbound max pool size | 16 |
+| inbound queue capacity | 2,000 |
+| outbound core pool size | 4 |
+| outbound max pool size | 16 |
+| outbound queue capacity | 2,000 |
+| heartbeat scheduler pool size | 4 |
+
+환경 변수로 조정 가능하도록 구성했다.
+
+```text
+WEBSOCKET_INBOUND_CORE_POOL_SIZE
+WEBSOCKET_INBOUND_MAX_POOL_SIZE
+WEBSOCKET_INBOUND_QUEUE_CAPACITY
+WEBSOCKET_OUTBOUND_CORE_POOL_SIZE
+WEBSOCKET_OUTBOUND_MAX_POOL_SIZE
+WEBSOCKET_OUTBOUND_QUEUE_CAPACITY
+WEBSOCKET_HEARTBEAT_POOL_SIZE
+```
+
+### 21.2 재측정 1차: HTTP 목표 175 RPS + WebSocket 500명
+
+| 항목 | 튜닝 전 | 튜닝 후 |
+| --- | ---: | ---: |
+| HTTP 요청 수 | 28,373 | 28,280 |
+| HTTP 처리량 | 887.23 req/s | 898.95 req/s |
+| HTTP 실패율 | 0% | 0% |
+| HTTP p95 | 436.56ms | 438.34ms |
+| HTTP p99 | 586.58ms | 547.28ms |
+| dropped iterations | 185 | 196 |
+| WebSocket 연결 수 | 500 | 500 |
+| WebSocket connect p95 | 619.04ms | 823.20ms |
+| WebSocket 메시지 전송 | 2,731 | 2,642 |
+| WebSocket 메시지 수신 | 152 | 9,248 |
+| WebSocket failure rate | 69.59% | 0% |
+
+낮은 혼합 부하에서는 HTTP 성능은 거의 유지되면서 WebSocket 수신 실패가 해소됐다.
+
+### 21.3 재측정 2차: HTTP 목표 350 RPS + WebSocket 500명
+
+| 항목 | 튜닝 전 | 튜닝 후 |
+| --- | ---: | ---: |
+| HTTP 요청 수 | 33,997 | 28,550 |
+| HTTP 처리량 | 973.74 req/s | 801.45 req/s |
+| HTTP 실패율 | 0% | 0% |
+| HTTP p95 | 1.64s | 2.27s |
+| HTTP p99 | 1.84s | 3.60s |
+| dropped iterations | 2,979 | 3,693 |
+| WebSocket 연결 수 | 500 | 500 |
+| WebSocket connect p95 | 526ms | 547.04ms |
+| WebSocket 메시지 전송 | 2,635 | 2,626 |
+| WebSocket 메시지 수신 | 49 | 10,252 |
+| WebSocket failure rate | 90.20% | 0% |
+
+높은 혼합 부하에서도 WebSocket 수신 실패는 해소됐다.
+다만 WebSocket 메시지가 실제로 처리되면서 애플리케이션과 DB가 수행하는 총 작업량이 증가했고, HTTP p95와 dropped iteration은 더 나빠졌다.
+
+### 21.4 튜닝 후 Prometheus 지표
+
+튜닝 후 혼합 부하 시간대 주요 지표는 다음과 같다.
+
+| 지표 | 결과 |
+| --- | ---: |
+| 현재 앱 Hikari active connections max | 10 |
+| 현재 앱 Hikari pending connections max | 194 |
+| Hikari acquire max | 1.799s |
+| Hikari usage max | 2.341s |
+| WebSocket inbound executor active max | 4 |
+| WebSocket outbound executor active max | 4 |
+| heartbeat scheduler active max | 4 |
+| WebSocket executor queued tasks max | 66,755 |
+
+WebSocket executor 큐 적체는 100,527에서 66,755로 감소했고, 수신 실패율은 0%가 됐다.
+반면 Hikari pending connection은 여전히 190 이상으로 관측되어, 다음 병목은 DB 커넥션 풀 대기와 트랜잭션 처리 비용으로 보는 것이 타당하다.
+
+### 21.5 튜닝 후 DB 반영량
+
+| 데이터 | 결과 |
+| --- | ---: |
+| chat_messages | 5,268 |
+| speech_reports | 475 |
+| speech_reactions | 10,000 |
+| speaking_queue | 120 |
+
+WebSocket 채팅과 REST 쓰기가 실제 DB 저장까지 수행되는 부하였음을 다시 확인했다.
+
+### 21.6 결론
+
+이번 튜닝으로 1차 병목이던 WebSocket executor pool size 1 문제는 완화됐다.
+
+```text
+튜닝 전:
+WebSocket executor pool size 1
+→ 큐 100,000건 이상 적체
+→ WebSocket 수신 실패율 69~90%
+
+튜닝 후:
+WebSocket executor pool size 4 이상
+→ WebSocket 수신 실패율 0%
+→ 실제 메시지 처리량 증가
+→ DB 커넥션 풀 대기 병목이 더 명확히 드러남
+```
+
+현재 남은 병목은 특정 API 하나가 아니라 혼합 부하에서 발생하는 공통 DB 대기다.
+API별 평균 응답 시간이 대부분 비슷하게 증가했고, Hikari pending connection이 194까지 증가했다.
+
+다음 개선 후보는 다음 순서가 적절하다.
+
+| 우선순위 | 개선 후보 | 판단 근거 |
+| ---: | --- | --- |
+| 1 | Hikari pool size, DB max connection, 애플리케이션 thread 수를 함께 조정 | Hikari pending connection이 190 이상 발생 |
+| 2 | 목록/집계 조회 최적화 | 의견 목록, 참여자 수, 신뢰도, 베스트 의견 조회가 혼합 조회 부하를 만든다 |
+| 3 | 채팅 저장과 브로드캐스트 시간 메트릭 분리 | DB 저장 병목과 WebSocket 발행 병목을 더 세분화해야 함 |
+| 4 | performance profile에서 불필요한 백그라운드 작업 최소화 | AI/스케줄러 로그가 테스트 중 함께 발생함 |
+| 5 | 운영 환경에서 WebSocket broker relay 검토 | 단일 인스턴스 simple broker 한계 대비 |
+
+현재 로컬 기준 목표 동시접속 500명 + HTTP 혼합 부하에서는 WebSocket 전달 자체보다 DB 커넥션 풀 대기가 다음 병목이다.
+운영 서버 테스트에서는 서버 스펙, DB 스펙, Hikari pool, MySQL max connection을 함께 기록해야 동일한 수치를 해석할 수 있다.
