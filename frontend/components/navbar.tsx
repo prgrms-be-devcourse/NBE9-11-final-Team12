@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation"
 import { useState } from "react"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth-provider"
 import {
@@ -50,14 +49,8 @@ export function Navbar() {
             <Zap className="size-3.5 text-primary-foreground" />
           </div>
           <span className="text-[15px] font-bold tracking-tight text-foreground">
-            시시비비
+            이슈톡
           </span>
-          <Badge
-            variant="outline"
-            className="hidden border-primary/30 text-primary text-[10px] font-semibold sm:flex"
-          >
-            ARENA TALK
-          </Badge>
         </Link>
 
         <nav className="hidden items-center gap-0.5 md:flex">

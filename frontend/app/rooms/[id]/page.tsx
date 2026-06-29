@@ -49,12 +49,18 @@ type RoomView = {
   isLive: boolean
 }
 
-function ChatUnavailable() {
+function ChatUnavailable({ closed = false }: { closed?: boolean }) {
   return (
     <div className="flex h-full min-h-0 flex-col items-center justify-center gap-2 px-4 text-center text-muted-foreground">
       <MessageSquare className="size-6" />
-      <p className="text-sm font-medium text-foreground">채팅 연결 대기 중</p>
-      <p className="text-xs">토론방 입장이 완료되면 실시간 채팅이 연결됩니다.</p>
+      <p className="text-sm font-medium text-foreground">
+        {closed ? "종료된 토론방입니다" : "채팅을 준비 중입니다"}
+      </p>
+      <p className="text-xs">
+        {closed
+          ? "종료된 토론방의 채팅 내역은 표시하지 않습니다."
+          : "토론방 입장 후 실시간 채팅이 연결됩니다."}
+      </p>
     </div>
   )
 }
@@ -168,6 +174,7 @@ export default function RoomDetailPage() {
   const disconnectGraceTimerRef = useRef<number | null>(null)
   const [disconnectGraceExceeded, setDisconnectGraceExceeded] = useState(false)
   const [roomTimerNow, setRoomTimerNow] = useState(() => Date.now())
+  const liveRoomActive = joined && roomView?.status === "OPEN"
 
   const rememberEvent = useCallback((eventId: string) => {
     if (handledEventIdsRef.current.includes(eventId)) return false
@@ -288,7 +295,7 @@ export default function RoomDetailPage() {
   }, [roomId])
 
   useEffect(() => {
-    if (!joined) return
+    if (!liveRoomActive) return
 
     const connection = createRoomStompConnection(roomId, {
       onStatus: (connected) => {
@@ -314,7 +321,7 @@ export default function RoomDetailPage() {
       connectedOnceRef.current = false
       connection.disconnect()
     }
-  }, [ensureJoined, joined, roomId])
+  }, [ensureJoined, liveRoomActive, roomId])
 
   useEffect(() => {
     if (realtimeStatus === "connected" || realtimeStatus === "disconnected") {
@@ -666,14 +673,14 @@ export default function RoomDetailPage() {
                     <TabsContent value="stage" className="m-0 h-[70vh] min-h-[500px]">
                       <MainStage
                         roomId={roomId}
-                        liveEnabled={joined}
+                        liveEnabled={liveRoomActive}
                         stompConnection={stompConnection}
                         stompConnected={stompConnected}
                         recoveryKey={recoveryKey}
                       />
                     </TabsContent>
                     <TabsContent value="chat" className="m-0 h-[70vh] min-h-[500px]">
-                      {joined ? (
+                      {liveRoomActive ? (
                         <ChatPanel
                           roomId={roomId}
                           stompConnection={stompConnection}
@@ -681,7 +688,7 @@ export default function RoomDetailPage() {
                           realtimeStatus={realtimeStatus}
                           recoveryKey={recoveryKey}
                         />
-                      ) : <ChatUnavailable />}
+                      ) : <ChatUnavailable closed={roomView?.status === "CLOSED"} />}
                     </TabsContent>
                   </Tabs>
                 </div>
@@ -691,14 +698,14 @@ export default function RoomDetailPage() {
                   <div className="min-h-0 flex-1 border-r border-border/50">
                     <MainStage
                       roomId={roomId}
-                      liveEnabled={joined}
+                      liveEnabled={liveRoomActive}
                       stompConnection={stompConnection}
                       stompConnected={stompConnected}
                       recoveryKey={recoveryKey}
                     />
                   </div>
                   <div className="min-h-0 w-80 xl:w-96">
-                    {joined ? (
+                    {liveRoomActive ? (
                       <ChatPanel
                         roomId={roomId}
                         stompConnection={stompConnection}
@@ -706,7 +713,7 @@ export default function RoomDetailPage() {
                         realtimeStatus={realtimeStatus}
                         recoveryKey={recoveryKey}
                       />
-                    ) : <ChatUnavailable />}
+                    ) : <ChatUnavailable closed={roomView?.status === "CLOSED"} />}
                   </div>
                 </div>
               </div>

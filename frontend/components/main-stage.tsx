@@ -221,6 +221,9 @@ export function MainStage({
   const loadStage = useCallback(async () => {
     const requestSeq = ++stageRequestSeqRef.current
     if (!liveEnabled) {
+      setCurrentSpeaker(null)
+      setQueueSummary(null)
+      setRequestStatus(null)
       setStageLoading(false)
       setStageError("")
       return
@@ -973,8 +976,14 @@ export function MainStage({
         ) : timelineItems.length === 0 ? (
           <div className="flex h-40 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
             <History className="size-6" />
-            <p className="text-sm">아직 등록된 의견이 없습니다.</p>
-            <p className="text-xs">발언권을 받은 사용자가 첫 의견을 작성할 수 있습니다.</p>
+            <p className="text-sm">
+              {liveEnabled ? "아직 의견이 없습니다." : "종료된 토론방입니다."}
+            </p>
+            <p className="text-xs">
+              {liveEnabled
+                ? "발언권을 받은 뒤 첫 의견을 남겨보세요."
+                : "종료된 토론방의 발언권과 의견 내역은 표시하지 않습니다."}
+            </p>
           </div>
         ) : (
           <div className="flex flex-col gap-3">

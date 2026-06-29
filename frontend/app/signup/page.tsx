@@ -6,7 +6,6 @@ import { authApi } from "@/lib/api/services"
 import { ApiError } from "@/lib/api/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
@@ -97,13 +96,7 @@ export default function SignupPage() {
           <div className="flex size-8 items-center justify-center rounded-lg bg-primary">
             <Zap className="size-4 text-primary-foreground" />
           </div>
-          <span className="font-bold text-foreground">시시비비</span>
-          <Badge
-            variant="outline"
-            className="hidden border-primary/40 text-primary text-[10px] sm:flex"
-          >
-            ARENA TALK
-          </Badge>
+          <span className="font-bold text-foreground">이슈톡</span>
         </Link>
         <Link href="/login">
           <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground text-xs">
@@ -125,7 +118,7 @@ export default function SignupPage() {
                 <div className="mb-6 text-center">
                   <h1 className="mb-1 text-2xl font-bold text-foreground">회원가입</h1>
                   <p className="text-sm text-muted-foreground">
-                    시시비비 아레나에 참여하세요
+                    이슈톡에 참여하세요
                   </p>
                 </div>
 
@@ -287,7 +280,7 @@ export default function SignupPage() {
                           />
                         </div>
                         <p className="text-[11px] text-muted-foreground">
-                          토의방에서 표시될 닉네임입니다. 언제든 변경 가능합니다.
+                          토론방에서 표시될 닉네임입니다. 언제든 변경 가능합니다.
                         </p>
                       </div>
 
@@ -370,7 +363,7 @@ export default function SignupPage() {
                 <div>
                   <h2 className="mb-1 text-2xl font-bold text-foreground">가입 완료!</h2>
                   <p className="text-sm text-muted-foreground">
-                    시시비비 아레나에 오신 것을 환영합니다.
+                    이슈톡에 오신 것을 환영합니다.
                   </p>
                 </div>
                 <div className="w-full rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-left">
@@ -378,7 +371,7 @@ export default function SignupPage() {
                   <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
                     <li className="flex items-center gap-1.5">
                       <span className="size-1 rounded-full bg-primary flex-shrink-0" />
-                      발언권을 신청해 실시간 토의에 참여하세요
+                      발언권을 신청해 실시간 토론에 참여하세요
                     </li>
                     <li className="flex items-center gap-1.5">
                       <span className="size-1 rounded-full bg-primary flex-shrink-0" />
@@ -389,7 +382,7 @@ export default function SignupPage() {
                 <Link href="/rooms" className="w-full">
                   <Button size="lg" className="w-full gap-2 text-sm font-semibold">
                     <Zap className="size-4" />
-                    토의 시작하기
+                    토론 시작하기
                   </Button>
                 </Link>
                 <Link href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors">

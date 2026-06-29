@@ -5,7 +5,6 @@ import { Suspense, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { authApi } from "@/lib/api/services"
 import { ApiError } from "@/lib/api/client"
@@ -52,10 +51,7 @@ function LoginContent() {
           <div className="flex size-7 items-center justify-center rounded-lg bg-primary">
             <Zap className="size-3.5 text-primary-foreground" />
           </div>
-          <span className="text-[15px] font-bold text-foreground">시시비비</span>
-          <Badge variant="outline" className="hidden border-primary/30 text-primary text-[10px] font-semibold sm:flex">
-            ARENA TALK
-          </Badge>
+          <span className="text-[15px] font-bold text-foreground">이슈톡</span>
         </Link>
         <Link href="/signup">
           <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-muted-foreground">
@@ -79,14 +75,14 @@ function LoginContent() {
                 </div>
               </div>
               <h1 className="mb-1 text-[22px] font-bold tracking-tight text-foreground">다시 만나요</h1>
-              <p className="text-sm text-muted-foreground">시시비비 계정으로 로그인하세요</p>
+              <p className="text-sm text-muted-foreground">이슈톡 계정으로 로그인하세요</p>
             </div>
 
             {/* Live indicator */}
             <div className="mb-6 flex items-center justify-center gap-2 rounded-xl border border-border bg-muted/50 px-4 py-2.5">
               <span className="size-1.5 rounded-full bg-rose-500 animate-live-pulse" />
               <span className="text-xs text-muted-foreground">
-                로그인 후 실제 토의방 현황을 확인할 수 있어요
+                로그인 후 실제 토론방에 참여할 수 있어요
               </span>
               <Radio className="size-3.5 text-muted-foreground" />
             </div>
