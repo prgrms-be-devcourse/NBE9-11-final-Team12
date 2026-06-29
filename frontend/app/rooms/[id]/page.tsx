@@ -20,6 +20,7 @@ import type {
   RoomEvent,
   RoomParticipant,
   RoomParticipantEvent,
+  RoomSyncState,
   UserSanctionEvent,
   UserTrustDetail,
   UserSanctionType,
@@ -154,8 +155,11 @@ export default function RoomDetailPage() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
   const [joinError, setJoinError] = useState("")
+  const [participationError, setParticipationError] = useState("")
+  const [realtimeError, setRealtimeError] = useState("")
   const [joined, setJoined] = useState(false)
   const [roomView, setRoomView] = useState<RoomView | null>(null)
+  const [syncState, setSyncState] = useState<RoomSyncState | null>(null)
   const [participantCount, setParticipantCount] = useState(0)
   const [participants, setParticipants] = useState<RoomParticipant[]>([])
   const [myTrust, setMyTrust] = useState<UserTrustDetail | null>(null)
@@ -172,9 +176,11 @@ export default function RoomDetailPage() {
   const handledEventIdsRef = useRef<string[]>([])
   const roomRecoveryTimerRef = useRef<number | null>(null)
   const disconnectGraceTimerRef = useRef<number | null>(null)
+  const snapshotRecoveryTimerRef = useRef<number | null>(null)
   const [disconnectGraceExceeded, setDisconnectGraceExceeded] = useState(false)
   const [roomTimerNow, setRoomTimerNow] = useState(() => Date.now())
-  const liveRoomActive = joined && roomView?.status === "OPEN"
+  const effectiveRoomStatus = roomView?.status ?? syncState?.roomStatus
+  const liveRoomActive = joined && effectiveRoomStatus === "OPEN"
 
   const rememberEvent = useCallback((eventId: string) => {
     if (handledEventIdsRef.current.includes(eventId)) return false
@@ -222,6 +228,49 @@ export default function RoomDetailPage() {
     }
   }, [roomId])
 
+  const applySyncState = useCallback((state: RoomSyncState) => {
+    setSyncState(state)
+    setJoined(state.myParticipantStatus === "JOINED")
+    setParticipantCount(state.participantCount)
+    setRoomView((current) => current
+      ? {
+          ...current,
+          status: state.roomStatus,
+          isLive: state.roomStatus === "OPEN",
+        }
+      : current)
+
+    if (state.canSubscribe) {
+      setParticipationError("")
+      return
+    }
+
+    if (state.canJoin) {
+      setParticipationError("")
+      return
+    }
+
+    if (state.roomStatus === "CLOSED") {
+      setParticipationError("토론방이 종료되었습니다.")
+      return
+    }
+
+    if (state.myParticipantStatus !== "JOINED") {
+      setParticipationError("토론방에 참여 중인 상태가 아닙니다.")
+    }
+  }, [])
+
+  const loadRoomSyncState = useCallback(async () => {
+    try {
+      const state = await roomApi.syncState(roomId)
+      applySyncState(state)
+      return state
+    } catch (error) {
+      setParticipationError(error instanceof ApiError ? error.message : "토론방 참여 상태를 불러오지 못했습니다.")
+      return null
+    }
+  }, [applySyncState, roomId])
+
   const loadUserModerationSnapshot = useCallback(async () => {
     if (!user) {
       setMyTrust(null)
@@ -249,22 +298,44 @@ export default function RoomDetailPage() {
     }, 250)
   }, [loadParticipantSnapshot, loadRoom])
 
+  const scheduleSnapshotRecovery = useCallback(() => {
+    if (snapshotRecoveryTimerRef.current !== null) {
+      window.clearTimeout(snapshotRecoveryTimerRef.current)
+    }
+    snapshotRecoveryTimerRef.current = window.setTimeout(() => {
+      snapshotRecoveryTimerRef.current = null
+      void loadRoom()
+      void loadRoomSyncState()
+      void loadParticipantSnapshot()
+      setRecoveryKey((value) => value + 1)
+    }, 100)
+  }, [loadParticipantSnapshot, loadRoom, loadRoomSyncState])
+
   const ensureJoined = useCallback(async (clearJoinedOnFailure = true) => {
+    setParticipationError("")
     try {
-      await roomApi.join(roomId)
-      setJoined(true)
-      return true
-    } catch (error) {
-      if (error instanceof ApiError && error.code === "ROOM_ALREADY_PARTICIPATED") {
+      const currentState = await loadRoomSyncState()
+      if (currentState?.canSubscribe) {
         setJoined(true)
         return true
       }
 
+      await roomApi.join(roomId)
+      const state = await loadRoomSyncState()
+      setJoined(state ? state.myParticipantStatus === "JOINED" : true)
+      return true
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "ROOM_ALREADY_PARTICIPATED") {
+        const state = await loadRoomSyncState()
+        setJoined(state ? state.myParticipantStatus === "JOINED" : true)
+        return true
+      }
+
       if (clearJoinedOnFailure) setJoined(false)
-      setJoinError(error instanceof ApiError ? error.message : "토론방 입장에 실패했습니다.")
+      setParticipationError(error instanceof ApiError ? error.message : "토론방 입장에 실패했습니다.")
       return false
     }
-  }, [roomId])
+  }, [loadRoomSyncState, roomId])
 
   useEffect(() => {
     if (!Number.isSafeInteger(roomId) || roomId <= 0) {
@@ -291,6 +362,9 @@ export default function RoomDetailPage() {
       if (roomRecoveryTimerRef.current !== null) {
         window.clearTimeout(roomRecoveryTimerRef.current)
       }
+      if (snapshotRecoveryTimerRef.current !== null) {
+        window.clearTimeout(snapshotRecoveryTimerRef.current)
+      }
     }
   }, [roomId])
 
@@ -301,15 +375,12 @@ export default function RoomDetailPage() {
       onStatus: (connected) => {
         setStompConnected(connected)
         if (!connected) return
-        if (connectedOnceRef.current) {
-          setRecoveryKey((value) => value + 1)
-          return
-        }
         connectedOnceRef.current = true
       },
       onRealtimeStatus: setRealtimeStatus,
-      onError: (message) => setJoinError(message),
+      onError: (message) => setRealtimeError(message),
       onBeforeResubscribe: () => ensureJoined(false),
+      onSubscriptionsReady: scheduleSnapshotRecovery,
     })
     setStompConnection(connection)
     connection.connect()
@@ -321,7 +392,7 @@ export default function RoomDetailPage() {
       connectedOnceRef.current = false
       connection.disconnect()
     }
-  }, [ensureJoined, liveRoomActive, roomId])
+  }, [ensureJoined, liveRoomActive, roomId, scheduleSnapshotRecovery])
 
   useEffect(() => {
     if (realtimeStatus === "connected" || realtimeStatus === "disconnected") {
@@ -355,10 +426,11 @@ export default function RoomDetailPage() {
       (event) => {
         if (!rememberEvent(event.eventId)) return
         if (event.eventType === "PARTICIPANT_JOINED" || event.eventType === "PARTICIPANT_LEFT") {
+          setParticipantCount(event.data.participantCount)
           scheduleRoomRecovery()
         }
       },
-      setJoinError,
+      setRealtimeError,
     )
     const unsubscribeRoom = stompConnection.subscribe<RoomParticipantEvent | RoomEvent>(
       `/topic/rooms/${roomId}/room/events`,
@@ -369,7 +441,7 @@ export default function RoomDetailPage() {
         setRoomView((current) => current ? { ...current, status: "CLOSED", isLive: false } : current)
         scheduleRoomRecovery()
       },
-      setJoinError,
+      setRealtimeError,
     )
     const unsubscribeSanctions = user
       ? stompConnection.subscribe<UserSanctionEvent>(
@@ -380,7 +452,7 @@ export default function RoomDetailPage() {
           setJoinError(`사용자 제재 상태가 ${action}되었습니다. 필요한 경우 요청을 다시 시도해주세요.`)
           void loadUserModerationSnapshot()
         },
-        setJoinError,
+        setRealtimeError,
       )
       : () => {}
 
@@ -394,8 +466,9 @@ export default function RoomDetailPage() {
   useEffect(() => {
     if (recoveryKey === 0) return
     void loadRoom()
+    void loadRoomSyncState()
     void loadParticipantSnapshot()
-  }, [loadParticipantSnapshot, loadRoom, recoveryKey])
+  }, [loadParticipantSnapshot, loadRoom, loadRoomSyncState, recoveryKey])
 
   useEffect(() => {
     if (roomView?.status !== "OPEN" || !roomView.endedAt) return
@@ -413,21 +486,22 @@ export default function RoomDetailPage() {
   useEffect(() => {
     const recoverVisibleSnapshot = () => {
       if (document.visibilityState !== "visible") return
-      scheduleRoomRecovery()
-      setRecoveryKey((value) => value + 1)
+      scheduleSnapshotRecovery()
     }
 
     window.addEventListener("focus", recoverVisibleSnapshot)
+    window.addEventListener("pageshow", recoverVisibleSnapshot)
     document.addEventListener("visibilitychange", recoverVisibleSnapshot)
 
     return () => {
       window.removeEventListener("focus", recoverVisibleSnapshot)
+      window.removeEventListener("pageshow", recoverVisibleSnapshot)
       document.removeEventListener("visibilitychange", recoverVisibleSnapshot)
       if (roomRecoveryTimerRef.current !== null) {
         window.clearTimeout(roomRecoveryTimerRef.current)
       }
     }
-  }, [scheduleRoomRecovery])
+  }, [scheduleSnapshotRecovery])
 
   const leaveRoom = async () => {
     setLeaving(true)
@@ -455,8 +529,8 @@ export default function RoomDetailPage() {
           ? "실시간 연결 중입니다."
           : ""
 
-  const roomRemainingTimeLabel = roomView?.status === "OPEN"
-    ? formatRemainingRoomTime(roomView.endedAt, roomTimerNow)
+  const roomRemainingTimeLabel = effectiveRoomStatus === "OPEN"
+    ? formatRemainingRoomTime(roomView?.endedAt, roomTimerNow)
     : roomView
       ? "토론 종료"
       : null
@@ -476,12 +550,12 @@ export default function RoomDetailPage() {
           </Link>
 
           <div className="flex min-w-0 flex-1 items-center gap-2">
-            <Badge className={`gap-1.5 shrink-0 text-[11px] ${roomView?.status === "OPEN"
+            <Badge className={`gap-1.5 shrink-0 text-[11px] ${effectiveRoomStatus === "OPEN"
               ? "bg-primary/20 text-primary border-primary/30"
               : "bg-muted text-muted-foreground border-border"
               }`}>
-              <span className={`size-1.5 rounded-full ${roomView?.status === "OPEN" ? "bg-primary animate-live-pulse" : "bg-muted-foreground"}`} />
-              {roomView?.status === "OPEN" ? "LIVE" : "CLOSED"}
+              <span className={`size-1.5 rounded-full ${effectiveRoomStatus === "OPEN" ? "bg-primary animate-live-pulse" : "bg-muted-foreground"}`} />
+              {effectiveRoomStatus === "OPEN" ? "LIVE" : "CLOSED"}
             </Badge>
             <h1 className="truncate text-sm font-semibold text-foreground">
               {roomView?.title ?? "토론방"}
@@ -506,6 +580,12 @@ export default function RoomDetailPage() {
         <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col px-4 py-4 md:px-6 lg:py-4">
           {joinError && (user || !roomView) && (
             <p className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{joinError}</p>
+          )}
+          {participationError && (user || !roomView) && (
+            <p className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{participationError}</p>
+          )}
+          {realtimeError && liveRoomActive && (
+            <p className="mb-3 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">{realtimeError}</p>
           )}
           {realtimeMessage && (
             <p className="mb-3 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">{realtimeMessage}</p>
@@ -688,7 +768,7 @@ export default function RoomDetailPage() {
                           realtimeStatus={realtimeStatus}
                           recoveryKey={recoveryKey}
                         />
-                      ) : <ChatUnavailable closed={roomView?.status === "CLOSED"} />}
+                      ) : <ChatUnavailable closed={effectiveRoomStatus === "CLOSED"} />}
                     </TabsContent>
                   </Tabs>
                 </div>
@@ -713,7 +793,7 @@ export default function RoomDetailPage() {
                         realtimeStatus={realtimeStatus}
                         recoveryKey={recoveryKey}
                       />
-                    ) : <ChatUnavailable closed={roomView?.status === "CLOSED"} />}
+                    ) : <ChatUnavailable closed={effectiveRoomStatus === "CLOSED"} />}
                   </div>
                 </div>
               </div>

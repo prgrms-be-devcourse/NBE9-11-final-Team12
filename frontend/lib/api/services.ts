@@ -24,6 +24,7 @@ import type {
   RoomDetail,
   RoomParticipant,
   RoomParticipantCount,
+  RoomSyncState,
   RoomCreateResponse,
   RoomRanking,
   RoomSummary,
@@ -79,6 +80,7 @@ export const roomApi = {
   open: () => api.get<RoomSummary[]>("/api/v1/rooms/open"),
   ranking: () => api.get<RoomRanking[]>("/api/v1/rooms/ranking"),
   detail: (roomId: number) => api.get<RoomDetail>(`/api/v1/rooms/${roomId}`),
+  syncState: (roomId: number) => api.get<RoomSyncState>(`/api/v1/rooms/${roomId}/sync-state`),
   join: (roomId: number) => api.post(`/api/v1/rooms/${roomId}/participants`),
   leave: (roomId: number) => api.post<void>(`/api/v1/rooms/${roomId}/participants/out`),
   participants: (roomId: number) =>

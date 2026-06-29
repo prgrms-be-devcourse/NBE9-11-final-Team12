@@ -8,6 +8,7 @@ type RoomStompConnectionOptions = {
   onRealtimeStatus?: (status: RealtimeStatus) => void
   onError?: (message: string) => void
   onBeforeResubscribe?: () => Promise<boolean> | boolean
+  onSubscriptionsReady?: () => void
 }
 
 export type RoomStompConnection = {
@@ -123,6 +124,7 @@ export function createRoomStompConnection(
         id: `room-${roomId}-subscription-${subscriptionSequence++}`,
       },
     )
+    options.onSubscriptionsReady?.()
   }
 
   const resubscribeAll = () => {
