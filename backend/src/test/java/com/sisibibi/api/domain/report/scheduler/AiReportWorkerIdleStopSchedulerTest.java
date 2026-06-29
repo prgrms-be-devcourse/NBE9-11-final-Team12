@@ -48,13 +48,13 @@ class AiReportWorkerIdleStopSchedulerTest {
     }
 
     @Test
-    void stopWorkerWhenQueueIsIdle_doesNotStopWhenQueueHasMessages() {
+    void stopWorkerWhenQueueIsIdle_startsWorkerWhenQueueHasMessages() {
         given(queueMonitor.getQueueDepth())
                 .willReturn(new AiReportWorkerQueueMonitor.QueueDepth(1, 0));
 
         scheduler.stopWorkerWhenQueueIsIdle();
 
-        verifyNoInteractions(ec2Service);
+        verify(ec2Service).startWorkerIfEnabled();
     }
 
     @Test

@@ -41,6 +41,7 @@ public class AiReportWorkerIdleStopScheduler {
             AiReportWorkerQueueMonitor.QueueDepth queueDepth = queueMonitor.getQueueDepth();
             if (!queueDepth.isIdle()) {
                 idleStartedAt = null;
+                ec2Service.startWorkerIfEnabled();
                 log.debug("AI report queue is not idle. visible={}, notVisible={}",
                         queueDepth.visible(),
                         queueDepth.notVisible());
