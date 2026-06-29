@@ -5,12 +5,12 @@ spring:
     username: ${DB_USERNAME:sisibibi}
     password: ${DB_PASSWORD}
 
-    data:
-      redis:
-        host: ${REDIS_HOST:redis_1}
-        port: ${REDIS_PORT:6379}
-        password: ${REDIS_PASSWORD}
-        timeout: 2000ms
+  data:
+    redis:
+      host: ${REDIS_HOST:redis_1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD}
+      timeout: 2000ms
 
   jpa:
     hibernate:
