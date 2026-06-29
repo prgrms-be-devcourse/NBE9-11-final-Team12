@@ -18,6 +18,9 @@ import type {
   ChatReportSummary,
   ChatMessageCursorPage,
   ClassifiedIssueCandidate,
+  ConfirmPaymentRequest,
+  CreateCustomAiReportPaymentRequest,
+  Payment,
   RoomDetail,
   RoomParticipant,
   RoomParticipantCount,
@@ -236,4 +239,11 @@ export const aiReportApi = {
       `/api/v1/rooms/${roomId}/ai-report`,
       body,
     ),
+}
+
+export const paymentApi = {
+  createCustomAiReportPayment: (body: CreateCustomAiReportPaymentRequest) =>
+    api.post<Payment>("/api/v1/payments/custom-ai-report", body),
+  confirm: (body: ConfirmPaymentRequest) =>
+    api.post<Payment>("/api/v1/payments/confirm", body),
 }

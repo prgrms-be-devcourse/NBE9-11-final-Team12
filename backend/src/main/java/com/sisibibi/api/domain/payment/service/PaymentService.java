@@ -7,7 +7,6 @@ import com.sisibibi.api.domain.payment.dto.request.CreateCustomAiReportPaymentRe
 import com.sisibibi.api.domain.payment.dto.request.RecoverPaymentReq;
 import com.sisibibi.api.domain.payment.dto.response.PaymentRes;
 import com.sisibibi.api.domain.payment.entity.*;
-import com.sisibibi.api.domain.payment.outbox.CustomAiReportGenerationOutboxWriter;
 import com.sisibibi.api.domain.payment.repository.CustomAiReportRequestRepository;
 import com.sisibibi.api.domain.payment.repository.PaymentRepository;
 import com.sisibibi.api.domain.report.entity.AiReportCustomPrompt;
@@ -20,7 +19,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 

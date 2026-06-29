@@ -20,9 +20,7 @@ public class TossPaymentClient implements PaymentClient {
 
   @Override
   public PaymentApproval confirm(String paymentKey, String orderId, long amount) {
-    if (!StringUtils.hasText(properties.getSecretKey())) {
-      throw new CustomException(ErrorCode.PAYMENT_CONFIRM_FAILED);
-    }
+    validateSecretKey();
 
     try {
       Map<?, ?> response = restClientBuilder
@@ -39,13 +37,75 @@ public class TossPaymentClient implements PaymentClient {
           .retrieve()
           .body(Map.class);
 
-      if (response == null) {
-        throw new CustomException(ErrorCode.PAYMENT_CONFIRM_FAILED);
-      }
-
-      return new PaymentApproval(paymentKey, orderId, amount);
+      return toApproval(response);
     } catch (RuntimeException exception) {
       throw new CustomException(ErrorCode.PAYMENT_CONFIRM_FAILED);
+    }
+  }
+
+  @Override
+  public PaymentApproval getPayment(String paymentKey) {
+    validateSecretKey();
+
+    try {
+      Map<?, ?> response = restClientBuilder
+          .baseUrl(properties.getBaseUrl())
+          .build()
+          .get()
+          .uri("/v1/payments/{paymentKey}", paymentKey)
+          .header("Authorization", authorizationHeader())
+          .retrieve()
+          .body(Map.class);
+
+      return toApproval(response);
+    } catch (RuntimeException exception) {
+      throw new CustomException(ErrorCode.PAYMENT_CONFIRM_FAILED);
+    }
+  }
+
+  private void validateSecretKey() {
+    if (!StringUtils.hasText(properties.getSecretKey())) {
+      throw new CustomException(ErrorCode.PAYMENT_CONFIRM_FAILED);
+    }
+  }
+
+  private PaymentApproval toApproval(Map<?, ?> response) {
+    if (response == null) {
+      throw new CustomException(ErrorCode.PAYMENT_CONFIRM_FAILED);
+    }
+
+    String paymentKey = stringValue(response.get("paymentKey"));
+    String orderId = stringValue(response.get("orderId"));
+    String status = stringValue(response.get("status"));
+    long amount = longValue(response.get("totalAmount"));
+
+    if (!StringUtils.hasText(paymentKey)
+        || !StringUtils.hasText(orderId)
+        || !StringUtils.hasText(status)
+        || amount <= 0) {
+      throw new CustomException(ErrorCode.PAYMENT_CONFIRM_FAILED);
+    }
+
+    return new PaymentApproval(paymentKey, orderId, amount, status);
+  }
+
+  private String stringValue(Object value) {
+    return value == null ? null : String.valueOf(value);
+  }
+
+  private long longValue(Object value) {
+    if (value instanceof Number number) {
+      return number.longValue();
+    }
+
+    if (value == null) {
+      return 0L;
+    }
+
+    try {
+      return Long.parseLong(String.valueOf(value));
+    } catch (NumberFormatException exception) {
+      return 0L;
     }
   }
 

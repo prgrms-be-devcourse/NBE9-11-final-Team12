@@ -3,7 +3,8 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import { BarChart3, Loader2, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react"
 import { ApiError } from "@/lib/api/client"
-import { aiReportApi } from "@/lib/api/services"
+import { aiReportApi, paymentApi } from "@/lib/api/services"
+import { requestTossCardPayment } from "@/lib/toss-payments"
 import type { AiReport, AiReportGenerateRequest } from "@/lib/api/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -15,6 +16,8 @@ type CustomPromptDraft = {
   id: number
   prompt: string
 }
+
+const CUSTOM_AI_REPORT_PRICE = 3000
 
 function messageOf(error: unknown, fallback = "AI 리포트를 불러오지 못했습니다.") {
   if (!(error instanceof ApiError)) return fallback
@@ -173,11 +176,24 @@ export function AiReportPanel({
     setError("")
 
     try {
-      const response = await aiReportApi.generate(roomId, body)
+      const payment = await paymentApi.createCustomAiReportPayment({
+        roomId,
+        amount: CUSTOM_AI_REPORT_PRICE,
+        customPrompts: body.customPrompts,
+      })
       if (!mountedRef.current) return
-      setReport(response)
-      setGenerateOpen(false)
-      resetGenerateDialog()
+
+      const origin = window.location.origin
+      const successUrl = `${origin}/payments/toss/success?roomId=${roomId}`
+      const failUrl = `${origin}/payments/toss/fail?roomId=${roomId}`
+
+      await requestTossCardPayment({
+        amount: payment.amount,
+        orderId: payment.orderId,
+        orderName: payment.orderName,
+        successUrl,
+        failUrl,
+      })
     } catch (requestError) {
       if (!mountedRef.current) return
       setError(messageOf(requestError, "커스텀 AI 리포트 생성 요청에 실패했습니다."))
