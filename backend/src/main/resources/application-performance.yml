@@ -1,4 +1,7 @@
 spring:
+  threads:
+    virtual:
+      enabled: ${PERFORMANCE_VIRTUAL_THREADS_ENABLED:false}
   datasource:
     hikari:
       maximum-pool-size: ${PERFORMANCE_HIKARI_MAXIMUM_POOL_SIZE:20}

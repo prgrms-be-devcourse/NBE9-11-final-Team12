@@ -1643,3 +1643,144 @@ AI_REPORT_QUEUE_RETRY_ENABLED=false
 | WebSocket 세션 실패율 | 원인 분리 계측 후 재측정 필요 |
 | 발언권 부하 | AI 실패 경로를 제거하거나 분리한 뒤 재측정 필요 |
 | 운영 서버 테스트 | 로컬 한계와 별도로 운영 서버 스펙, DB 스펙, Hikari pool, WebSocket executor 설정을 함께 기록해야 함 |
+
+## 27. PR 리뷰 대응 및 목표 부하 재판단
+
+### 27.1 Room participant count 쿼리 검증
+
+PR AI 리뷰에서 `findParticipantCount`가 참여자 0명인 방을 `Optional.empty()`로 반환할 수 있다는 지적이 있었다.
+현재 쿼리는 `rooms` 기준 `left join` 후 `group by room.id`를 수행하므로, 방이 존재하면 참여자 0명이어도 row가 반환되어야 한다.
+
+이를 서비스 mock 테스트가 아니라 실제 JPA Repository 테스트로 검증했다.
+
+검증 케이스:
+
+| 케이스 | 기대 결과 |
+| --- | --- |
+| 방 존재, JOINED 참여자 0명 | `Optional.present`, `participantCount=0` |
+| 방 존재, JOINED 1명 + LEFT 1명 | `participantCount=1` |
+| 방 미존재 | `Optional.empty` |
+
+실행 명령:
+
+```bash
+./gradlew test \
+  --tests '*RoomParticipantRepositoryTest' \
+  --tests '*RoomParticipantServiceTest'
+```
+
+결과: 통과
+
+따라서 현재 구현은 방 미존재와 참여자 0명을 구분한다.
+다만 이 동작은 쿼리 구조에 의존하므로 Repository 테스트로 회귀 방지한다.
+
+### 27.2 목표 RPS/TPS 재판단
+
+현재 목표 규모는 다음을 기준으로 본다.
+
+```text
+토론방 10개
+방당 동시 접속자 50~100명
+총 동시 접속자 500~1,000명
+```
+
+우리 서비스는 모든 상태를 REST polling으로 가져오는 구조가 아니다.
+상태 변경은 WebSocket 이벤트로 전달하고, REST는 초기 진입·조회·명령 요청에 사용한다.
+따라서 목표 RPS는 동시접속자 수와 1:1로 증가하지 않는다.
+
+#### REST 조회 기준
+
+초기 진입 후 사용자가 자주 조회할 수 있는 API는 다음이다.
+
+| API | 예상 호출 주기 | 이유 |
+| --- | --- | --- |
+| 토론방 상세 | 입장 시 1회 | 초기 화면 구성 |
+| 의견 목록 | 입장 시 1회, 이후 필요 시 새로고침 | 의견 변경은 WebSocket 이벤트로 보완 가능 |
+| 현재 발언자 | 입장 시 1회, 이후 WebSocket 이벤트 | 발언권 상태 변경은 실시간 이벤트 대상 |
+| 참여자 수 | 입장 시 1회, 이후 WebSocket 이벤트 | 입퇴장 이벤트 payload로 갱신 가능 |
+| 베스트 의견 | 10~30초 또는 이벤트 기반 | 공감 변화에 따라 갱신 필요 |
+
+따라서 1,000명이 10초마다 모든 조회 API를 반복 호출하는 모델은 과대 추정이다.
+다만 새로고침, 재접속, 이벤트 유실 보정까지 고려하면 기준 부하는 여유 있게 잡는다.
+
+#### 기준 부하
+
+| 구분 | 목표 |
+| --- | ---: |
+| REST HTTP 처리량 | 300~500 RPS |
+| WebSocket 연결 | 500~1,000 connections |
+| WebSocket 채팅 전송 | 100~300 msg/s |
+| WebSocket fan-out 수신 | 방별 참여자 수에 따라 송신보다 훨씬 큼 |
+| 발언권 신청 | 정상 운영 20~50 TPS, 한계 탐색 100~300 TPS |
+
+발언권 신청의 운영 목표가 낮아 보일 수 있지만, 실제 서비스에서 모든 동시접속자가 같은 초에 발언권을 신청하지는 않는다.
+다만 Redis/RDB 정합성 구조의 한계와 동시성 안전성을 보기 위해 한계 탐색은 별도로 100~300 TPS 이상까지 올린다.
+
+#### k6 혼합 부하 환산
+
+`target-scale-mixed-limit.js` 기준:
+
+```text
+예상 HTTP RPS
+= READ_RATE * 9
++ WRITE_RATE * 2~3
++ STAGE_RATE
+```
+
+따라서 `READ_RATE=25`, `WRITE_RATE=25`, `STAGE_RATE=50`은 약 325~350 HTTP RPS다.
+이 값은 기준 부하 하한에 해당한다.
+
+`READ_RATE=200`, `WRITE_RATE=50`, `STAGE_RATE=100`은 약 2,000 RPS 이상을 목표로 하므로 운영 목표가 아니라 로컬 한계 탐색용이다.
+실제 결과에서 dropped iteration이 크게 발생했으므로 로컬 단일 인스턴스가 이 목표를 따라가지 못한 것으로 해석한다.
+
+### 27.3 가상 스레드 판단
+
+Java 21과 Spring Boot 3.5 환경이므로 가상 스레드를 성능 개선 후보로 검토할 수 있다.
+다만 현재 관측된 병목은 다음과 같다.
+
+```text
+Hikari pending connection 증가
+WebSocket executor queue 증가
+HTTP 5xx 없음
+채팅 저장·WebSocket 발행 평균은 낮음
+```
+
+가상 스레드는 blocking servlet 요청 처리에는 도움이 될 수 있지만, DB 커넥션 수를 늘려주지는 않는다.
+즉, DB 커넥션을 기다리는 요청이 많을 때 가상 스레드를 켜면 플랫폼 스레드 점유는 줄일 수 있지만, DB 병목 자체가 사라지는 것은 아니다.
+
+WebSocket STOMP inbound/outbound channel은 별도 executor 설정을 사용하므로 가상 스레드만으로 WebSocket executor queue 병목이 해결된다고 보면 안 된다.
+
+따라서 기본 적용이 아니라 performance profile에서 실험 옵션으로 둔다.
+
+```yaml
+spring:
+  threads:
+    virtual:
+      enabled: ${PERFORMANCE_VIRTUAL_THREADS_ENABLED:false}
+```
+
+측정 방법:
+
+```bash
+# 기존 기준
+PERFORMANCE_VIRTUAL_THREADS_ENABLED=false
+
+# 가상 스레드 실험
+PERFORMANCE_VIRTUAL_THREADS_ENABLED=true
+```
+
+비교 지표:
+
+| 지표 | 판단 |
+| --- | --- |
+| HTTP p95/p99 감소 | HTTP blocking 처리 개선 가능성 |
+| Hikari pending 동일 | DB 커넥션 병목은 그대로 |
+| executor queue 동일 | WebSocket executor 병목은 별도 튜닝 필요 |
+| CPU 증가 | 가상 스레드로 더 많은 요청이 DB 대기까지 밀려 들어갈 수 있음 |
+
+결론:
+
+```text
+가상 스레드는 성능 개선 후보지만 현재 병목의 1차 해결책은 아니다.
+먼저 목표 부하를 정확히 환산하고, DB 커넥션 대기·slow query·WebSocket executor queue를 분리해서 본 뒤 실험 옵션으로 비교한다.
+```
