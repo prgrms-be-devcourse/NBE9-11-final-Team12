@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.chat.event;
 
 import com.sisibibi.api.domain.chat.dto.event.ChatMessageChangedEvent;
+import com.sisibibi.api.domain.chat.service.ChatPerformanceMetrics;
 import com.sisibibi.api.global.realtime.RealtimeEventPublisher;
 import com.sisibibi.api.global.websocket.destination.RoomWebSocketDestinations;
 import com.sisibibi.api.global.websocket.WebSocketEventEnvelope;
@@ -16,16 +17,19 @@ import org.springframework.transaction.event.TransactionalEventListener;
 public class ChatMessageChangedWebSocketEventListener {
 
     private final RealtimeEventPublisher realtimeEventPublisher;
+    private final ChatPerformanceMetrics chatPerformanceMetrics;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handle(ChatMessageChangedEvent event) {
         try {
-            realtimeEventPublisher.publish(
-                    RoomWebSocketDestinations.chatEvents(event.roomId()),
-                    WebSocketEventEnvelope.of(
-                            event.type(),
-                            event.roomId(),
-                            event.payload()
+            chatPerformanceMetrics.recordWebSocketPublish(() ->
+                    realtimeEventPublisher.publish(
+                            RoomWebSocketDestinations.chatEvents(event.roomId()),
+                            WebSocketEventEnvelope.of(
+                                    event.type(),
+                                    event.roomId(),
+                                    event.payload()
+                            )
                     )
             );
         } catch (RuntimeException publishException) {

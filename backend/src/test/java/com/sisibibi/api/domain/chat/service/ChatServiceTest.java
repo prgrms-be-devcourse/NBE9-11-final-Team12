@@ -20,6 +20,8 @@ import com.sisibibi.api.global.moderation.ProfanityDetector;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Supplier;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -33,6 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
@@ -62,10 +65,22 @@ class ChatServiceTest {
     private ChatRateLimiter chatRateLimiter;
 
     @Mock
+    private ChatPerformanceMetrics chatPerformanceMetrics;
+
+    @Mock
     private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private ChatService chatService;
+
+    @BeforeEach
+    void setUp() {
+        lenient().when(chatPerformanceMetrics.recordMessageSave(any()))
+                .thenAnswer(invocation -> {
+                    Supplier<?> supplier = invocation.getArgument(0);
+                    return supplier.get();
+                });
+    }
 
     @Test
     void createMessage_throwsChatRestricted_whenUserHasActiveSanction() {

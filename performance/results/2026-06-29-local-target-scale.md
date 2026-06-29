@@ -1384,3 +1384,85 @@ Hikari pool size 20 증가는 병목 해결에 실패
 | Redis 캐시 | 짧은 TTL로 계산 결과 캐싱 |
 
 현재 MVP 이후 단계에서는 단건 조회 + 인덱스 보강으로 충분하고, 목록 노출 요구가 생기면 별도 티켓으로 분리하는 것이 맞다.
+
+## 25. 채팅 저장·브로드캐스트 분리 계측
+
+### 25.1 배경
+
+혼합 부하 테스트에서 WebSocket 수신 실패는 executor 튜닝 이후 해소됐지만, HTTP p95와 Hikari pending connection은 여전히 증가했다.
+이 상태에서는 채팅 경로가 느릴 때 원인이 DB 저장인지 WebSocket 발행인지 구분하기 어렵다.
+
+채팅 전송 흐름은 다음과 같다.
+
+```text
+WebSocket SEND
+→ 채팅 유효성 검증
+→ chat_messages 저장
+→ 트랜잭션 커밋
+→ AFTER_COMMIT 이벤트
+→ Simple Broker 브로드캐스트
+```
+
+따라서 저장 시간과 브로드캐스트 발행 시간을 별도 메트릭으로 분리했다.
+
+### 25.2 추가한 메트릭
+
+| 메트릭 | 의미 |
+| --- | --- |
+| `sisibibi_chat_message_save_seconds` | `chat_messages` 저장 시간 |
+| `sisibibi_chat_websocket_publish_seconds` | AFTER_COMMIT 이후 WebSocket 이벤트 발행 시간 |
+
+Prometheus에서는 Micrometer Timer가 다음 형태로 노출된다.
+
+```promql
+sisibibi_chat_message_save_seconds_count
+sisibibi_chat_message_save_seconds_sum
+sisibibi_chat_message_save_seconds_max
+
+sisibibi_chat_websocket_publish_seconds_count
+sisibibi_chat_websocket_publish_seconds_sum
+sisibibi_chat_websocket_publish_seconds_max
+```
+
+p95 확인 예시는 다음과 같다.
+
+```promql
+histogram_quantile(
+  0.95,
+  rate(sisibibi_chat_message_save_seconds_bucket[5m])
+)
+```
+
+현재 registry 설정에 따라 bucket이 노출되지 않으면 `sum/count` 평균과 `max`를 먼저 확인한다.
+
+### 25.3 판단 기준
+
+| 관측 결과 | 해석 | 다음 조치 |
+| --- | --- | --- |
+| 저장 시간이 증가 | DB insert, 트랜잭션, 커넥션 대기 병목 가능성 | 인덱스, 커넥션 대기, 트랜잭션 범위 확인 |
+| 발행 시간이 증가 | Simple Broker 또는 outbound channel 병목 가능성 | executor, broker relay, fan-out 구조 확인 |
+| 둘 다 낮은데 수신 실패 | k6 수신 검증, 클라이언트 처리, 네트워크 병목 가능성 | WebSocket 테스트 스크립트와 client timeout 확인 |
+| 저장은 낮고 HTTP p95만 증가 | 채팅 외 REST API 또는 인증 필터 병목 가능성 | slow endpoint 분리 테스트 |
+
+### 25.4 검증
+
+```bash
+./gradlew test \
+  --tests '*ChatServiceTest' \
+  --tests '*ChatMessageChangedWebSocketEventListenerTest' \
+  --tests '*ChatPerformanceMetricsTest'
+```
+
+결과: 통과
+
+### 25.5 다음 측정
+
+다음 혼합 부하 테스트에서는 Grafana 또는 Prometheus에서 다음 지표를 같은 시간축으로 비교한다.
+
+- HTTP p95/p99
+- Hikari pending connection
+- WebSocket executor queued tasks
+- `sisibibi_chat_message_save_seconds_*`
+- `sisibibi_chat_websocket_publish_seconds_*`
+
+이 비교로 채팅 병목이 DB 저장인지 브로드캐스트 발행인지 분리한다.

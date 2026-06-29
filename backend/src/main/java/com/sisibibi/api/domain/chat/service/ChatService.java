@@ -42,6 +42,7 @@ public class ChatService {
     private final UserSanctionPolicyService userSanctionPolicyService;
     private final ProfanityDetector profanityDetector;
     private final ChatRateLimiter chatRateLimiter;
+    private final ChatPerformanceMetrics chatPerformanceMetrics;
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
@@ -70,12 +71,14 @@ public class ChatService {
             throw new CustomException(ErrorCode.CHAT_MESSAGE_CONTAINS_PROFANITY);
         }
 
-        ChatMessage saved = chatMessageRepository.save(ChatMessage.create(
-                roomId,
-                userId,
-                user.getNickname(),
-                content
-        ));
+        ChatMessage saved = chatPerformanceMetrics.recordMessageSave(() ->
+                chatMessageRepository.save(ChatMessage.create(
+                        roomId,
+                        userId,
+                        user.getNickname(),
+                        content
+                ))
+        );
         ChatMessageEventPayload event = ChatMessageEventPayload.created(saved);
         publishChatMessageChangedEvent(event);
     }
