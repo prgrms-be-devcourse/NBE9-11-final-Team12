@@ -1325,3 +1325,62 @@ Hikari pool size 20 증가는 병목 해결에 실패
 | `GET /api/v1/users/{userId}/trust` | 사용자 신뢰도 계산 시 여러 count 쿼리 호출 비용 |
 | `GET /api/v1/rooms/open` | 토론방 목록 조회와 상태/통계 응답 비용 |
 | WebSocket chat send | 채팅 저장 시간과 브로드캐스트 시간 분리 측정 |
+
+## 24. 신뢰도 조회 1차 인덱스 보강
+
+### 24.1 확인한 구조
+
+`GET /api/v1/users/{userId}/trust`는 조회 시점에 원본 데이터를 기준으로 신뢰도와 활동 등급을 계산한다.
+현재 구조는 별도 스냅샷 테이블 없이 다음 데이터를 조회한다.
+
+| 데이터 | 사용 목적 |
+| --- | --- |
+| `users` | 사용자 존재 여부와 닉네임 조회 |
+| `speech_reactions` + `speeches` | 삭제되지 않은 의견이 받은 공감 수 계산 |
+| `speech_reports` | 최근 90일 RESOLVED 위반 심각도별 집계 |
+| `speeches` | 삭제되지 않은 작성 의견 수 계산 |
+| `room_participants` | 참여 토론방 수 계산 |
+
+이 구조는 정책을 원본 데이터 기준으로 계산한다는 장점이 있지만, 트래픽이 증가하면 count/집계 쿼리가 반복된다.
+
+### 24.2 적용한 변경
+
+조회 쿼리를 무리하게 한 쿼리로 합치지 않고, 현재 where 조건에 맞는 인덱스를 먼저 보강했다.
+
+| 테이블 | 추가 인덱스 | 대상 쿼리 |
+| --- | --- | --- |
+| `speeches` | `user_id, is_deleted` | 사용자별 삭제되지 않은 작성 의견 수 count |
+| `speech_reports` | `reported_user_id, status, reviewed_at, severity` | 사용자별 최근 90일 RESOLVED 위반 심각도 집계 |
+
+### 24.3 선택 이유
+
+- API 응답 계약과 도메인 계산 정책을 바꾸지 않는다.
+- 캐시나 스냅샷 테이블보다 적용 위험이 낮다.
+- 신뢰도 조회는 정확성이 중요하므로 현재는 원본 데이터 기준 계산을 유지한다.
+- 성능 테스트에서 병목이 계속 확인되면 그때 스냅샷 테이블이나 Redis 캐시를 검토한다.
+
+### 24.4 검증
+
+```bash
+./gradlew test \
+  --tests '*UserTrustServiceTest' \
+  --tests '*UserTrustControllerTest' \
+  --tests '*SpeechRepositoryTest' \
+  --tests '*SpeechReportRepositoryTest'
+```
+
+결과: 통과
+
+### 24.5 남은 판단
+
+신뢰도 조회는 단건 API로는 현재 구조가 유지 가능하다.
+다만 목록 화면에서 여러 사용자의 신뢰도를 한 번에 보여줘야 한다면 현재 단건 계산 API를 반복 호출하면 안 된다.
+그 경우에는 다음 중 하나가 필요하다.
+
+| 후보 | 설명 |
+| --- | --- |
+| Batch 조회 API | 여러 userId의 신뢰도를 한 번에 계산 |
+| 스냅샷 테이블 | 주기적으로 계산된 신뢰도 결과 저장 |
+| Redis 캐시 | 짧은 TTL로 계산 결과 캐싱 |
+
+현재 MVP 이후 단계에서는 단건 조회 + 인덱스 보강으로 충분하고, 목록 노출 요구가 생기면 별도 티켓으로 분리하는 것이 맞다.

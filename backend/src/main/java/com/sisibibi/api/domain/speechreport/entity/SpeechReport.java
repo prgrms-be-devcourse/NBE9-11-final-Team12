@@ -31,10 +31,16 @@ import java.time.LocalDateTime;
                 name = "uk_speech_reports_speech_reporter",
                 columnNames = {"speech_id", "reporter_user_id"}
         ),
-        indexes = @Index(
-                name = "idx_speech_reports_status_created_at",
-                columnList = "status, created_at"
-        )
+        indexes = {
+                @Index(
+                        name = "idx_speech_reports_status_created_at",
+                        columnList = "status, created_at"
+                ),
+                @Index(
+                        name = "idx_speech_reports_reported_status_reviewed_severity",
+                        columnList = "reported_user_id, status, reviewed_at, severity"
+                )
+        }
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class SpeechReport {
