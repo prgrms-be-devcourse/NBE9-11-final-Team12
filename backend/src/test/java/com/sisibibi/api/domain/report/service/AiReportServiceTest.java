@@ -145,7 +145,7 @@ class AiReportServiceTest {
     @Test
     void generateReport_createsRequesterPdfExport() {
         AiReportRes requested = requestedResponse();
-        given(aiReportPersistenceService.requestGeneration(10L, 7L, List.of()))
+        given(aiReportPersistenceService.requestCustomGeneration(10L, 7L, List.of()))
                 .willReturn(AiReportRequestResult.publish(requested, AiReportGenerationType.BASE_ONLY));
 
         aiReportService.generateReport(10L, 7L, AiReportGenerateReq.empty());
@@ -158,7 +158,7 @@ class AiReportServiceTest {
         AiReportRes completed = new AiReportRes(55L, 10L, "COMPLETED", null, List.of(), null, null, null, null, null, null);
         AiReportPdfExport export = AiReportPdfExport.notStarted(55L, 10L, 7L);
         ReflectionTestUtils.setField(export, "id", 77L);
-        given(aiReportPersistenceService.requestGeneration(10L, 7L, List.of()))
+        given(aiReportPersistenceService.requestCustomGeneration(10L, 7L, List.of()))
                 .willReturn(AiReportRequestResult.skip(completed));
         given(aiReportPdfPersistenceService.createIfMissing(55L, 10L, 7L)).willReturn(export);
 
