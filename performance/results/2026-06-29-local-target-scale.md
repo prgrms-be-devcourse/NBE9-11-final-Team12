@@ -415,3 +415,94 @@ k6 run performance/k6/speech-report-race.js
 | Outbox relay | 다중 인스턴스에서 같은 이벤트 중복 발행 | relay lock 및 deduplication 검증 |
 
 MVP 이후 안정화에서는 위 항목을 기능별로 나눠 k6 또는 통합 테스트로 추가하는 것이 적절하다.
+
+## 15. 의도적 고부하 재측정
+
+목표 기준의 여유 한계를 보기 위해 기존 목표보다 부하를 높여 재측정했다.
+
+### 15.1 읽기 혼합 500 iteration/s
+
+```bash
+RATE=500 \
+DURATION=30s \
+PRE_ALLOCATED_VUS=200 \
+MAX_VUS=1000 \
+k6 run performance/k6/target-scale-read.js
+```
+
+`target-scale-read.js`는 한 iteration에서 주요 조회 API 10개를 호출한다.
+따라서 `RATE=500`은 실제 HTTP 요청 기준 약 `500 × 10 = 5000 req/s`를 목표로 시도한 것이다.
+
+| 항목 | 결과 |
+| --- | ---: |
+| 실제 HTTP 요청 수 | 35,720 |
+| 실제 평균 HTTP RPS | 약 991 req/s |
+| HTTP 실패율 | 0% |
+| p95 | 1.23s |
+| p99 | 1.39s |
+| dropped iterations | 11,428 |
+
+엔드포인트별 p95는 대부분 1.1~1.3초 구간으로 함께 상승했다.
+
+| API | p95 |
+| --- | ---: |
+| `GET /api/v1/rooms/{roomId}/best-speech` | 1.31s |
+| `GET /api/v1/users/{userId}/trust` | 1.28s |
+| `GET /api/v1/rooms/{roomId}/stage/requests/me` | 1.27s |
+| `GET /api/v1/rooms/{roomId}/stage` | 1.21s |
+| `GET /api/v1/rooms/open` | 1.18s |
+
+실행 중 Prometheus 기준:
+
+| 지표 | 값 |
+| --- | ---: |
+| HTTP 5xx | 없음 |
+| Hikari active | 1 |
+| Hikari pending | 0 |
+| MySQL threads connected | 11 |
+| MySQL slow query rate | 0 |
+| Redis ops/sec | 약 13.4 |
+| JVM live threads | 약 246 |
+| system CPU | 약 60% |
+
+판단:
+
+- DB 커넥션 대기, slow query, Redis 병목은 확인되지 않았다.
+- 특정 API 하나만 느려진 것이 아니라 조회 API 전반의 p95가 같이 상승했다.
+- k6가 `MAX_VUS=1000`에 도달했고 dropped iteration이 발생했으므로, 목표 arrival rate를 서버와 클라이언트가 끝까지 유지하지 못했다.
+- 현재 병목 후보는 단일 쿼리보다 로컬 환경의 HTTP 처리량, Tomcat worker/thread 증가, 인증 필터와 다수 조회 API 혼합 처리 비용이다.
+
+다음 개선 방향:
+
+1. 운영 서버 또는 별도 부하 발생기에서 동일 테스트 재측정
+2. 조회 혼합 테스트를 API별 단독 테스트로 쪼개 가장 비싼 조회 식별
+3. 인증 검증 비용과 신뢰도 조회 집계 비용 분리 측정
+4. `GET /api/v1/users/{userId}/trust`, `GET /api/v1/rooms/{roomId}/best-speech` 캐시 또는 스냅샷 필요성 검토
+5. Grafana에서 Tomcat thread, JVM thread, CPU, HTTP duration을 같은 시간축으로 비교
+
+### 15.2 발언권 신청 80 TPS
+
+```bash
+RATE=80 \
+DURATION=20s \
+k6 run performance/k6/target-scale-stage.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| 전체 요청 | 1,601 |
+| 생성 성공 | 1,000 |
+| 비즈니스 거절 | 601 |
+| 서버 실패율 | 0% |
+| p95 | 18.46ms |
+| p99 | 28.59ms |
+| max | 75.12ms |
+
+비즈니스 거절은 성능 실패가 아니라 테스트 데이터 범위 내에서 이미 발언권 신청이 생성된 사용자에 대한 중복/불가 요청이다.
+80 TPS에서도 서버 오류와 응답 지연은 발생하지 않았다.
+
+판단:
+
+- 발언권 신청은 현재 로컬 기준 80 TPS까지 큰 병목이 확인되지 않았다.
+- 이전 50 TPS 테스트에서 p99가 튄 것은 순간 경합 또는 로컬 환경 편차로 보이며, 반복 측정이 필요하다.
+- 더 정확한 한계 측정을 하려면 사용자 수를 더 늘리고 100~200 TPS ramp-up 테스트를 별도로 수행해야 한다.
