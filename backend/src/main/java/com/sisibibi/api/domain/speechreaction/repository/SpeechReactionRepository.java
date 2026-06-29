@@ -67,4 +67,13 @@ public interface SpeechReactionRepository extends JpaRepository<SpeechReaction, 
               and trim(speech.content) <> ''
             """)
     long countReactionsForCompletedSpeeches(@Param("roomId") Long roomId);
+
+    @Query("""
+        select count(reaction.id)
+        from SpeechReaction reaction, Speech speech
+        where reaction.speechId = speech.id
+          and speech.roomId = :roomId
+          and speech.deleted = false
+        """)
+    long countByRoomId(@Param("roomId") Long roomId);
 }

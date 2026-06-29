@@ -11,6 +11,7 @@ public record RoomSummaryRes(
     String title,
     RoomStatus status,
     LocalDateTime startedAt,
+    LocalDateTime endedAt,
     LocalDateTime createdAt
 ) {
 
@@ -21,6 +22,7 @@ public record RoomSummaryRes(
         room.getTitle(),
         room.getStatus(),
         room.getStartedAt(),
+        room.getEndedAt(),
         room.getCreatedAt()
     );
   }

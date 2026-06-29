@@ -6,7 +6,7 @@ import com.sisibibi.api.domain.usersanction.dto.event.UserSanctionEventType;
 import com.sisibibi.api.domain.usersanction.entity.UserSanctionState;
 import com.sisibibi.api.domain.usersanction.entity.UserSanctionType;
 import com.sisibibi.api.global.realtime.RealtimeEventPublisher;
-import com.sisibibi.api.global.websocket.UserWebSocketDestinations;
+import com.sisibibi.api.global.websocket.destination.UserWebSocketDestinations;
 import com.sisibibi.api.global.websocket.WebSocketEventEnvelope;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;

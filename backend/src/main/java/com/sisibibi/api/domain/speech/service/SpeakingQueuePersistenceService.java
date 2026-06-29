@@ -11,8 +11,9 @@ import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.repository.RoomQueueSequenceRepository;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
-import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
+import com.sisibibi.api.domain.speech.repository.projection.CurrentSpeakerProjection;
+import com.sisibibi.api.domain.speech.repository.projection.SpeakingRequestEligibilityProjection;
 import com.sisibibi.api.domain.speech.util.SpeakingStreakPolicy;
 import com.sisibibi.api.domain.user.repository.UserRepository;
 import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
@@ -27,6 +28,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -56,25 +58,9 @@ public class SpeakingQueuePersistenceService {
             SpeechStance stance
     ) {
         LocalDateTime requestedAt = LocalDateTime.now();
-        Room room = findRoom(roomId);
-        userSanctionPolicyService.validateStageAllowed(userId);
-        validateRoomActive(room, requestedAt);
-        validateJoinedParticipant(roomId, userId);
+        validateSpeakingRequestEligibility(roomId, userId, requestedAt);
 
-        RoomQueueSequence queueSequence = findQueueSequenceForUpdate(roomId);
-        room = findRoom(roomId);
-        validateRoomActive(room, requestedAt);
-        validateJoinedParticipant(roomId, userId);
-
-        if (speakingQueueRepository.existsByRoomIdAndUserIdAndStatusIn(
-                roomId,
-                userId,
-                ACTIVE_STATUSES
-        )) {
-            throw new CustomException(ErrorCode.SPEAKING_REQUEST_ALREADY_EXISTS);
-        }
-
-        int nextQueueOrder = queueSequence.issueNextQueueOrder(requestedAt);
+        int nextQueueOrder = issueNextQueueOrder(roomId, requestedAt);
         SpeakingQueue speakingQueue = SpeakingQueue.waiting(
                 roomId,
                 userId,
@@ -82,7 +68,41 @@ public class SpeakingQueuePersistenceService {
                 stance,
                 requestedAt
         );
-        return speakingQueueRepository.save(speakingQueue);
+        try {
+            speakingQueueRepository.insertWaitingRequest(
+                    roomId,
+                    userId,
+                    nextQueueOrder,
+                    stance.name(),
+                    SpeakingQueueStatus.WAITING.name(),
+                    requestedAt
+            );
+            return speakingQueue;
+        } catch (DataIntegrityViolationException duplicateRequestException) {
+            if (speakingQueueRepository.existsByRoomIdAndUserIdAndStatusIn(
+                    roomId,
+                    userId,
+                    ACTIVE_STATUSES
+            )) {
+                throw new CustomException(ErrorCode.SPEAKING_REQUEST_ALREADY_EXISTS);
+            }
+            throw duplicateRequestException;
+        }
+    }
+
+    private int issueNextQueueOrder(Long roomId, LocalDateTime requestedAt) {
+        int updatedRows = roomQueueSequenceRepository.issueNextQueueOrderIfRoomActive(
+                roomId,
+                requestedAt
+        );
+        if (updatedRows == 0) {
+            validateRoomActiveForSpeakingRequest(roomId, requestedAt);
+            throw new CustomException(ErrorCode.ROOM_NOT_FOUND);
+        }
+
+        return roomQueueSequenceRepository.findNextQueueOrderByRoomId(roomId)
+                .map(nextQueueOrder -> nextQueueOrder - 1)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
     }
 
     @Transactional
@@ -301,21 +321,22 @@ public class SpeakingQueuePersistenceService {
         return SpeakingQueueRoomCloseResult.of(canceledRequests, completedRequests);
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public SpeakingQueueAssignmentResult assignNextSpeaker(
             Long roomId,
             LocalDateTime assignedAt,
             LocalDateTime expiresAt
     ) {
+        if (hasAssignedSpeaker(roomId)) {
+            return SpeakingQueueAssignmentResult.empty();
+        }
+
         Room room = findRoomForUpdate(roomId);
         if (!room.isActiveAt(assignedAt)) {
             return SpeakingQueueAssignmentResult.empty();
         }
 
-        if (speakingQueueRepository.existsByRoomIdAndStatus(
-                roomId,
-                SpeakingQueueStatus.ASSIGNED
-        )) {
+        if (hasAssignedSpeaker(roomId)) {
             return SpeakingQueueAssignmentResult.empty();
         }
 
@@ -337,10 +358,72 @@ public class SpeakingQueuePersistenceService {
         return SpeakingQueueAssignmentResult.of(Optional.empty(), canceledRequests);
     }
 
+    private boolean hasAssignedSpeaker(Long roomId) {
+        return speakingQueueRepository.existsByRoomIdAndStatus(
+                roomId,
+                SpeakingQueueStatus.ASSIGNED
+        );
+    }
+
     private void validateJoinedParticipant(Long roomId, Long userId) {
         if (!isJoinedParticipant(roomId, userId)) {
             throw new CustomException(ErrorCode.ROOM_PARTICIPATION_REQUIRED);
         }
+    }
+
+    private void validateNoActiveRequest(Long roomId, Long userId) {
+        if (speakingQueueRepository.existsByRoomIdAndUserIdAndStatusIn(
+                roomId,
+                userId,
+                ACTIVE_STATUSES
+        )) {
+            throw new CustomException(ErrorCode.SPEAKING_REQUEST_ALREADY_EXISTS);
+        }
+    }
+
+    private void validateSpeakingRequestEligibility(
+            Long roomId,
+            Long userId,
+            LocalDateTime requestedAt
+    ) {
+        SpeakingRequestEligibilityProjection eligibility =
+                speakingQueueRepository.findSpeakingRequestEligibility(
+                        roomId,
+                        userId,
+                        requestedAt
+                );
+
+        if (eligibility == null || !isTrue(eligibility.getRoomExists())) {
+            throw new CustomException(ErrorCode.ROOM_NOT_FOUND);
+        }
+        if (!isTrue(eligibility.getRoomActive())) {
+            throw new CustomException(ErrorCode.ROOM_CLOSED);
+        }
+        if (isTrue(eligibility.getRestricted())) {
+            throw new CustomException(ErrorCode.USER_STAGE_RESTRICTED);
+        }
+        if (!isTrue(eligibility.getJoinedParticipant())) {
+            throw new CustomException(ErrorCode.ROOM_PARTICIPATION_REQUIRED);
+        }
+        if (isTrue(eligibility.getActiveRequestExists())) {
+            throw new CustomException(ErrorCode.SPEAKING_REQUEST_ALREADY_EXISTS);
+        }
+    }
+
+    private void validateRoomActiveForSpeakingRequest(
+            Long roomId,
+            LocalDateTime requestedAt
+    ) {
+        if (!isTrue(speakingQueueRepository.findRoomActiveForSpeakingRequest(
+                roomId,
+                requestedAt
+        ))) {
+            throw new CustomException(ErrorCode.ROOM_CLOSED);
+        }
+    }
+
+    private boolean isTrue(Integer value) {
+        return value != null && value == 1;
     }
 
     private Room findRoomForUpdate(Long roomId) {
@@ -355,7 +438,7 @@ public class SpeakingQueuePersistenceService {
 
     private RoomQueueSequence findQueueSequenceForUpdate(Long roomId) {
         return roomQueueSequenceRepository.findByRoomIdForUpdate(roomId)
-                .orElseThrow(() -> new CustomException(ErrorCode.INTERNAL_SERVER_ERROR));
+                .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
     }
 
     private void lockQueueSequenceIfExists(Long roomId) {

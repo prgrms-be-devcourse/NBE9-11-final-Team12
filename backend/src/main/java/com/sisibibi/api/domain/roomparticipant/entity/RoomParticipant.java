@@ -11,6 +11,16 @@ import java.time.LocalDateTime;
 @Entity
 @Table(
     name = "room_participants",
+    indexes = {
+        @Index(
+            name = "idx_room_participants_room_status_joined_at",
+            columnList = "room_id, status, joined_at"
+        ),
+        @Index(
+            name = "idx_room_participants_user_status",
+            columnList = "user_id, status"
+        )
+    },
     uniqueConstraints = @UniqueConstraint(
         name = "uk_room_participants_room_id_user_id",
         columnNames = {"room_id", "user_id"}

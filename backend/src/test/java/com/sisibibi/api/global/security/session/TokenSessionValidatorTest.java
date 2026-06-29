@@ -1,13 +1,13 @@
 package com.sisibibi.api.global.security.session;
 
-import com.sisibibi.api.domain.user.entity.User;
+import com.sisibibi.api.domain.user.entity.UserStatus;
 import com.sisibibi.api.domain.user.repository.UserRepository;
+import com.sisibibi.api.domain.user.repository.UserRepository.UserSessionProjection;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.security.jwt.JwtTokenProvider.TokenClaims;
 import com.sisibibi.api.global.security.jwt.JwtTokenProvider.TokenType;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -25,8 +25,8 @@ class TokenSessionValidatorTest {
 
     @Test
     void validate_acceptsCurrentTokenVersion() {
-        User user = user(2L);
-        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(userRepository.findSessionById(1L))
+                .willReturn(Optional.of(session(UserStatus.ACTIVE, 2L)));
 
         assertThatCode(() -> tokenSessionValidator.validate(claims(2L)))
                 .doesNotThrowAnyException();
@@ -34,8 +34,8 @@ class TokenSessionValidatorTest {
 
     @Test
     void validate_rejectsOldTokenVersion() {
-        User user = user(3L);
-        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(userRepository.findSessionById(1L))
+                .willReturn(Optional.of(session(UserStatus.ACTIVE, 3L)));
 
         assertThatThrownBy(() -> tokenSessionValidator.validate(claims(2L)))
                 .isInstanceOf(CustomException.class)
@@ -45,9 +45,8 @@ class TokenSessionValidatorTest {
 
     @Test
     void validate_rejectsBannedUser() {
-        User user = user(2L);
-        user.ban();
-        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(userRepository.findSessionById(1L))
+                .willReturn(Optional.of(session(UserStatus.BANNED, 2L)));
 
         assertThatThrownBy(() -> tokenSessionValidator.validate(claims(2L)))
                 .isInstanceOf(CustomException.class)
@@ -55,11 +54,18 @@ class TokenSessionValidatorTest {
                 .isEqualTo(ErrorCode.USER_BANNED);
     }
 
-    private User user(Long tokenVersion) {
-        User user = User.signup("user@example.com", "password", "user");
-        ReflectionTestUtils.setField(user, "id", 1L);
-        ReflectionTestUtils.setField(user, "tokenVersion", tokenVersion);
-        return user;
+    private UserSessionProjection session(UserStatus status, Long tokenVersion) {
+        return new UserSessionProjection() {
+            @Override
+            public UserStatus getStatus() {
+                return status;
+            }
+
+            @Override
+            public Long getTokenVersion() {
+                return tokenVersion;
+            }
+        };
     }
 
     private TokenClaims claims(Long tokenVersion) {
