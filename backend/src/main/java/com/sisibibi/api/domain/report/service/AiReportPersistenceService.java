@@ -149,6 +149,67 @@ public class AiReportPersistenceService {
     }
 
     @Transactional
+    public AiReportRequestResult requestBaseGenerationFromRoomClose(Long roomId) {
+        Room room = roomRepository.findByIdForUpdate(roomId)
+            .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+        if (room.getStatus() != RoomStatus.CLOSED) {
+            throw new CustomException(ErrorCode.AI_REPORT_ROOM_NOT_CLOSED);
+        }
+
+        AiReport report = aiReportRepository.findByRoomIdForUpdate(roomId)
+            .orElse(null);
+
+        if (report == null) {
+            report = aiReportRepository.save(AiReport.requested(roomId));
+            return AiReportRequestResult.publish(
+                AiReportRes.from(report),
+                AiReportGenerationType.BASE_ONLY
+            );
+        }
+
+        if (report.getStatus() == com.sisibibi.api.domain.report.entity.AiReportStatus.REQUESTED
+            || report.getStatus() == com.sisibibi.api.domain.report.entity.AiReportStatus.PUBLISH_FAILED
+            || report.getStatus() == com.sisibibi.api.domain.report.entity.AiReportStatus.GENERATION_FAILED) {
+            report.retry(List.of());
+            return AiReportRequestResult.publish(
+                AiReportRes.from(report),
+                AiReportGenerationType.BASE_ONLY
+            );
+        }
+
+        return AiReportRequestResult.skip(AiReportRes.from(report));
+    }
+
+    @Transactional
+    public AiReportRequestResult requestCustomGeneration(Long roomId, Long userId, List<CustomPromptCommand> customPrompts) {
+        if (customPrompts == null || customPrompts.isEmpty()) {
+            throw new CustomException(ErrorCode.AI_REPORT_CUSTOM_PROMPT_REQUIRED);
+        }
+
+        Room room = roomRepository.findByIdForUpdate(roomId)
+            .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+        if (room.getStatus() != RoomStatus.CLOSED) {
+            throw new CustomException(ErrorCode.AI_REPORT_ROOM_NOT_CLOSED);
+        }
+
+        AiReport report = aiReportRepository.findByRoomIdForUpdate(roomId)
+            .orElseThrow(() -> new CustomException(ErrorCode.AI_REPORT_NOT_FOUND));
+
+        if (report.getStatus() != com.sisibibi.api.domain.report.entity.AiReportStatus.COMPLETED) {
+            throw new CustomException(ErrorCode.AI_REPORT_ALREADY_EXISTS);
+        }
+
+        report.requestCustomReports(toSnapshots(userId, customPrompts));
+
+        return AiReportRequestResult.publish(
+            AiReportRes.from(report, userId),
+            AiReportGenerationType.CUSTOM_ONLY
+        );
+    }
+
+    @Transactional
     public AiReportRes complete(Long reportId, AiReportGenerateRes response) {
         AiReport report = aiReportRepository.findById(reportId)
                 .orElseThrow(() -> new CustomException(ErrorCode.AI_REPORT_NOT_FOUND));

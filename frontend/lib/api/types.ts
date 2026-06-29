@@ -80,7 +80,16 @@ export type RoomTitlePreview = {
   title: string
 }
 
-export type AiReportStatus = "PENDING" | "COMPLETED" | "FAILED"
+export type AiReportStatus =
+  | "REQUESTED"
+  | "QUEUED"
+  | "PROCESSING"
+  | "COMPLETED"
+  | "PUBLISH_FAILED"
+  | "GENERATION_FAILED"
+  | "BLOCKED"
+  | "PENDING"
+  | "FAILED"
 
 export type AiReportCustomPrompt = {
   label?: string

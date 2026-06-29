@@ -48,50 +48,62 @@ class AiReportServiceTest {
     }
 
     @Test
-    void generateReport_savesRequestedReportAndPublishesEvent_withoutCallingAiServer() {
+    void generateReport_publishesCustomOnlyEvent_whenCustomReportRequested() {
+        AiReportGenerateReq request = customPromptRequest("찬성 측 핵심 논거만 정리해줘");
+        List<CustomPromptCommand> normalizedPrompts = List.of(
+            new CustomPromptCommand("custom 1", "찬성 측 핵심 논거만 정리해줘")
+        );
         AiReportRes requested = requestedResponse();
 
-        given(aiReportPersistenceService.requestGeneration(10L, 7L, List.of()))
-                .willReturn(AiReportRequestResult.publish(requested, AiReportGenerationType.BASE_ONLY));
+        given(customPromptValidator.normalizeAndScan(request)).willReturn(normalizedPrompts);
+        given(aiReportPersistenceService.requestCustomGeneration(10L, 7L, normalizedPrompts))
+            .willReturn(AiReportRequestResult.publish(requested, AiReportGenerationType.CUSTOM_ONLY));
 
-        AiReportRes result = aiReportService.generateReport(10L, 7L, AiReportGenerateReq.empty());
+        AiReportRes result = aiReportService.generateReport(10L, 7L, request);
 
         ArgumentCaptor<AiReportGenerationRequestedEvent> eventCaptor =
-                ArgumentCaptor.forClass(AiReportGenerationRequestedEvent.class);
+            ArgumentCaptor.forClass(AiReportGenerationRequestedEvent.class);
+
         verify(eventPublisher).publishEvent(eventCaptor.capture());
+
         assertThat(result.status()).isEqualTo("REQUESTED");
         assertThat(eventCaptor.getValue().reportId()).isEqualTo(55L);
         assertThat(eventCaptor.getValue().roomId()).isEqualTo(10L);
-        assertThat(eventCaptor.getValue().generationType()).isEqualTo(AiReportGenerationType.BASE_ONLY);
+        assertThat(eventCaptor.getValue().generationType()).isEqualTo(AiReportGenerationType.CUSTOM_ONLY);
     }
 
     @Test
-    void generateReport_returnsExistingReportWithoutPublishingEvent_whenGenerationIsAlreadyInProgress() {
-        AiReportRes requested = requestedResponse();
+    void generateReport_rejectsEmptyCustomPrompt_withoutPublishingEvent() {
+        AiReportGenerateReq request = AiReportGenerateReq.empty();
 
-        given(aiReportPersistenceService.requestGeneration(10L, 7L, List.of()))
-                .willReturn(AiReportRequestResult.skip(requested));
+        given(customPromptValidator.normalizeAndScan(request)).willReturn(List.of());
+        given(aiReportPersistenceService.requestCustomGeneration(10L, 7L, List.of()))
+            .willThrow(new CustomException(ErrorCode.AI_REPORT_CUSTOM_PROMPT_REQUIRED));
 
-        AiReportRes result = aiReportService.generateReport(10L, 7L, AiReportGenerateReq.empty());
+        assertThatThrownBy(() -> aiReportService.generateReport(10L, 7L, request))
+            .isInstanceOf(CustomException.class)
+            .extracting("errorCode")
+            .isEqualTo(ErrorCode.AI_REPORT_CUSTOM_PROMPT_REQUIRED);
 
-        assertThat(result.status()).isEqualTo("REQUESTED");
         verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test
     void generateReport_passesAuthenticatedUserIdForUserScopedCustomReports() {
-        AiReportGenerateReq request = customPromptRequest("minority view");
-        List<CustomPromptCommand> normalizedPrompts = List.of(new CustomPromptCommand("custom 1", "minority view"));
+        AiReportGenerateReq request = customPromptRequest("내 관점에서 반박 포인트를 정리해줘");
+        List<CustomPromptCommand> normalizedPrompts = List.of(
+            new CustomPromptCommand("custom 1", "내 관점에서 반박 포인트를 정리해줘")
+        );
         AiReportRes requested = requestedResponse();
 
         given(customPromptValidator.normalizeAndScan(request)).willReturn(normalizedPrompts);
-        given(aiReportPersistenceService.requestGeneration(10L, 7L, normalizedPrompts))
-                .willReturn(AiReportRequestResult.publish(requested, AiReportGenerationType.BASE_WITH_CUSTOM));
+        given(aiReportPersistenceService.requestCustomGeneration(10L, 7L, normalizedPrompts))
+            .willReturn(AiReportRequestResult.publish(requested, AiReportGenerationType.CUSTOM_ONLY));
 
         AiReportRes result = aiReportService.generateReport(10L, 7L, request);
 
         assertThat(result.status()).isEqualTo("REQUESTED");
-        verify(aiReportPersistenceService).requestGeneration(10L, 7L, normalizedPrompts);
+        verify(aiReportPersistenceService).requestCustomGeneration(10L, 7L, normalizedPrompts);
         verify(eventPublisher).publishEvent(any(AiReportGenerationRequestedEvent.class));
     }
 
