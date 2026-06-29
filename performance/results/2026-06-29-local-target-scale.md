@@ -595,3 +595,181 @@ k6 run performance/k6/target-scale-websocket.js
 운영 목표 = 안정적으로 감당해야 하는 기준
 한계 탐색 = 어디서 tail latency, 실패율, dropped iteration이 발생하는지 찾는 기준
 ```
+
+## 18. 한계 탐색 재측정
+
+사용자가 지정한 고정 규모에 맞추기보다, 현재 로컬 환경에서 의미 있는 한계 신호가 어디서 나타나는지 확인했다.
+발언권은 TPS 기반 rate 테스트와 순수 동시 burst 테스트를 분리했고, WebSocket은 같은 1,000명 연결에서 메시지 주기를 줄이며 한계 구간을 확인했다.
+
+### 18.1 발언권 신청 rate 테스트
+
+#### 200 TPS
+
+```bash
+RATE=200 \
+DURATION=10s \
+ROOM_COUNT=10 \
+USER_ID_BASE=100000 \
+k6 run performance/k6/target-scale-stage.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| 전체 요청 | 2,000 |
+| 생성 성공 | 1,000 |
+| 비즈니스 거절 | 1,000 |
+| 서버 실패율 | 0% |
+| p95 | 16.13ms |
+| p99 | 34.69ms |
+| 처리량 | 199.95 req/s |
+
+#### 500 TPS
+
+```bash
+RATE=500 \
+DURATION=10s \
+ROOM_COUNT=10 \
+USER_ID_BASE=100000 \
+k6 run performance/k6/target-scale-stage.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| 전체 요청 | 5,001 |
+| 생성 성공 | 1,000 |
+| 비즈니스 거절 | 4,001 |
+| 서버 실패율 | 0% |
+| p95 | 83.60ms |
+| p99 | 178.74ms |
+| 처리량 | 499.63 req/s |
+
+판단:
+
+- 200 TPS와 500 TPS 모두 서버 실패는 없었다.
+- 다만 seed 데이터가 1,000명의 유효 사용자 기준이라, 1,000건 생성 이후에는 중복 신청 등 비즈니스 거절이 포함된다.
+- 따라서 이 결과는 “500 TPS까지 요청 처리 경로가 무너지지 않는다”는 의미이며, “500 TPS 순수 생성 성공”을 의미하지는 않는다.
+- 순수 생성 한계는 아래 burst 테스트로 별도 확인했다.
+
+### 18.2 발언권 30개 방 × 100명 동시 신청 burst
+
+```bash
+RUN_SCENARIOS=multi-15rooms-100 \
+MULTI_ROOM_COUNT=30 \
+bash performance/k6/run-stage-request-scenarios.sh
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| 방 수 | 30 |
+| 방당 신청자 | 100 |
+| 총 신청자 | 3,000 |
+| 생성 성공 | 3,000 |
+| 비즈니스 거절 | 0 |
+| DB 저장 건수 | 3,000 |
+| Redis 대기열 건수 | 3,000 |
+| 평균 응답 시간 | 2,266.89ms |
+| p95 | 4,467.78ms |
+| p99 | 4,647.38ms |
+| 처리량 | 606.74 req/s |
+| HTTP 실패율 | 0% |
+| checks | 100% |
+
+판단:
+
+- 정합성은 유지됐다. DB 저장 건수와 Redis 대기열 건수가 모두 3,000건으로 일치했다.
+- 서버 오류는 없었지만 p95가 약 4.47초까지 상승했다.
+- 발언권 신청의 한계 신호는 실패율보다 tail latency로 먼저 나타난다.
+- 현재 구조에서 발언권 신청 저장 경로는 RDB 원본 저장, 순번 확정, Redis projection 반영을 거치므로 burst 상황에서는 DB insert/트랜잭션/Redis 동기화 비용이 누적된다.
+- 운영 부하 목표와 한계 탐색 목표는 분리해서 봐야 한다.
+
+| 구분 | 현재 판단 |
+| --- | --- |
+| 일반 운영 목표 | 100~200 TPS 수준은 안정권으로 볼 수 있음 |
+| 고부하 검증 목표 | 500 TPS 이상에서 tail latency 확인 필요 |
+| burst 한계 신호 | 3,000명 동시 신청 시 p95 4초대 |
+| 개선 후보 | 신청 저장 경로 지표 분리, DB insert/락 대기/Redis 반영 시간 계측 |
+
+### 18.3 WebSocket 1,000명 메시지 주기별 테스트
+
+WebSocket은 연결 수만 보는 것이 아니라 STOMP CONNECT, SUBSCRIBE, SEND, 브로드캐스트 수신까지 확인했다.
+같은 1,000명 기준에서 메시지 전송 주기를 5초, 2초, 1초로 줄이며 한계 구간을 확인했다.
+
+#### 1,000명 / 5초마다 메시지 전송
+
+```bash
+VUS=1000 \
+CONNECTION_DURATION_SECONDS=30 \
+MESSAGE_INTERVAL_SECONDS=5 \
+k6 run performance/k6/target-scale-websocket.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| 연결 성공 | 1,000 |
+| STOMP CONNECT | 1,000 |
+| SUBSCRIBE | 1,000 |
+| WebSocket failure rate | 0% |
+| connect p95 | 774ms |
+| 애플리케이션 메시지 전송률 | 약 170.97 msg/s |
+| 브로드캐스트 수신률 | 약 6,494.76 msg/s |
+| checks | 100% |
+
+#### 1,000명 / 2초마다 메시지 전송
+
+```bash
+VUS=1000 \
+CONNECTION_DURATION_SECONDS=30 \
+MESSAGE_INTERVAL_SECONDS=2 \
+k6 run performance/k6/target-scale-websocket.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| 연결 성공 | 1,000 |
+| STOMP CONNECT | 1,000 |
+| SUBSCRIBE | 1,000 |
+| WebSocket failure rate | 0% |
+| connect p95 | 509.04ms |
+| 애플리케이션 메시지 전송률 | 약 466.53 msg/s |
+| 브로드캐스트 수신률 | 약 3,650.81 msg/s |
+| checks | 100% |
+
+#### 1,000명 / 1초마다 메시지 전송
+
+```bash
+VUS=1000 \
+CONNECTION_DURATION_SECONDS=20 \
+MESSAGE_INTERVAL_SECONDS=1 \
+k6 run performance/k6/target-scale-websocket.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| WebSocket upgrade | 1,000 |
+| STOMP CONNECT | 1,000 |
+| SUBSCRIBE | 1,000 |
+| WebSocket failure rate | 7.91% |
+| connect p95 | 18.92s |
+| 메시지 전송 성공 체크 | 914 / 1,000 |
+| 브로드캐스트 수신 성공 체크 | 821 / 1,000 |
+| 애플리케이션 메시지 전송률 | 약 56.65 msg/s |
+| 브로드캐스트 수신률 | 약 84 msg/s |
+
+판단:
+
+- 1,000명 연결 자체는 가능하다.
+- 1,000명이 5초 또는 2초마다 채팅을 보내는 수준은 로컬 기준 통과했다.
+- 1,000명이 1초마다 채팅을 보내는 수준에서는 실패율과 connect p95가 급증했다.
+- 현재 WebSocket 한계 신호는 단순 연결 수보다 메시지 처리량과 브로드캐스트 처리량에서 먼저 나타난다.
+- 운영 목표는 1,000명 동접 기준 2~5초 메시지 주기를 기준으로 잡고, 1초 주기 수준을 요구하려면 메시지 브로커, 브로드캐스트 최적화, 저장 경로 분리 등을 검토해야 한다.
+
+### 18.4 최종 해석
+
+| 영역 | 한계 신호 | 현재 판단 | 다음 개선 후보 |
+| --- | --- | --- | --- |
+| 발언권 신청 | burst p95 4초대 | 정합성은 유지, tail latency가 먼저 증가 | DB/Redis 단계별 시간 계측, 순번 발급 경로 분석 |
+| WebSocket 채팅 | 1초 주기에서 실패율 증가 | 1,000명 연결은 가능, 초고빈도 송수신은 병목 | 브로커 릴레이, 메시지 저장/브로드캐스트 분리, 백프레셔 정책 |
+| 읽기 혼합 API | 약 1,000 RPS에서 p95 1초 초과 | API별 병목 분리 필요 | 신뢰도/베스트 의견/목록 조회 단독 테스트 |
+
+현재 로컬 기준으로는 “서버가 바로 실패하는 지점”보다 “tail latency가 급격히 증가하는 지점”이 먼저 확인됐다.
+따라서 다음 성능 개선은 실패율만 보는 것이 아니라 p95/p99, Tomcat thread, DB connection, JVM CPU, Redis latency를 같은 시간축에서 같이 봐야 한다.
