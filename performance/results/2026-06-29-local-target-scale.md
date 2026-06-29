@@ -1974,3 +1974,118 @@ DURATION=60s
 3. WebSocket outbound fan-out 구조 점검
 4. 필요 시 broker relay(Redis pub/sub 또는 외부 broker) 검토
 5. 운영 서버에서는 DB max connection, CPU core, GC, broker 구조까지 함께 다시 측정
+
+## 29. DB 커넥션과 WebSocket 병목 분리 측정
+
+### 29.1 측정 목적
+
+혼합 부하에서 `DB 커넥션 대기`와 `WebSocket executor queue 적체`가 동시에 보였으므로, REST-only와 WebSocket-only를 분리해 어느 쪽이 독립 병목인지 확인했다.
+
+### 29.2 사전 확인
+
+현재 실행 중인 백엔드는 `local,monitoring` 프로필이었다.
+
+Actuator 메트릭:
+
+```text
+hikaricp_connections_max = 10
+clientInboundChannelExecutor active max = 4
+clientOutboundChannelExecutor active max = 4
+```
+
+따라서 이번 분리 측정은 “일반 로컬 실행 설정 기준” 결과다.
+성능 프로필 기준 재측정은 `local,monitoring,performance`로 재시작한 뒤 진행해야 한다.
+
+### 29.3 REST-only 스트레스
+
+실행값:
+
+```bash
+ENABLE_WEBSOCKET=false
+READ_RATE=50
+WRITE_RATE=50
+STAGE_RATE=100
+DURATION=60s
+```
+
+의미:
+
+- WebSocket 부하 제거
+- HTTP 약 `652 req/s`
+
+결과:
+
+| 항목 | 값 |
+| --- | ---: |
+| HTTP 실패율 | `0%` |
+| HTTP p95 | `192.35ms` |
+| HTTP p99 | `348.65ms` |
+| Hikari max | `10` |
+| Hikari pending max | `102` |
+| Hikari active max | `10` |
+| WS queue max | `1` |
+
+판단:
+
+- WebSocket 없이도 Hikari pending이 발생했다.
+- 현재 로컬 설정에서는 DB 커넥션 풀이 10개라 HTTP 600 RPS 구간에서 커넥션 대기가 발생한다.
+- 다만 실패율은 0%이고 p95는 200ms 이하라, 아직 API 자체가 즉시 무너지는 구간은 아니다.
+
+### 29.4 WebSocket-only 스트레스
+
+실행값:
+
+```bash
+VUS=1000
+CONNECTION_DURATION_SECONDS=60
+MESSAGE_INTERVAL_SECONDS=5
+```
+
+의미:
+
+- 10개 방 × 방당 100명
+- 총 1000 WebSocket 연결
+- 약 `186 SEND/s`, 약 `17k broadcast receive/s`
+
+결과:
+
+| 항목 | 값 |
+| --- | ---: |
+| WebSocket 실패율 | `0%` |
+| STOMP connect p95 | `649.04ms` |
+| sent | `11,325` |
+| received | `1,058,924` |
+| Hikari pending max | `0` |
+| Hikari active max | `4` |
+| WS inbound queue max | `82,184` |
+| WS outbound queue max | `82,184` |
+| WS inbound/outbound active max | `4` |
+
+판단:
+
+- WebSocket 단독 1000 연결은 실패 없이 처리했다.
+- 다만 executor queue가 크게 쌓였고 active thread가 4로 제한되어 있었다.
+- 즉 WebSocket 자체는 단독으로는 버티지만, 혼합 부하에서는 DB 대기와 executor queue 적체가 겹치며 실패율이 증가한다.
+
+### 29.5 다음 재측정 기준
+
+다음 테스트는 반드시 아래 프로필로 백엔드를 재시작한 뒤 진행한다.
+
+```bash
+SPRING_PROFILES_ACTIVE=local,monitoring,performance
+```
+
+기대 설정:
+
+```text
+hikaricp_connections_max = 40
+clientInboundChannelExecutor core = 8
+clientOutboundChannelExecutor core = 8
+```
+
+이 상태에서 동일한 REST-only, WebSocket-only, mixed stress를 다시 실행해 다음을 비교한다.
+
+1. Hikari pending이 0에 가까워지는지
+2. HTTP p95/p99가 안정화되는지
+3. WebSocket queue가 줄어드는지
+4. mixed stress에서 WebSocket 실패율이 사라지는지

@@ -32,6 +32,10 @@ const speechIdBase = Number(__ENV.SPEECH_ID_BASE || "910001");
 const speechCount = Number(__ENV.SPEECH_COUNT || "500");
 const connectionDurationSeconds = Number(__ENV.CONNECTION_DURATION_SECONDS || "60");
 const messageIntervalSeconds = Number(__ENV.MESSAGE_INTERVAL_SECONDS || "5");
+const enableRead = (__ENV.ENABLE_READ || "true") !== "false";
+const enableWrite = (__ENV.ENABLE_WRITE || "true") !== "false";
+const enableStage = (__ENV.ENABLE_STAGE || "true") !== "false";
+const enableWebSocket = (__ENV.ENABLE_WEBSOCKET || "true") !== "false";
 
 const mixedHttpFailureRate = new Rate("mixed_http_failure_rate");
 const mixedWsFailureRate = new Rate("mixed_ws_failure_rate");
@@ -50,48 +54,61 @@ const mixedWsConnected = new Counter("mixed_ws_connected");
 const mixedWsMessageSent = new Counter("mixed_ws_message_sent");
 const mixedWsMessageReceived = new Counter("mixed_ws_message_received");
 
+const scenarios = {};
+
+if (enableRead) {
+    scenarios.readApis = {
+        executor: "constant-arrival-rate",
+        rate: Number(__ENV.READ_RATE || "200"),
+        timeUnit: "1s",
+        duration: __ENV.DURATION || "2m",
+        preAllocatedVUs: Number(__ENV.READ_PRE_ALLOCATED_VUS || "100"),
+        maxVUs: Number(__ENV.READ_MAX_VUS || "500"),
+        exec: "readApis",
+        tags: { workload: "mixed-read" },
+    };
+}
+
+if (enableWrite) {
+    scenarios.writeApis = {
+        executor: "constant-arrival-rate",
+        rate: Number(__ENV.WRITE_RATE || "50"),
+        timeUnit: "1s",
+        duration: __ENV.DURATION || "2m",
+        preAllocatedVUs: Number(__ENV.WRITE_PRE_ALLOCATED_VUS || "50"),
+        maxVUs: Number(__ENV.WRITE_MAX_VUS || "300"),
+        exec: "writeApis",
+        tags: { workload: "mixed-write" },
+    };
+}
+
+if (enableStage) {
+    scenarios.stageRequests = {
+        executor: "constant-arrival-rate",
+        rate: Number(__ENV.STAGE_RATE || "100"),
+        timeUnit: "1s",
+        duration: __ENV.DURATION || "2m",
+        preAllocatedVUs: Number(__ENV.STAGE_PRE_ALLOCATED_VUS || "100"),
+        maxVUs: Number(__ENV.STAGE_MAX_VUS || "500"),
+        exec: "stageRequests",
+        tags: { workload: "mixed-stage" },
+    };
+}
+
+if (enableWebSocket) {
+    scenarios.websocketChat = {
+        executor: "per-vu-iterations",
+        vus: Number(__ENV.WS_VUS || "500"),
+        iterations: 1,
+        maxDuration: __ENV.WS_MAX_DURATION || "3m",
+        gracefulStop: "10s",
+        exec: "websocketChat",
+        tags: { workload: "mixed-websocket" },
+    };
+}
+
 export const options = {
-    scenarios: {
-        readApis: {
-            executor: "constant-arrival-rate",
-            rate: Number(__ENV.READ_RATE || "200"),
-            timeUnit: "1s",
-            duration: __ENV.DURATION || "2m",
-            preAllocatedVUs: Number(__ENV.READ_PRE_ALLOCATED_VUS || "100"),
-            maxVUs: Number(__ENV.READ_MAX_VUS || "500"),
-            exec: "readApis",
-            tags: { workload: "mixed-read" },
-        },
-        writeApis: {
-            executor: "constant-arrival-rate",
-            rate: Number(__ENV.WRITE_RATE || "50"),
-            timeUnit: "1s",
-            duration: __ENV.DURATION || "2m",
-            preAllocatedVUs: Number(__ENV.WRITE_PRE_ALLOCATED_VUS || "50"),
-            maxVUs: Number(__ENV.WRITE_MAX_VUS || "300"),
-            exec: "writeApis",
-            tags: { workload: "mixed-write" },
-        },
-        stageRequests: {
-            executor: "constant-arrival-rate",
-            rate: Number(__ENV.STAGE_RATE || "100"),
-            timeUnit: "1s",
-            duration: __ENV.DURATION || "2m",
-            preAllocatedVUs: Number(__ENV.STAGE_PRE_ALLOCATED_VUS || "100"),
-            maxVUs: Number(__ENV.STAGE_MAX_VUS || "500"),
-            exec: "stageRequests",
-            tags: { workload: "mixed-stage" },
-        },
-        websocketChat: {
-            executor: "per-vu-iterations",
-            vus: Number(__ENV.WS_VUS || "500"),
-            iterations: 1,
-            maxDuration: __ENV.WS_MAX_DURATION || "3m",
-            gracefulStop: "10s",
-            exec: "websocketChat",
-            tags: { workload: "mixed-websocket" },
-        },
-    },
+    scenarios,
     thresholds: {
         http_req_failed: ["rate<0.10"],
         mixed_http_failure_rate: ["rate<0.10"],

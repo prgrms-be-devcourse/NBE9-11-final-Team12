@@ -1,7 +1,7 @@
 import ws from "k6/ws";
 import { check } from "k6";
 import { Counter, Rate, Trend } from "k6/metrics";
-import { accessToken } from "./lib/auth.js";
+import { authCookieJar } from "./lib/auth.js";
 
 // 목표 규모 WebSocket 테스트
 // 준비 데이터:
@@ -68,9 +68,9 @@ export default function () {
         wsUrl,
         {
             headers: {
-                Cookie: `accessToken=${accessToken(userId)}`,
                 Origin: frontendOrigin,
             },
+            jar: authCookieJar(baseUrl, userId),
             tags: { name: "WS /api/v1/ws", roomId: String(roomId) },
         },
         (socket) => {

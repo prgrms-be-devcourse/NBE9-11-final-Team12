@@ -257,6 +257,7 @@ stageRequests 1회 = 발언권 신청 1개
 | 목적 | READ_RATE | WRITE_RATE | STAGE_RATE | 예상 HTTP RPS |
 | --- | ---: | ---: | ---: | ---: |
 | 기준 부하 | 25 | 25 | 50 | 약 325~350 |
+| 스트레스 | 50 | 50 | 100 | 약 600~700 |
 | 한계 탐색 | 200 | 50 | 100 | 약 2,000 이상 |
 
 실행 예시:
@@ -278,6 +279,34 @@ CONNECTION_DURATION_SECONDS=60 \
 MESSAGE_INTERVAL_SECONDS=5 \
 k6 run performance/k6/target-scale-mixed-limit.js
 ```
+
+REST와 WebSocket 병목을 분리해서 확인할 때는 `ENABLE_*` 옵션을 사용한다.
+
+```bash
+# REST-only: DB 커넥션 대기, slow query, HTTP p95/p99 확인
+ENABLE_WEBSOCKET=false \
+READ_RATE=50 WRITE_RATE=50 STAGE_RATE=100 \
+DURATION=1m \
+k6 run performance/k6/target-scale-mixed-limit.js
+```
+
+```bash
+# WebSocket-only: STOMP 연결, 구독, SEND, 브로드캐스트 fan-out 확인
+BASE_URL=http://localhost:8080 \
+ROOM_IDS=900001,900002,900003,900004,900005,900006,900007,900008,900009,900010 \
+USER_ID_BASE=100000 USERS_PER_ROOM=100 \
+VUS=1000 MAX_DURATION=2m CONNECTION_DURATION_SECONDS=60 MESSAGE_INTERVAL_SECONDS=5 \
+k6 run performance/k6/target-scale-websocket.js
+```
+
+지원 옵션:
+
+| 옵션 | 기본값 | 설명 |
+| --- | --- | --- |
+| `ENABLE_READ` | `true` | 조회 API 시나리오 실행 여부 |
+| `ENABLE_WRITE` | `true` | 공감·신고 쓰기 API 시나리오 실행 여부 |
+| `ENABLE_STAGE` | `true` | 발언권 신청 시나리오 실행 여부 |
+| `ENABLE_WEBSOCKET` | `true` | WebSocket 채팅 시나리오 실행 여부 |
 
 발언권 신청은 테스트마다 누적 상태가 남기 쉬우므로 반복 실행 전 성능 데이터를 다시 초기화한다.
 
@@ -562,11 +591,20 @@ SPRING_PROFILES_ACTIVE=local,monitoring,performance ./gradlew bootRun
 
 | 환경 변수 | 기본값 | 설명 |
 | --- | ---: | --- |
-| `PERFORMANCE_HIKARI_MAXIMUM_POOL_SIZE` | 20 | 성능 테스트용 최대 DB 커넥션 수 |
-| `PERFORMANCE_HIKARI_MINIMUM_IDLE` | 10 | 성능 테스트용 최소 유휴 커넥션 수 |
+| `PERFORMANCE_HIKARI_MAXIMUM_POOL_SIZE` | 40 | 성능 테스트용 최대 DB 커넥션 수 |
+| `PERFORMANCE_HIKARI_MINIMUM_IDLE` | 20 | 성능 테스트용 최소 유휴 커넥션 수 |
 | `PERFORMANCE_HIKARI_CONNECTION_TIMEOUT_MS` | 3000 | 커넥션 대기 timeout |
 
 일반 개발 환경의 DB pool 기본값을 바꾸는 것이 아니라, 부하 테스트에서 Hikari pending connection 병목을 분리해 보기 위한 profile이다.
+
+성능 테스트 전에는 실제 런타임 메트릭으로 profile 적용 여부를 확인한다.
+
+```bash
+curl -s http://localhost:8080/actuator/prometheus | grep hikaricp_connections_max
+```
+
+`local,monitoring`만 켜진 경우 보통 `hikaricp_connections_max = 10`으로 보일 수 있다.
+목표 규모 부하 테스트는 `local,monitoring,performance`로 재시작한 뒤 실행한다.
 
 ### 3. 수집 상태 확인
 
