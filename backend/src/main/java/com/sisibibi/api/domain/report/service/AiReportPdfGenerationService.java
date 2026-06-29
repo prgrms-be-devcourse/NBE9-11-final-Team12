@@ -2,9 +2,12 @@ package com.sisibibi.api.domain.report.service;
 
 import com.sisibibi.api.domain.report.entity.AiReportPdfExport;
 import com.sisibibi.api.domain.report.notification.AiReportNotificationProperties;
+import com.sisibibi.api.domain.report.outbox.AiReportPdfNotificationOutboxWriter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
 
 @Slf4j
 @Service
@@ -17,6 +20,7 @@ public class AiReportPdfGenerationService {
     private final AiReportPdfStorage storage;
     private final AiReportNotificationSender notificationSender;
     private final AiReportNotificationProperties notificationProperties;
+    private final AiReportPdfNotificationOutboxWriter notificationOutboxWriter;
 
     private static final int MAX_ATTEMPTS = 3;
     private static final long RETRY_DELAY_MS = 100;
@@ -64,9 +68,22 @@ public class AiReportPdfGenerationService {
         } catch (RuntimeException e) {
             log.warn("Failed to collect data for PDF notification retry. exportId={}", exportId, e);
             persistenceService.markNotificationFailed(exportId, e.getMessage());
-            return;
+            throw e;
         }
-        sendNotificationQuietly(exportId, model);
+        try {
+            notificationSender.sendPdfReady(new AiReportPdfReadyCommand(
+                    exportId,
+                    model.requesterEmail(),
+                    model.requesterNickname(),
+                    model.roomTitle(),
+                    notificationProperties.getHomepageUrl()
+            ));
+            persistenceService.markNotificationSent(exportId);
+        } catch (RuntimeException e) {
+            log.warn("AI report PDF notification retry failed. exportId={}", exportId, e);
+            persistenceService.markNotificationFailed(exportId, e.getMessage());
+            throw e;
+        }
     }
 
     private void sendNotificationQuietly(Long exportId, AiReportPdfModel model) {
@@ -82,6 +99,7 @@ public class AiReportPdfGenerationService {
         } catch (RuntimeException e) {
             log.warn("AI report PDF notification failed. exportId={}", exportId, e);
             persistenceService.markNotificationFailed(exportId, e.getMessage());
+            notificationOutboxWriter.record(exportId, LocalDateTime.now());
         }
     }
 }

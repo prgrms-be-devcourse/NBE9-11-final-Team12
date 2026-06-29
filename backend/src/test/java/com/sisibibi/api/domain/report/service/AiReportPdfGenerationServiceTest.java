@@ -3,6 +3,7 @@ package com.sisibibi.api.domain.report.service;
 import com.sisibibi.api.domain.report.entity.AiReportCustomReport;
 import com.sisibibi.api.domain.report.entity.AiReportPdfExport;
 import com.sisibibi.api.domain.report.notification.AiReportNotificationProperties;
+import com.sisibibi.api.domain.report.outbox.AiReportPdfNotificationOutboxWriter;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,6 +20,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -29,6 +31,7 @@ class AiReportPdfGenerationServiceTest {
     @Mock private AiReportPdfRenderer renderer;
     @Mock private AiReportPdfStorage storage;
     @Mock private AiReportNotificationSender notificationSender;
+    @Mock private AiReportPdfNotificationOutboxWriter notificationOutboxWriter;
 
     private AiReportPdfGenerationService service;
 
@@ -39,7 +42,8 @@ class AiReportPdfGenerationServiceTest {
         AiReportNotificationProperties notificationProperties = new AiReportNotificationProperties();
         notificationProperties.setHomepageUrl("http://localhost:3000");
         service = new AiReportPdfGenerationService(
-                persistenceService, dataCollector, renderer, storage, notificationSender, notificationProperties
+                persistenceService, dataCollector, renderer, storage, notificationSender,
+                notificationProperties, notificationOutboxWriter
         );
     }
 
@@ -73,14 +77,14 @@ class AiReportPdfGenerationServiceTest {
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("render failed");
 
-        verify(dataCollector, org.mockito.Mockito.times(3)).collect(export);
+        verify(dataCollector, times(3)).collect(export);
         verify(persistenceService).failPdf(eq(EXPORT_ID), any());
         verify(notificationSender, never()).sendPdfReady(any());
         verify(persistenceService, never()).completePdf(any(), any());
     }
 
     @Test
-    void generate_notificationFailureKeepsPdfReadyAndMarksNotificationFailed() {
+    void generate_notificationFailureKeepsPdfReadyAndRecordsOutboxEvent() {
         AiReportPdfExport export = AiReportPdfExport.notStarted(10L, 1L, 5L);
         AiReportPdfModel model = sampleModel();
 
@@ -94,7 +98,39 @@ class AiReportPdfGenerationServiceTest {
 
         verify(persistenceService).completePdf(EXPORT_ID, "key");
         verify(persistenceService).markNotificationFailed(eq(EXPORT_ID), any());
+        verify(notificationOutboxWriter).record(eq(EXPORT_ID), any(LocalDateTime.class));
         verify(persistenceService, never()).failPdf(any(), any());
+    }
+
+    @Test
+    void retryNotification_success_marksNotificationSent() {
+        AiReportPdfExport export = AiReportPdfExport.notStarted(10L, 1L, 5L);
+        AiReportPdfModel model = sampleModel();
+
+        given(persistenceService.loadExport(EXPORT_ID)).willReturn(export);
+        given(dataCollector.collect(export)).willReturn(model);
+
+        service.retryNotification(EXPORT_ID);
+
+        verify(notificationSender).sendPdfReady(any(AiReportPdfReadyCommand.class));
+        verify(persistenceService).markNotificationSent(EXPORT_ID);
+    }
+
+    @Test
+    void retryNotification_emailFailure_marksFailedAndThrows() {
+        AiReportPdfExport export = AiReportPdfExport.notStarted(10L, 1L, 5L);
+        AiReportPdfModel model = sampleModel();
+
+        given(persistenceService.loadExport(EXPORT_ID)).willReturn(export);
+        given(dataCollector.collect(export)).willReturn(model);
+        willThrow(new RuntimeException("smtp error")).given(notificationSender).sendPdfReady(any());
+
+        assertThatThrownBy(() -> service.retryNotification(EXPORT_ID))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("smtp error");
+
+        verify(persistenceService).markNotificationFailed(eq(EXPORT_ID), any());
+        verify(persistenceService, never()).markNotificationSent(any());
     }
 
     private AiReportPdfModel sampleModel() {
