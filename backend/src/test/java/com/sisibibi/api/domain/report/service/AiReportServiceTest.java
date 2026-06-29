@@ -101,7 +101,6 @@ class AiReportServiceTest {
             .extracting("errorCode")
             .isEqualTo(ErrorCode.AI_REPORT_CUSTOM_PROMPT_REQUIRED);
 
-        assertThat(result.status()).isEqualTo("REQUESTED");
         verify(eventPublisher, never()).publishEvent(any(AiReportGenerationRequestedEvent.class));
     }
 
