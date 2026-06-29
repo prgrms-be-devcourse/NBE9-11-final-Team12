@@ -1179,3 +1179,108 @@ API별 평균 응답 시간이 대부분 비슷하게 증가했고, Hikari pendi
 
 현재 로컬 기준 목표 동시접속 500명 + HTTP 혼합 부하에서는 WebSocket 전달 자체보다 DB 커넥션 풀 대기가 다음 병목이다.
 운영 서버 테스트에서는 서버 스펙, DB 스펙, Hikari pool, MySQL max connection을 함께 기록해야 동일한 수치를 해석할 수 있다.
+
+## 22. Hikari pool 확대 후 재측정
+
+### 22.1 적용한 변경
+
+WebSocket executor 튜닝 후 남은 병목이 Hikari pending connection으로 관측되어, 일반 개발 설정과 분리된 `performance` profile을 추가했다.
+
+```yaml
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 10
+      connection-timeout: 3000
+  jpa:
+    show-sql: false
+```
+
+목적은 운영 기본값을 바꾸는 것이 아니라, 성능 테스트에서 DB 커넥션 풀 대기가 실제 병목인지 분리해 보기 위함이다.
+기존 local 설정은 Hikari 기본값을 사용하므로 최대 커넥션 수가 10이었다.
+
+### 22.2 재측정 조건
+
+```bash
+SPRING_PROFILES_ACTIVE=local,monitoring,performance
+READ_RATE=200
+WRITE_RATE=50
+STAGE_RATE=100
+WS_VUS=500
+MESSAGE_INTERVAL_SECONDS=5
+DURATION=30s
+k6 run performance/k6/target-scale-mixed-limit.js
+```
+
+### 22.3 결과 비교
+
+| 항목 | WebSocket 튜닝 후 | Hikari 20 적용 후 |
+| --- | ---: | ---: |
+| HTTP 요청 수 | 28,550 | 29,627 |
+| HTTP 처리량 | 801.45 req/s | 809.17 req/s |
+| HTTP 실패율 | 0% | 0% |
+| HTTP p95 | 2.27s | 3.24s |
+| HTTP p99 | 3.60s | 4.69s |
+| dropped iterations | 3,693 | 3,647 |
+| WebSocket 연결 수 | 500 | 500 |
+| WebSocket connect p95 | 547.04ms | 1.36s |
+| WebSocket 메시지 수신 | 10,252 | 8,549 |
+| WebSocket failure rate | 0% | 0% |
+
+Hikari maximum pool size를 10에서 20으로 늘렸지만 HTTP p95는 개선되지 않고 오히려 악화됐다.
+즉, 현재 로컬 환경에서는 단순히 DB 커넥션 수를 늘리는 것이 병목 해결책이 아니다.
+
+### 22.4 Prometheus 지표
+
+| 지표 | 결과 |
+| --- | ---: |
+| Hikari maximum connections | 20 |
+| Hikari active connections max | 20 |
+| Hikari pending connections max | 184 |
+| Hikari acquire max | 2.688s |
+| Hikari usage max | 2.346s |
+| MySQL threads running max | 5 |
+| MySQL threads connected max | 21 |
+| API process CPU max | 33.7% |
+| system CPU max | 99.4% |
+| GC pause max | 37ms |
+| WebSocket executor active max | 4 |
+| WebSocket executor queued tasks max | 84,493 |
+
+### 22.5 해석
+
+Hikari pool을 20으로 늘렸는데도 pending connection이 184까지 발생했다.
+동시에 MySQL `threads_running`은 5 수준이고 system CPU가 99%까지 올라갔다.
+
+따라서 현재 병목은 다음 중 하나로 좁혀진다.
+
+```text
+단순 커넥션 수 부족 X
+→ 로컬 머신 CPU/IO 한계
+→ DB 쿼리/트랜잭션 처리 비용
+→ WebSocket 브로드캐스트 처리와 HTTP 요청 처리 경쟁
+→ 대량 VU 생성에 따른 로컬 부하 발생
+```
+
+커넥션 풀을 더 키우면 DB에 더 많은 동시 작업을 밀어 넣게 되므로, 로컬 환경에서는 응답 시간이 더 나빠질 수 있다.
+따라서 다음 개선은 pool size 증가가 아니라 병목 API와 쿼리 비용을 줄이는 방향이 맞다.
+
+### 22.6 다음 개선 방향
+
+| 우선순위 | 작업 | 이유 |
+| ---: | --- | --- |
+| 1 | 읽기 API와 쓰기 API를 분리해 부하 재측정 | 혼합 부하에서는 원인 분리가 어렵다 |
+| 2 | `/speeches`, `/best-speech`, `/participants/count`, `/users/{userId}/trust` 쿼리 비용 확인 | 반복 조회되는 API가 DB 부하를 만든다 |
+| 3 | 신뢰도/베스트 의견/참여자 수 조회 캐시 또는 집계 테이블 검토 | 매 요청마다 집계하면 트래픽 증가 시 DB 병목 가능성이 높다 |
+| 4 | 채팅 저장과 브로드캐스트 처리 시간 메트릭 분리 | WebSocket과 DB 저장 병목을 분리해야 한다 |
+| 5 | 운영 서버에서 동일 시나리오 재측정 | 로컬 system CPU 99%라 로컬 한계 영향이 크다 |
+
+현재 로컬 기준 결론은 다음과 같다.
+
+```text
+WebSocket executor pool size 1 문제는 해결됨
+Hikari pool size 20 증가는 병목 해결에 실패
+다음 병목은 DB 쿼리/트랜잭션 비용과 로컬 자원 한계
+따라서 조회 API 최적화와 운영 환경 재측정이 필요
+```

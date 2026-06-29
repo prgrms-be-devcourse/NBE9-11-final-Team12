@@ -449,17 +449,28 @@ docker compose --env-file monitoring/.env -f monitoring/docker-compose.monitorin
 IDE 실행 설정의 Active profiles에 다음 값을 입력한다.
 
 ```text
-local,monitoring
+local,monitoring,performance
 ```
 
 터미널에서는 다음과 같이 실행한다.
 
 ```bash
 cd backend
-SPRING_PROFILES_ACTIVE=local,monitoring ./gradlew bootRun
+SPRING_PROFILES_ACTIVE=local,monitoring,performance ./gradlew bootRun
 ```
 
 `monitoring` 프로필은 `backend/logs/sisibibi-api.log`에 로그를 기록한다. 해당 디렉터리는 Git에 포함하지 않는다.
+`performance` 프로필은 성능 테스트 중 SQL 콘솔 로그를 끄고 HikariCP pool 크기를 테스트용으로 조정한다.
+
+성능 테스트용 DB pool 기본값은 다음과 같다.
+
+| 환경 변수 | 기본값 | 설명 |
+| --- | ---: | --- |
+| `PERFORMANCE_HIKARI_MAXIMUM_POOL_SIZE` | 20 | 성능 테스트용 최대 DB 커넥션 수 |
+| `PERFORMANCE_HIKARI_MINIMUM_IDLE` | 10 | 성능 테스트용 최소 유휴 커넥션 수 |
+| `PERFORMANCE_HIKARI_CONNECTION_TIMEOUT_MS` | 3000 | 커넥션 대기 timeout |
+
+일반 개발 환경의 DB pool 기본값을 바꾸는 것이 아니라, 부하 테스트에서 Hikari pending connection 병목을 분리해 보기 위한 profile이다.
 
 ### 3. 수집 상태 확인
 
@@ -656,10 +667,11 @@ docker compose --env-file .env -f docker-compose.monitoring.yml up -d
 ```
 
 Backend는 `monitoring` profile을 켜야 파일 로그와 actuator 메트릭이 정상 수집된다.
+성능 테스트 시에는 `performance` profile도 같이 켠다.
 
 ```bash
 cd backend
-SPRING_PROFILES_ACTIVE=local,monitoring ./gradlew bootRun
+SPRING_PROFILES_ACTIVE=local,monitoring,performance ./gradlew bootRun
 ```
 
 Grafana:
@@ -761,8 +773,8 @@ k6 run performance/k6/target-scale-websocket.js
 7. 애플리케이션 로그에서 예외 발생 여부
 
 HTTP p95/p99 패널은 `http.server.requests` histogram bucket을 사용한다.
-`http_server_requests_seconds_bucket`이 보이지 않으면 백엔드를 `local,monitoring` 프로필로 재시작해야 한다.
+`http_server_requests_seconds_bucket`이 보이지 않으면 백엔드를 `local,monitoring,performance` 프로필로 재시작해야 한다.
 
 ```bash
-SPRING_PROFILES_ACTIVE=local,monitoring ./gradlew bootRun
+SPRING_PROFILES_ACTIVE=local,monitoring,performance ./gradlew bootRun
 ```
