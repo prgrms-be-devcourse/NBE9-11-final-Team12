@@ -52,6 +52,7 @@ public class LocalDataInitializer implements ApplicationRunner {
     private static final String TOPIC_CARBON_TAX = "탄소세 전면 도입, 경제에 도움이 될까?";
     private static final String TOPIC_CRYPTO = "가상화폐를 법정화폐로 인정해야 하는가?";
     private static final String TOPIC_UBI = "기본소득제를 전면 도입해야 하는가?";
+    private static final String TOPIC_CLEAN_STAGE_TEST = "도심 내 개인형 이동장치 규제를 강화해야 하는가?";
 
     // 종료된 토론방
     private static final String TOPIC_DEATH_PENALTY = "사형제를 폐지해야 하는가?";
@@ -215,6 +216,13 @@ public class LocalDataInitializer implements ApplicationRunner {
                         "기술 실업 시대의 소득 안전망으로서 기본소득제의 가능성을 논의합니다.",
                         "경제·금융", "https://example.com/ubi"),
                 now.minusMinutes(10), now.plusMinutes(50));
+
+        // ── 진행중: 개인형 이동장치 (테스트용 빈 방, 참여자 없음) ──
+        Room roomCleanStageTest = findOrCreateRoom(
+                findOrCreateTopic(TOPIC_CLEAN_STAGE_TEST,
+                        "전동킥보드 등 개인형 이동장치의 안전 규제 강화 여부를 토론합니다.",
+                        "안전", "https://example.com/personal-mobility-safety"),
+                now.minusMinutes(1), now.plusDays(7));
 
         // ── 종료: 사형제 (1시간 전 종료, 요약 완료) ──
         Room roomDeathPenalty = findOrCreateRoom(
@@ -412,6 +420,7 @@ public class LocalDataInitializer implements ApplicationRunner {
                   곧 종료 : roomId={} ({})
                   초기    : roomId={} ({})
                   빈 방   : {}
+                  테스트  : roomId={} ({})
                 [종료된 토론방]
                   1시간 전: roomId={} ({})
                   3시간 전: roomId={} ({})
@@ -423,6 +432,7 @@ public class LocalDataInitializer implements ApplicationRunner {
                 roomCarbonTax.getId(), TOPIC_CARBON_TAX,
                 roomCrypto.getId(), TOPIC_CRYPTO,
                 TOPIC_UBI,
+                roomCleanStageTest.getId(), TOPIC_CLEAN_STAGE_TEST,
                 roomDeathPenalty.getId(), TOPIC_DEATH_PENALTY,
                 roomEuthanasia.getId(), TOPIC_EUTHANASIA,
                 roomMinWage.getId(), TOPIC_MIN_WAGE

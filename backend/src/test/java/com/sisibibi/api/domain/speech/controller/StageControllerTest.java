@@ -121,12 +121,14 @@ class StageControllerTest {
                         new StageQueueRes.WaitingSpeaker(
                                 1,
                                 10L,
-                                "logic_hunter"
+                                "logic_hunter",
+                                SpeechStance.PRO
                         ),
                         new StageQueueRes.WaitingSpeaker(
                                 2,
                                 20L,
-                                "dream_catcher"
+                                "dream_catcher",
+                                SpeechStance.CON
                         )
                 )
         );
@@ -144,10 +146,12 @@ class StageControllerTest {
                 .andExpect(jsonPath("$.data.items[0].userId").value(10))
                 .andExpect(jsonPath("$.data.items[0].nickname")
                         .value("logic_hunter"))
+                .andExpect(jsonPath("$.data.items[0].stance").value("PRO"))
                 .andExpect(jsonPath("$.data.items[1].rank").value(2))
                 .andExpect(jsonPath("$.data.items[1].userId").value(20))
                 .andExpect(jsonPath("$.data.items[1].nickname")
-                        .value("dream_catcher"));
+                        .value("dream_catcher"))
+                .andExpect(jsonPath("$.data.items[1].stance").value("CON"));
     }
 
     @Test
@@ -160,12 +164,14 @@ class StageControllerTest {
                         new StageQueueRes.WaitingSpeaker(
                                 3,
                                 30L,
-                                "neon_wave"
+                                "neon_wave",
+                                null
                         ),
                         new StageQueueRes.WaitingSpeaker(
                                 4,
                                 40L,
-                                "open_mind"
+                                "open_mind",
+                                SpeechStance.PRO
                         )
                 )
         );
@@ -231,6 +237,36 @@ class StageControllerTest {
                 .andExpect(jsonPath("$.data.requestedAt").exists())
                 .andExpect(jsonPath("$.data.id").doesNotExist())
                 .andExpect(jsonPath("$.data.canceledAt").doesNotExist());
+    }
+
+    @Test
+    void requestSpeakingTurn_returnsCreatedResponseWhenStanceIsMissing() throws Exception {
+        StageRequestRes response = new StageRequestRes(
+                SpeakingQueueStatus.WAITING,
+                1L,
+                10L,
+                null,
+                1,
+                LocalDateTime.of(2026, 6, 12, 10, 0)
+        );
+
+        given(speakingQueueService.requestSpeakingTurn(1L, 10L, null))
+                .willReturn(response);
+
+        mockMvc.perform(post("/api/v1/rooms/1/stage/requests")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}")
+                        .with(authPrincipal(10L)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.message").value("발언권 신청이 완료되었습니다."))
+                .andExpect(jsonPath("$.data.roomId").value(1))
+                .andExpect(jsonPath("$.data.userId").value(10))
+                .andExpect(jsonPath("$.data.stance").doesNotExist())
+                .andExpect(jsonPath("$.data.queueOrder").value(1))
+                .andExpect(jsonPath("$.data.status").value("WAITING"));
+
+        verify(speakingQueueService).requestSpeakingTurn(1L, 10L, null);
     }
 
     @Test

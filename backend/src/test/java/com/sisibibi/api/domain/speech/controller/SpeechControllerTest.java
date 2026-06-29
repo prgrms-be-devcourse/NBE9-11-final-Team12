@@ -68,6 +68,7 @@ class SpeechControllerTest {
                         2L,
                         "근거가 있는 찬성 의견입니다.",
                         SpeechStance.PRO,
+                        SpeechStance.PRO,
                         SpeechStatus.SPEAKING
                 ));
 

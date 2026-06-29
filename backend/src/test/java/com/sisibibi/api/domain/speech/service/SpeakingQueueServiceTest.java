@@ -376,6 +376,48 @@ class SpeakingQueueServiceTest {
         verify(eventPublisher).publishEvent(eventCaptor.capture());
         assertThat(eventCaptor.getValue().type())
                 .isEqualTo(StageEventType.SPEAKER_ASSIGNED);
+        assertThat(eventCaptor.getValue().payload().balancedAssignment())
+                .isFalse();
+    }
+
+    @Test
+    void assignNextSpeaker_publishesBalancedAssignmentPayload() {
+        SpeakingQueue assigned = assignedRequest(1L, 8L, 16);
+        given(speakingQueueProperties.getTurnDuration())
+                .willReturn(Duration.ofMinutes(2));
+        given(speakingQueuePersistenceService.assignNextSpeaker(
+                eq(1L),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        )).willReturn(SpeakingQueueAssignmentResult.of(
+                Optional.of(assigned),
+                List.of(),
+                true
+        ));
+        doThrow(new RuntimeException("redis down"))
+                .when(redisSpeakingQueueRepository)
+                .assign(1L, 8L);
+        given(speakingQueuePersistenceService.findWaitingRequestsForRedisProjection(1L))
+                .willReturn(List.of());
+        given(speakingQueuePersistenceService.findCurrentSpeakerForRedisProjection(1L))
+                .willReturn(Optional.of(assigned));
+        given(redisSpeakingQueueRepository.replaceRoomProjectionIfVersionMatches(
+                1L,
+                List.of(),
+                Optional.of(assigned),
+                0L
+        )).willReturn(true);
+
+        Optional<SpeakingQueue> response = speakingQueueService.assignNextSpeaker(1L);
+
+        assertThat(response).contains(assigned);
+        ArgumentCaptor<StageChangedEvent> eventCaptor =
+                ArgumentCaptor.forClass(StageChangedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().type())
+                .isEqualTo(StageEventType.SPEAKER_ASSIGNED);
+        assertThat(eventCaptor.getValue().payload().balancedAssignment())
+                .isTrue();
     }
 
     @Test

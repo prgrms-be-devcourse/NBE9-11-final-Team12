@@ -48,6 +48,10 @@ public class Speech {
     @Enumerated(EnumType.STRING)
     private SpeechStance stance;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "speaking_stance")
+    private SpeechStance speakingStance;
+
     @Column(name = "link_url", length = 500)
     private String linkUrl;
 
@@ -82,11 +86,18 @@ public class Speech {
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
-    private Speech(Long roomId, Long userId, String content, SpeechStance stance) {
+    private Speech(
+            Long roomId,
+            Long userId,
+            String content,
+            SpeechStance stance,
+            SpeechStance speakingStance
+    ) {
         this.roomId = roomId;
         this.userId = userId;
         this.content = content;
         this.stance = stance;
+        this.speakingStance = speakingStance;
         this.status = SpeechStatus.SPEAKING;
         this.deleted = false;
     }
@@ -97,7 +108,7 @@ public class Speech {
             String content,
             SpeechStance stance
     ) {
-        return new Speech(roomId, userId, content, stance);
+        return new Speech(roomId, userId, content, stance, stance);
     }
 
     public static Speech createMainOpinion(
@@ -105,9 +116,10 @@ public class Speech {
             Long userId,
             String content,
             SpeechStance stance,
+            SpeechStance speakingStance,
             LocalDateTime startedAt
     ) {
-        Speech speech = new Speech(roomId, userId, content, stance);
+        Speech speech = new Speech(roomId, userId, content, stance, speakingStance);
         speech.startedAt = startedAt;
         return speech;
     }

@@ -128,6 +128,12 @@ public interface SpeakingQueueRepository extends JpaRepository<SpeakingQueue, Lo
             SpeakingQueueStatus status
     );
 
+    List<SpeakingQueue> findByRoomIdAndUserIdInAndStatus(
+            Long roomId,
+            Collection<Long> userIds,
+            SpeakingQueueStatus status
+    );
+
     @Query(value = """
             select *
             from speaking_queue

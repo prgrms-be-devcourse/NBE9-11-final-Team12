@@ -17,7 +17,7 @@ class SpeechTest {
     }
 
     @Test
-    void createMainOpinion_setsStartedAt_whenStartedAtIsProvided() {
+    void createMainOpinion_setsSpeakingStanceAndStartedAt_whenProvided() {
         LocalDateTime startedAt = LocalDateTime.of(2026, 6, 12, 12, 0);
 
         Speech speech = Speech.createMainOpinion(
@@ -25,10 +25,13 @@ class SpeechTest {
                 2L,
                 "의견",
                 SpeechStance.PRO,
+                SpeechStance.CON,
                 startedAt
         );
 
         assertThat(speech.getStatus()).isEqualTo(SpeechStatus.SPEAKING);
+        assertThat(speech.getStance()).isEqualTo(SpeechStance.PRO);
+        assertThat(speech.getSpeakingStance()).isEqualTo(SpeechStance.CON);
         assertThat(speech.getStartedAt()).isEqualTo(startedAt);
     }
 
