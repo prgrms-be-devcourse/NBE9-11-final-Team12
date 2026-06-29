@@ -116,16 +116,6 @@ public class Speech {
             Long userId,
             String content,
             SpeechStance stance,
-            LocalDateTime startedAt
-    ) {
-        return createMainOpinion(roomId, userId, content, stance, stance, startedAt);
-    }
-
-    public static Speech createMainOpinion(
-            Long roomId,
-            Long userId,
-            String content,
-            SpeechStance stance,
             SpeechStance speakingStance,
             LocalDateTime startedAt
     ) {
