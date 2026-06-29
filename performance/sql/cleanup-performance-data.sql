@@ -3,10 +3,12 @@
 --   docker exec -i sisibibi-mysql mysql -uroot -proot sisibibi < performance/sql/cleanup-performance-data.sql
 
 DELETE FROM speech_reactions
-WHERE speech_id IN (SELECT id FROM speeches WHERE content LIKE '[PERF] 성능 테스트 의견%');
+WHERE speech_id BETWEEN 910001 AND 910500
+   OR speech_id IN (SELECT id FROM speeches WHERE content LIKE '[PERF] 성능 테스트 의견%');
 
 DELETE FROM speech_reports
-WHERE speech_id IN (SELECT id FROM speeches WHERE content LIKE '[PERF] 성능 테스트 의견%');
+WHERE speech_id BETWEEN 910001 AND 910500
+   OR speech_id IN (SELECT id FROM speeches WHERE content LIKE '[PERF] 성능 테스트 의견%');
 
 DELETE FROM chat_reports
 WHERE message_id IN (SELECT id FROM chat_messages WHERE room_id BETWEEN 900001 AND 900010);
@@ -20,7 +22,8 @@ WHERE room_id BETWEEN 900001 AND 900010
    OR user_id BETWEEN 100000 AND 101199;
 
 DELETE FROM speeches
-WHERE content LIKE '[PERF] 성능 테스트 의견%';
+WHERE id BETWEEN 910001 AND 910500
+   OR content LIKE '[PERF] 성능 테스트 의견%';
 
 DELETE FROM room_participants
 WHERE room_id BETWEEN 900001 AND 900010

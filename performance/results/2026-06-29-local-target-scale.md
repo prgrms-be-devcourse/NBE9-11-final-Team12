@@ -906,3 +906,149 @@ k6 run performance/k6/target-scale-websocket.js
 4. 채팅 저장 실패/지연 시 브로드캐스트 정책 결정
 5. HTTP 읽기 시나리오를 API별 단독 테스트로 분해해 가장 비싼 조회 분리
 6. 운영 서버에서는 부하 발생기와 애플리케이션 서버를 분리해 재측정
+
+## 20. 혼합 부하 재측정 및 병목 원인 정정
+
+19장 측정 이후 테스트 데이터와 스크립트를 재확인한 결과, 초기 혼합 부하 스크립트가 `SPEECH_ID_BASE=1`을 기본값으로 사용하고 있었다.
+하지만 성능 테스트 seed는 의견을 auto increment로 생성하고 cleanup 시 auto increment를 초기화하지 않았다.
+따라서 반복 테스트 후에는 실제 성능 테스트 의견 ID가 `1~500`이 아니었고, 일부 write API가 존재하지 않는 의견을 대상으로 요청될 수 있었다.
+
+이를 보정하기 위해 성능 테스트 의견 ID를 `910001~910500` 고정 범위로 생성하도록 변경했다.
+
+```text
+users: 100000~101199
+rooms: 900001~900010
+speeches: 910001~910500
+```
+
+따라서 20장의 결과를 기준 결과로 사용하고, 19장은 혼합 부하 병목 탐색 과정의 참고 기록으로만 본다.
+
+### 20.1 재측정 1차: HTTP 목표 175 RPS + WebSocket 500명
+
+```bash
+READ_RATE=100 \
+WRITE_RATE=25 \
+STAGE_RATE=50 \
+WS_VUS=500 \
+MESSAGE_INTERVAL_SECONDS=5 \
+DURATION=30s \
+SPEECH_ID_BASE=910001 \
+SPEECH_COUNT=500 \
+k6 run performance/k6/target-scale-mixed-limit.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| HTTP 요청 수 | 28,373 |
+| HTTP 처리량 | 887.23 req/s |
+| HTTP 실패율 | 0% |
+| HTTP p95 | 436.56ms |
+| HTTP p99 | 586.58ms |
+| dropped iterations | 185 |
+| WebSocket 연결 수 | 500 |
+| WebSocket connect p95 | 619.04ms |
+| WebSocket 메시지 전송 | 2,731 |
+| WebSocket 메시지 수신 | 152 |
+| WebSocket failure rate | 69.59% |
+
+HTTP 요청은 5xx 없이 처리됐고 p95도 500ms 이내였지만, WebSocket 브로드캐스트 수신은 크게 밀렸다.
+
+### 20.2 재측정 2차: HTTP 목표 350 RPS + WebSocket 500명
+
+```bash
+READ_RATE=200 \
+WRITE_RATE=50 \
+STAGE_RATE=100 \
+WS_VUS=500 \
+MESSAGE_INTERVAL_SECONDS=5 \
+DURATION=30s \
+SPEECH_ID_BASE=910001 \
+SPEECH_COUNT=500 \
+k6 run performance/k6/target-scale-mixed-limit.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| HTTP 요청 수 | 33,997 |
+| HTTP 처리량 | 973.74 req/s |
+| HTTP 실패율 | 0% |
+| HTTP p95 | 1.64s |
+| HTTP p99 | 1.84s |
+| dropped iterations | 2,979 |
+| WebSocket 연결 수 | 500 |
+| WebSocket connect p95 | 526ms |
+| WebSocket 메시지 전송 | 2,635 |
+| WebSocket 메시지 수신 | 49 |
+| WebSocket failure rate | 90.20% |
+
+부하를 높이면 HTTP p95가 1초 이상으로 증가하고, k6 dropped iteration도 크게 증가했다.
+WebSocket 연결 자체는 유지되지만 메시지 수신은 거의 되지 않았다.
+
+### 20.3 DB 반영량 확인
+
+재측정 후 DB 반영량을 확인했다.
+
+| 데이터 | 결과 |
+| --- | ---: |
+| chat_messages | 5,366 |
+| speech_reports | 475 |
+| speech_reactions | 10,000 |
+| speaking_queue | 120 |
+
+write API가 단순히 404로 빠지는 테스트가 아니라 실제 DB 저장과 상태 변경을 발생시키는 부하였음을 확인했다.
+
+### 20.4 Prometheus 지표
+
+혼합 부하 시간대의 주요 지표는 다음과 같다.
+
+| 지표 | 결과 |
+| --- | ---: |
+| Hikari active connections max | 10 |
+| Hikari pending connections max | 191 |
+| Hikari acquire max | 1.109s |
+| Hikari usage max | 1.395s |
+| MySQL threads running max | 5 |
+| WebSocket inbound executor pool size | 1 |
+| WebSocket outbound executor pool size | 1 |
+| WebSocket inbound queued tasks max | 100,527 |
+| WebSocket outbound queued tasks max | 100,527 |
+| WebSocket heartbeat scheduler queued tasks max | 100,527 |
+
+API별 평균 응답 시간은 대부분 180~203ms 수준으로 비슷하게 증가했다.
+특정 단일 API 하나만 느려진 것이 아니라 DB 커넥션 풀 대기와 WebSocket executor 큐 적체가 같이 나타났다.
+
+### 20.5 병목 원인
+
+현재 로컬 혼합 부하의 1차 병목은 WebSocket 메시지 처리 executor 큐 적체다.
+
+근거:
+
+- WebSocket 단독 500명/5초 테스트는 failure rate 0%로 통과했다.
+- 같은 WebSocket 조건에서 REST 조회/쓰기/발언권 신청을 동시에 실행하면 수신 실패율이 69~90%로 증가했다.
+- Prometheus에서 `clientInboundChannelExecutor`, `clientOutboundChannelExecutor`, `webSocketHeartbeatTaskScheduler`의 queued task가 100,000 이상까지 증가했다.
+- WebSocket executor pool size가 1로 관측됐다.
+- HTTP 5xx는 없지만 Hikari pending connection이 191까지 증가해 DB 커넥션 대기도 동시에 발생했다.
+
+즉, 병목은 단순히 DB 하나만의 문제가 아니라 다음 조합으로 보는 것이 맞다.
+
+```text
+HTTP 조회/쓰기/발언권 신청 증가
+→ DB 커넥션 풀 대기 증가
+→ 채팅 저장 및 이벤트 처리 지연
+→ WebSocket inbound/outbound executor 큐 적체
+→ STOMP 메시지 브로드캐스트 수신 지연/누락
+```
+
+### 20.6 개선 우선순위
+
+| 우선순위 | 개선 후보 | 이유 |
+| ---: | --- | --- |
+| 1 | WebSocket inbound/outbound channel executor pool/queue 설정 | 현재 pool size 1, queue 100k 이상 적체 |
+| 2 | WebSocket heartbeat scheduler pool size 조정 | heartbeat 작업도 큐 적체에 포함됨 |
+| 3 | 채팅 저장 시간과 브로드캐스트 시간 메트릭 분리 | 저장 병목인지 발행 병목인지 더 세밀하게 분해 필요 |
+| 4 | Hikari pool size와 DB query 비용 재측정 | pending 191로 DB 대기 발생 |
+| 5 | 신뢰도/베스트 의견/목록 조회 캐시 또는 집계 최적화 검토 | 혼합 조회가 누적 DB 부하를 만든다 |
+| 6 | 운영 환경에서 외부 broker relay 검토 | 단일 인스턴스 simple broker의 브로드캐스트 한계 대비 |
+
+현재 단계에서 바로 확인된 가장 명확한 수정 후보는 WebSocket 채널 executor 설정이다.
+단, executor pool만 키우면 DB 대기가 더 커질 수 있으므로 적용 후 같은 혼합 부하로 재측정해야 한다.

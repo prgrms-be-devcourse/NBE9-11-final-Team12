@@ -5,7 +5,7 @@
 --   users: 100000~101199
 --   topics: 900001~900010
 --   rooms: 900001~900010
---   speeches: auto increment, content prefix로 cleanup
+--   speeches: 910001~910500
 -- 실행 예:
 --   docker exec -i sisibibi-mysql mysql -uroot -proot sisibibi < performance/sql/seed-performance-data.sql
 
@@ -105,8 +105,11 @@ BEGIN
         SET speech_offset = 0;
         WHILE speech_offset < 50 DO
             SET current_user_id = 100000 + room_offset * 100 + (speech_offset % 100);
-            INSERT INTO speeches (room_id, user_id, content, stance, link_url, image_url, status, started_at, ended_at, created_at, updated_at, is_deleted, delete_reason, deleted_at)
+            SET current_speech_id = 910001 + room_offset * 50 + speech_offset;
+
+            INSERT INTO speeches (id, room_id, user_id, content, stance, link_url, image_url, status, started_at, ended_at, created_at, updated_at, is_deleted, delete_reason, deleted_at)
             VALUES (
+                current_speech_id,
                 current_room_id,
                 current_user_id,
                 CONCAT('[PERF] 성능 테스트 의견 ', current_room_id, '-', speech_offset + 1),
@@ -121,8 +124,20 @@ BEGIN
                 FALSE,
                 NULL,
                 NULL
-            );
-            SET current_speech_id = LAST_INSERT_ID();
+            )
+            ON DUPLICATE KEY UPDATE
+                room_id = VALUES(room_id),
+                user_id = VALUES(user_id),
+                content = VALUES(content),
+                stance = VALUES(stance),
+                status = 'COMPLETED',
+                started_at = VALUES(started_at),
+                ended_at = VALUES(ended_at),
+                created_at = VALUES(created_at),
+                updated_at = VALUES(updated_at),
+                is_deleted = FALSE,
+                delete_reason = NULL,
+                deleted_at = NULL;
 
             SET reaction_offset = 0;
             WHILE reaction_offset < 20 DO

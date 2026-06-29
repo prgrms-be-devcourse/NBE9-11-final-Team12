@@ -9,7 +9,7 @@ import { accessToken, authParams } from "./lib/auth.js";
 // 준비:
 // - performance/sql/cleanup-performance-data.sql 실행
 // - performance/sql/seed-performance-data.sql 실행
-// - 기본 seed 기준: 10개 방(900001~900010), 방당 100명 참여자, 성능 사용자 100000~101199
+// - 기본 seed 기준: 10개 방(900001~900010), 방당 100명 참여자, 성능 사용자 100000~101199, 의견 910001~910500
 // 목적:
 // - REST 조회, REST 쓰기, 발언권 신청, WebSocket 채팅을 동시에 발생시켜 자원 경합을 확인한다.
 // - 단독 API 성능이 아니라 실제 서비스에 가까운 혼합 부하에서 p95/p99, 실패율, dropped iteration을 본다.
@@ -23,7 +23,7 @@ const roomIds = (__ENV.ROOM_IDS || "900001,900002,900003,900004,900005,900006,90
     .filter(Boolean);
 const userIdBase = Number(__ENV.USER_ID_BASE || "100000");
 const usersPerRoom = Number(__ENV.USERS_PER_ROOM || "100");
-const speechIdBase = Number(__ENV.SPEECH_ID_BASE || "1");
+const speechIdBase = Number(__ENV.SPEECH_ID_BASE || "910001");
 const speechCount = Number(__ENV.SPEECH_COUNT || "500");
 const connectionDurationSeconds = Number(__ENV.CONNECTION_DURATION_SECONDS || "60");
 const messageIntervalSeconds = Number(__ENV.MESSAGE_INTERVAL_SECONDS || "5");
