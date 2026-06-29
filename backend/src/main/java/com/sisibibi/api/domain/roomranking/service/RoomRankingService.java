@@ -65,6 +65,36 @@ public class RoomRankingService {
     }
   }
 
+  public void rebuildOpenRoomRanking() {
+    try {
+      redisRoomRankingRepository.clearRanking();
+
+      List<Room> openRooms = roomRepository.findByStatusOrderByCreatedAtDesc(RoomStatus.OPEN);
+
+      for (Room room : openRooms) {
+        Long roomId = room.getId();
+
+        long participantCount = roomParticipantRepository.countByRoomIdAndStatus(
+            roomId,
+            RoomParticipantStatus.JOINED
+        );
+        long chatMessageCount = chatMessageRepository.countByRoomIdAndDeletedFalse(roomId);
+        long reactionCount = speechReactionRepository.countByRoomId(roomId);
+
+        redisRoomRankingRepository.setStatsAndRefreshScore(
+            roomId,
+            participantCount,
+            chatMessageCount,
+            reactionCount
+        );
+      }
+
+      log.info("Redis room ranking rebuilt. roomCount={}", openRooms.size());
+    } catch (RuntimeException exception) {
+      log.warn("Redis room ranking rebuild failed.", exception);
+    }
+  }
+
   public void setParticipantCount(Long roomId, long participantCount) {
     try {
       redisRoomRankingRepository.setParticipantCount(roomId, participantCount);

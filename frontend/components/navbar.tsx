@@ -9,27 +9,33 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/components/auth-provider"
 import {
+  LogIn,
   Menu,
+  Moon,
+  Shield,
+  Sun,
+  TrendingUp,
+  Trophy,
+  User,
   X,
   Zap,
-  TrendingUp,
   MessageSquare,
-  Radio,
-  Shield,
-  User,
-  LogIn,
-  Sun,
-  Moon,
 } from "lucide-react"
 
+function isActiveNavItem(pathname: string, href: string) {
+  if (href === "/") return pathname === "/"
+  if (href === "/rooms") return pathname === "/rooms" || /^\/rooms\/\d+/.test(pathname)
+  return pathname === href || pathname.startsWith(`${href}/`)
+}
+
 const navItems = [
-  { href: "/",      label: "AI 트렌드 토픽", icon: TrendingUp },
-  { href: "/rooms", label: "토의방 목록",     icon: MessageSquare },
-  { href: "/rooms/live", label: "라이브 토의", icon: Radio, live: true },
+  { href: "/", label: "AI 트렌드 토픽", icon: TrendingUp },
+  { href: "/rooms", label: "토론방 목록", icon: MessageSquare },
+  { href: "/rooms/ranking", label: "토론방 순위", icon: Trophy },
 ]
 
 export function Navbar() {
-  const pathname    = usePathname()
+  const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
   const { theme, setTheme } = useTheme()
   const { user, loading, logout } = useAuth()
@@ -39,8 +45,6 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/90 backdrop-blur-md">
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 md:px-6">
-
-        {/* Logo */}
         <Link href="/" className="flex items-center gap-2">
           <div className="flex size-7 items-center justify-center rounded-lg bg-primary">
             <Zap className="size-3.5 text-primary-foreground" />
@@ -56,14 +60,11 @@ export function Navbar() {
           </Badge>
         </Link>
 
-        {/* Desktop nav */}
         <nav className="hidden items-center gap-0.5 md:flex">
           {navItems.map((item) => {
             const Icon = item.icon
-            const isActive =
-              item.href === "/"
-                ? pathname === "/"
-                : pathname.startsWith(item.href)
+            const isActive = isActiveNavItem(pathname, item.href)
+
             return (
               <Link
                 key={item.href}
@@ -72,14 +73,11 @@ export function Navbar() {
                   "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
                   isActive
                     ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
                 <Icon className="size-3.5" />
                 {item.label}
-                {item.live && (
-                  <span className="flex size-1.5 rounded-full bg-destructive animate-live-pulse" />
-                )}
               </Link>
             )
           })}
@@ -90,7 +88,7 @@ export function Navbar() {
                 "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
                 pathname.startsWith("/admin")
                   ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
             >
               <Shield className="size-3.5" />
@@ -99,9 +97,7 @@ export function Navbar() {
           )}
         </nav>
 
-        {/* Right actions */}
         <div className="flex items-center gap-1.5">
-          {/* Theme toggle */}
           <Button
             variant="ghost"
             size="icon"
@@ -142,7 +138,6 @@ export function Navbar() {
             </>
           ) : null}
 
-          {/* Mobile hamburger */}
           <Button
             variant="ghost"
             size="icon"
@@ -155,16 +150,13 @@ export function Navbar() {
         </div>
       </div>
 
-      {/* Mobile menu */}
       {mobileOpen && (
         <div className="border-t border-border bg-background px-4 py-3 md:hidden">
           <nav className="flex flex-col gap-0.5">
             {navItems.map((item) => {
               const Icon = item.icon
-              const isActive =
-                item.href === "/"
-                  ? pathname === "/"
-                  : pathname.startsWith(item.href)
+              const isActive = isActiveNavItem(pathname, item.href)
+
               return (
                 <Link
                   key={item.href}
@@ -174,14 +166,11 @@ export function Navbar() {
                     "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium",
                     isActive
                       ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
                   <Icon className="size-3.5" />
                   {item.label}
-                  {item.live && (
-                    <span className="ml-auto flex size-1.5 rounded-full bg-destructive animate-live-pulse" />
-                  )}
                 </Link>
               )
             })}
@@ -193,7 +182,7 @@ export function Navbar() {
                   "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium",
                   pathname.startsWith("/admin")
                     ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
                 <Shield className="size-3.5" />

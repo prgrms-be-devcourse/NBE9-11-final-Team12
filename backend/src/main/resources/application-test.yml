@@ -23,3 +23,6 @@ app:
       enabled: false
     expiration:
       enabled: false
+
+room-ranking:
+  rebuild-on-startup: false

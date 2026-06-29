@@ -69,6 +69,12 @@ export type RoomSummary = RoomCreateResponse & {
 
 export type RoomDetail = RoomSummary
 
+export type RoomRanking = {
+  rank: number | null
+  score: number | null
+  room: RoomSummary
+}
+
 export type RoomTitlePreview = {
   topicId: number
   title: string

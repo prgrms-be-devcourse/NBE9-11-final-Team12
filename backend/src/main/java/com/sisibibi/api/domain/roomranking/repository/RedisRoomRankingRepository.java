@@ -177,4 +177,8 @@ public class RedisRoomRankingRepository {
 
   public record RoomRankingEntry(Long roomId, Double score) {
   }
+
+  public void clearRanking() {
+    redisTemplate.delete(rankingKeys());
+  }
 }

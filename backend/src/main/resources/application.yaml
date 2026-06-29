@@ -197,3 +197,6 @@ springdoc:
 serpapi:
   base-url: ${SERPAPI_BASE_URL:https://serpapi.com/search.json}
   api-key: ${SERPAPI_API_KEY:}
+
+room-ranking:
+  rebuild-on-startup: false
