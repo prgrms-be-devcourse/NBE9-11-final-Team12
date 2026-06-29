@@ -25,7 +25,7 @@ public class AiReportService {
 
     public AiReportRes generateReport(Long roomId, Long userId, AiReportGenerateReq request) {
         List<CustomPromptCommand> customPrompts = customPromptValidator.normalizeAndScan(request);
-        AiReportRequestResult result = aiReportPersistenceService.requestGeneration(roomId, userId, customPrompts);
+        AiReportRequestResult result = aiReportPersistenceService.requestCustomGeneration(roomId, userId, customPrompts);
 
         if (result.shouldPublish()) {
             eventPublisher.publishEvent(new AiReportGenerationRequestedEvent(

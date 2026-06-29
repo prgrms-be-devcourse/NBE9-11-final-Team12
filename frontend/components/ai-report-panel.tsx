@@ -11,7 +11,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 type RoomStatus = "OPEN" | "CLOSED"
-type GenerateDialogMode = "select" | "basic-confirm" | "custom"
 type CustomPromptDraft = {
   id: number
   prompt: string
@@ -21,6 +20,12 @@ function messageOf(error: unknown, fallback = "AI 리포트를 불러오지 못�
   if (!(error instanceof ApiError)) return fallback
   if (error.code === "AI_REPORT_ROOM_NOT_CLOSED") {
     return "종료된 토론방만 AI 리포트를 생성할 수 있습니다."
+  }
+  if (error.code === "AI_REPORT_CUSTOM_PROMPT_REQUIRED") {
+    return "커스텀 리포트에 사용할 프롬프트를 입력해주세요."
+  }
+  if (error.code === "AI_REPORT_NOT_FOUND") {
+    return "기본 AI 요약 리포트가 아직 준비되지 않았습니다."
   }
   if (error.code === "UNAUTHORIZED" || error.status === 401) {
     return "로그인이 필요한 기능입니다."
@@ -35,6 +40,26 @@ function isNotFound(error: unknown) {
 
 function hasText(value: string | null | undefined) {
   return Boolean(value?.trim())
+}
+
+function isReportInProgress(status: AiReport["status"] | undefined) {
+  return status === "REQUESTED"
+    || status === "QUEUED"
+    || status === "PROCESSING"
+    || status === "PENDING"
+}
+
+function isReportFailed(status: AiReport["status"] | undefined) {
+  return status === "PUBLISH_FAILED"
+    || status === "GENERATION_FAILED"
+    || status === "BLOCKED"
+    || status === "FAILED"
+}
+
+function statusLabel(status: AiReport["status"]) {
+  if (status === "COMPLETED") return "완료"
+  if (isReportInProgress(status)) return "생성 중"
+  return "실패"
 }
 
 function ReportSection({
@@ -66,7 +91,6 @@ export function AiReportPanel({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
   const [generateOpen, setGenerateOpen] = useState(false)
-  const [generateMode, setGenerateMode] = useState<GenerateDialogMode>("select")
   const [customPrompts, setCustomPrompts] = useState<CustomPromptDraft[]>([
     { id: 1, prompt: "" },
   ])
@@ -85,6 +109,7 @@ export function AiReportPanel({
     const requestSeq = ++requestSeqRef.current
     if (showLoading) setLoading(true)
     setError("")
+
     try {
       const response = await aiReportApi.get(roomId)
       if (!mountedRef.current || requestSeq !== requestSeqRef.current) return
@@ -114,17 +139,16 @@ export function AiReportPanel({
   }, [loadReport])
 
   useEffect(() => {
-    if (roomStatus !== "CLOSED" || report?.status !== "PENDING") return
+    if (roomStatus !== "CLOSED" || (report && !isReportInProgress(report.status))) return
 
     const intervalId = window.setInterval(() => {
       void loadReport(false)
     }, 5000)
 
     return () => window.clearInterval(intervalId)
-  }, [loadReport, report?.status, roomStatus])
+  }, [loadReport, report, roomStatus])
 
   const resetGenerateDialog = () => {
-    setGenerateMode("select")
     setCustomPrompts([{ id: 1, prompt: "" }])
     nextPromptIdRef.current = 2
   }
@@ -136,17 +160,18 @@ export function AiReportPanel({
   }
 
   const openGenerateDialog = () => {
-    if (roomStatus !== "CLOSED" || submitting) return
+    if (roomStatus !== "CLOSED" || report?.status !== "COMPLETED" || submitting) return
     setError("")
     resetGenerateDialog()
     setGenerateOpen(true)
   }
 
-  const generateReport = async (body?: AiReportGenerateRequest) => {
-    if (roomStatus !== "CLOSED" || submitting) return
+  const generateReport = async (body: AiReportGenerateRequest) => {
+    if (roomStatus !== "CLOSED" || report?.status !== "COMPLETED" || submitting) return
 
     setSubmitting(true)
     setError("")
+
     try {
       const response = await aiReportApi.generate(roomId, body)
       if (!mountedRef.current) return
@@ -155,7 +180,7 @@ export function AiReportPanel({
       resetGenerateDialog()
     } catch (requestError) {
       if (!mountedRef.current) return
-      setError(messageOf(requestError, "AI 리포트 생성에 실패했습니다."))
+      setError(messageOf(requestError, "커스텀 AI 리포트 생성 요청에 실패했습니다."))
     } finally {
       if (mountedRef.current) setSubmitting(false)
     }
@@ -202,118 +227,69 @@ export function AiReportPanel({
     }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>AI 요약 리포트 생성</DialogTitle>
+          <DialogTitle>커스텀 AI 리포트 생성</DialogTitle>
           <DialogDescription>
-            생성할 리포트 유형을 선택해주세요.
+            기본 AI 요약본을 바탕으로 추가로 궁금한 내용을 요청합니다.
           </DialogDescription>
         </DialogHeader>
 
-        {generateMode === "select" && (
+        <div className="space-y-4">
           <div className="space-y-3">
-            <button
-              type="button"
-              className="w-full rounded-lg border border-border/70 bg-background p-4 text-left transition-colors hover:border-primary/50 hover:bg-muted/30"
-              disabled={submitting}
-              onClick={() => setGenerateMode("basic-confirm")}
-            >
-              <p className="text-sm font-semibold text-foreground">기본 리포트 생성</p>
-              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                토론방에서 나눈 의견을 요약하여 핵심적인 정보를 추출한 리포트를 생성합니다.
-                생성에는 시간이 소요되며 생성 완료 시 이메일로 알림이 발송됩니다.
-              </p>
-            </button>
-
-            <button
-              type="button"
-              className="w-full rounded-lg border border-border/70 bg-background p-4 text-left transition-colors hover:border-primary/50 hover:bg-muted/30"
-              disabled={submitting}
-              onClick={() => setGenerateMode("custom")}
-            >
-              <p className="text-sm font-semibold text-foreground">커스텀 리포트 생성</p>
-              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                기본 리포트와 더불어 원하시는 내용으로 정리된 커스텀 리포트가 생성됩니다.
-                프롬프트를 입력하여 나만의 요약 리포트를 만들어보세요.
-              </p>
-            </button>
-          </div>
-        )}
-
-        {generateMode === "basic-confirm" && (
-          <div className="space-y-4">
-            <p className="rounded-lg border border-border/60 bg-muted/30 px-3 py-3 text-sm text-foreground">
-              기본 리포트 생성 하시겠습니까?
-            </p>
-            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-              <Button type="button" variant="outline" disabled={submitting} onClick={() => setGenerateMode("select")}>
-                닫기
-              </Button>
-              <Button type="button" disabled={submitting} onClick={() => generateReport({ customPrompts: [] })}>
-                {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
-                확인
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {generateMode === "custom" && (
-          <div className="space-y-4">
-            <div className="space-y-3">
-              {customPrompts.map((item, index) => (
-                <div key={item.id} className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <label className="text-xs font-medium text-foreground">
-                      프롬프트 {index + 1}
-                    </label>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-7"
-                      disabled={submitting || customPrompts.length === 1}
-                      onClick={() => removeCustomPrompt(item.id)}
-                    >
-                      <Trash2 className="size-3.5" />
-                    </Button>
-                  </div>
-                  <textarea
-                    value={item.prompt}
-                    onChange={(event) => updateCustomPrompt(item.id, event.target.value)}
-                    rows={4}
-                    maxLength={1000}
-                    placeholder="원하는 리포트 내용을 입력하세요."
-                    className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-                  />
+            {customPrompts.map((item, index) => (
+              <div key={item.id} className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-xs font-medium text-foreground">
+                    프롬프트 {index + 1}
+                  </label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-7"
+                    disabled={submitting || customPrompts.length === 1}
+                    onClick={() => removeCustomPrompt(item.id)}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
                 </div>
-              ))}
-            </div>
+                <textarea
+                  value={item.prompt}
+                  onChange={(event) => updateCustomPrompt(item.id, event.target.value)}
+                  rows={4}
+                  maxLength={1000}
+                  placeholder="추가로 분석하고 싶은 내용을 입력하세요."
+                  className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                />
+              </div>
+            ))}
+          </div>
 
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full gap-1.5 text-xs"
+            disabled={submitting || customPrompts.length >= 3}
+            onClick={addCustomPrompt}
+          >
+            <Plus className="size-3.5" />
+            프롬프트 추가
+          </Button>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" disabled={submitting} onClick={closeGenerateDialog}>
+              닫기
+            </Button>
             <Button
               type="button"
-              variant="outline"
-              size="sm"
-              className="w-full gap-1.5 text-xs"
-              disabled={submitting || customPrompts.length >= 3}
-              onClick={addCustomPrompt}
+              disabled={submitting || customPrompts.every((item) => !item.prompt.trim())}
+              onClick={submitCustomReport}
             >
-              <Plus className="size-3.5" />
-              프롬프트 추가
+              {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
+              생성 요청
             </Button>
-
-            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-              <Button type="button" variant="outline" disabled={submitting} onClick={() => setGenerateMode("select")}>
-                닫기
-              </Button>
-              <Button
-                type="button"
-                disabled={submitting || customPrompts.every((item) => !item.prompt.trim())}
-                onClick={submitCustomReport}
-              >
-                {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
-                확인
-              </Button>
-            </div>
           </div>
-        )}
+        </div>
       </DialogContent>
     </Dialog>
   )
@@ -327,12 +303,57 @@ export function AiReportPanel({
             AI 요약 리포트
           </CardTitle>
           <CardDescription className="text-xs">
-            토론 종료 후 AI 요약 리포트를 생성할 수 있습니다.
+            토론 종료 후 AI 요약 리포트가 자동으로 생성됩니다.
           </CardDescription>
         </CardHeader>
       </Card>
     )
   }
+
+  const statusBadge = report?.status ? (
+    <Badge variant={report.status === "COMPLETED" ? "secondary" : "outline"} className="text-[10px]">
+      {statusLabel(report.status)}
+    </Badge>
+  ) : null
+
+  const waitingMessage = (
+    <div className="space-y-2">
+      <p className="flex items-center gap-2 text-xs leading-relaxed text-muted-foreground">
+        <Loader2 className="size-3.5 animate-spin text-primary" />
+        기본 AI 요약 리포트가 자동 생성 중입니다.
+      </p>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="w-full gap-1.5 text-xs"
+        disabled={loading}
+        onClick={() => loadReport()}
+      >
+        {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+        상태 새로고침
+      </Button>
+    </div>
+  )
+
+  const failedMessage = report && isReportFailed(report.status) ? (
+    <div className="space-y-2">
+      <p className="text-xs leading-relaxed text-destructive">
+        {report.errorMessage || "AI 요약 리포트 생성에 실패했습니다."}
+      </p>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="w-full gap-1.5 text-xs"
+        disabled={loading}
+        onClick={() => loadReport()}
+      >
+        {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+        상태 새로고침
+      </Button>
+    </div>
+  ) : null
 
   if (compact) {
     return (
@@ -343,11 +364,7 @@ export function AiReportPanel({
               <BarChart3 className="size-3.5 text-primary" />
               AI 요약 리포트
             </span>
-            {report?.status && (
-              <Badge variant={report.status === "COMPLETED" ? "secondary" : "outline"} className="text-[10px]">
-                {report.status === "COMPLETED" ? "완료" : report.status === "PENDING" ? "생성 중" : "실패"}
-              </Badge>
-            )}
+            {statusBadge}
           </div>
 
           {error && (
@@ -359,31 +376,21 @@ export function AiReportPanel({
               <Loader2 className="size-3.5 animate-spin" />
               리포트 상태 확인 중
             </div>
-          ) : !report ? (
-            <Button size="sm" className="w-full gap-1.5 text-xs" disabled={submitting} onClick={openGenerateDialog}>
-              {submitting ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
-              AI 요약 리포트 생성
-            </Button>
-          ) : report.status === "PENDING" ? (
-            <p className="flex items-center gap-2 text-[11px] leading-relaxed text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin text-primary" />
-              AI 리포트를 생성 중입니다. 약 2분 정도 걸릴 수 있습니다.
-            </p>
-          ) : report.status === "FAILED" ? (
+          ) : !report || isReportInProgress(report.status) ? (
+            waitingMessage
+          ) : failedMessage ? (
+            failedMessage
+          ) : (
             <div className="space-y-2">
-              <p className="text-[11px] leading-relaxed text-destructive">
-                {report.errorMessage || "AI 리포트 생성에 실패했습니다."}
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                리포트 생성 완료
+                {report.completedAt ? ` · ${new Date(report.completedAt).toLocaleString("ko-KR")}` : ""}
               </p>
               <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs" disabled={submitting} onClick={openGenerateDialog}>
-                {submitting ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
-                다시 생성
+                {submitting ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+                커스텀 리포트 추가
               </Button>
             </div>
-          ) : (
-            <p className="text-[11px] leading-relaxed text-muted-foreground">
-              리포트 생성 완료
-              {report.completedAt ? ` · ${new Date(report.completedAt).toLocaleString("ko-KR")}` : ""}
-            </p>
           )}
         </div>
         {generateDialog}
@@ -402,14 +409,10 @@ export function AiReportPanel({
                 AI 요약 리포트
               </CardTitle>
               <CardDescription className="text-xs">
-                종료된 토론 내용을 바탕으로 별도 리포트를 생성합니다.
+                종료된 토론 내용을 바탕으로 기본 요약 리포트를 자동 생성합니다.
               </CardDescription>
             </div>
-            {report?.status && (
-              <Badge variant={report.status === "COMPLETED" ? "secondary" : "outline"} className="text-[10px]">
-                {report.status === "COMPLETED" ? "완료" : report.status === "PENDING" ? "생성 중" : "실패"}
-              </Badge>
-            )}
+            {statusBadge}
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -422,35 +425,13 @@ export function AiReportPanel({
               <Loader2 className="size-4 animate-spin" />
               AI 리포트를 불러오는 중입니다.
             </div>
-          ) : !report ? (
-            <div className="space-y-3">
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                아직 생성된 AI 요약 리포트가 없습니다.
-              </p>
-              <Button size="sm" className="w-full gap-1.5 text-xs" disabled={submitting} onClick={openGenerateDialog}>
-                {submitting ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
-                AI 요약 리포트 생성
-              </Button>
+          ) : !report || isReportInProgress(report.status) ? (
+            <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
+              {waitingMessage}
             </div>
-          ) : report.status === "PENDING" ? (
-            <div className="space-y-3 rounded-lg border border-border/60 bg-muted/30 p-3">
-              <div className="flex items-center gap-2 text-xs font-medium text-foreground">
-                <Loader2 className="size-4 animate-spin text-primary" />
-                AI 리포트를 생성 중입니다.
-              </div>
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                약 2분 정도 걸릴 수 있습니다. 완료되면 자동으로 내용이 표시됩니다.
-              </p>
-            </div>
-          ) : report.status === "FAILED" ? (
-            <div className="space-y-3">
-              <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs leading-relaxed text-destructive">
-                {report.errorMessage || "AI 리포트 생성에 실패했습니다."}
-              </p>
-              <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs" disabled={submitting} onClick={openGenerateDialog}>
-                {submitting ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
-                다시 생성
-              </Button>
+          ) : failedMessage ? (
+            <div className="rounded-lg bg-destructive/10 p-3">
+              {failedMessage}
             </div>
           ) : (
             <div className="space-y-3">
@@ -486,13 +467,13 @@ export function AiReportPanel({
               )}
 
               {hasText(report.aiOpinion) && (
-                <ReportSection title="AI의 개인적 의견">
+                <ReportSection title="AI 의견">
                   <p className="whitespace-pre-wrap text-xs leading-relaxed text-foreground">{report.aiOpinion}</p>
                 </ReportSection>
               )}
 
               {report.customReports.length > 0 && (
-                <ReportSection title="개인화 리포트">
+                <ReportSection title="커스텀 리포트">
                   <div className="space-y-3">
                     {report.customReports.map((customReport, index) => (
                       <div key={`${customReport.requestLabel}-${index}`} className="rounded-md bg-muted/40 p-2">
@@ -511,6 +492,11 @@ export function AiReportPanel({
                   </div>
                 </ReportSection>
               )}
+
+              <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs" disabled={submitting} onClick={openGenerateDialog}>
+                {submitting ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+                커스텀 리포트 추가
+              </Button>
 
               {report.completedAt && (
                 <p className="text-[11px] text-muted-foreground">
