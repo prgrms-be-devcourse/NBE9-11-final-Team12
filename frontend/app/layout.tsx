@@ -5,13 +5,13 @@ import { AuthProvider } from '@/components/auth-provider'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: '시시비비 — 실시간 광장형 토의 아레나',
-  description: '최신 이슈를 AI가 탐지하고, 유저가 발언권을 공유 후 채팅으로 다양한 관점을 나누는 대규모 라이브 토의 플랫폼',
-  keywords: ['토론', '실시간', '이슈', '광장', '의견', '시시비비', '아레나'],
-  authors: [{ name: 'Team 시시비비' }],
+  title: '이슈톡 — 실시간 광장형 토론',
+  description: '최신 이슈를 AI가 탐지하고, 유저가 발언권을 공유 후 채팅으로 다양한 관점을 나누는 대규모 라이브 토론 플랫폼',
+  keywords: ['토론', '실시간', '이슈', '광장', '의견', '이슈톡'],
+  authors: [{ name: 'Team 이슈톡' }],
   openGraph: {
-    title: '시시비비 — 실시간 광장형 토의 아레나',
-    description: '지금 가장 뜨거운 이슈를 실시간으로 토의하세요',
+    title: '이슈톡 — 실시간 광장형 토론',
+    description: '지금 가장 뜨거운 이슈를 실시간으로 토론하세요',
     type: 'website',
     locale: 'ko_KR',
   },
