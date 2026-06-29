@@ -10,6 +10,7 @@ import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipant;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
+import com.sisibibi.api.domain.roomparticipant.repository.projection.RoomParticipantCountProjection;
 import com.sisibibi.api.domain.speech.service.SpeakingQueueService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
@@ -320,11 +321,10 @@ class RoomParticipantServiceTest {
 
   @Test
   void getCurrentParticipantCount_returnsJoinedParticipantCount() {
-    given(roomRepository.existsById(1L)).willReturn(true);
-    given(roomParticipantRepository.countByRoomIdAndStatus(
+    given(roomParticipantRepository.findParticipantCount(
         1L,
         RoomParticipantStatus.JOINED
-    )).willReturn(3);
+    )).willReturn(Optional.of(participantCountProjection(1L, 3)));
 
     RoomParticipantCountRes result =
         roomParticipantService.getCurrentParticipantCount(1L);
@@ -335,7 +335,10 @@ class RoomParticipantServiceTest {
 
   @Test
   void getCurrentParticipantCount_throwsRoomNotFound_whenRoomDoesNotExist() {
-    given(roomRepository.existsById(999L)).willReturn(false);
+    given(roomParticipantRepository.findParticipantCount(
+        999L,
+        RoomParticipantStatus.JOINED
+    )).willReturn(Optional.empty());
 
     assertThatThrownBy(() ->
         roomParticipantService.getCurrentParticipantCount(999L)
@@ -343,7 +346,19 @@ class RoomParticipantServiceTest {
         .isInstanceOf(CustomException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
+  }
 
-    verify(roomParticipantRepository, never()).countByRoomIdAndStatus(any(), any());
+  private RoomParticipantCountProjection participantCountProjection(Long roomId, int count) {
+    return new RoomParticipantCountProjection() {
+      @Override
+      public Long getRoomId() {
+        return roomId;
+      }
+
+      @Override
+      public int getParticipantCount() {
+        return count;
+      }
+    };
   }
 }

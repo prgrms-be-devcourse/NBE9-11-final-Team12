@@ -1284,3 +1284,44 @@ Hikari pool size 20 증가는 병목 해결에 실패
 다음 병목은 DB 쿼리/트랜잭션 비용과 로컬 자원 한계
 따라서 조회 API 최적화와 운영 환경 재측정이 필요
 ```
+
+## 23. 반복 조회 API 1차 쿼리 수 감소
+
+### 23.1 적용한 변경
+
+혼합 부하에서 특정 API 하나만 느린 것이 아니라 대부분의 조회 API가 함께 느려졌다.
+따라서 DB pool을 더 키우기보다 반복 호출되는 조회 API의 쿼리 수를 먼저 줄였다.
+
+| API | 변경 전 | 변경 후 |
+| --- | --- | --- |
+| `GET /api/v1/rooms/{roomId}/participants/count` | 방 존재 확인 1쿼리 + 참여자 수 count 1쿼리 | 방 존재와 참여자 수를 projection 1쿼리로 조회 |
+| `GET /api/v1/rooms/{roomId}/best-speech` | 방 존재 확인 1쿼리 + 베스트 의견 집계 1쿼리 + 의견 상세 조회 1쿼리 | 방 존재 확인 1쿼리 + 베스트 의견 응답 projection 1쿼리 |
+
+### 23.2 선택 이유
+
+- `participants/count`는 프론트에서 실시간 수치 보정용으로 반복 호출될 가능성이 높다.
+- `best-speech`는 집계 결과를 다시 `speeches`에서 조회하는 구조라 불필요한 추가 조회가 있었다.
+- 두 변경 모두 API 응답 계약은 유지하면서 DB round trip만 줄인다.
+- 캐시나 비정규화 테이블을 도입하기 전 적용 가능한 저위험 최적화다.
+
+### 23.3 검증
+
+```bash
+./gradlew test \
+  --tests '*RoomParticipantServiceTest' \
+  --tests '*SpeechReactionServiceTest' \
+  --tests '*SpeechReactionRepositoryTest'
+```
+
+결과: 통과
+
+### 23.4 남은 과제
+
+다음 병목 분해 대상은 다음 API다.
+
+| API | 확인할 내용 |
+| --- | --- |
+| `GET /api/v1/rooms/{roomId}/speeches` | 의견 목록 조회 + 공감 요약 쿼리 비용 |
+| `GET /api/v1/users/{userId}/trust` | 사용자 신뢰도 계산 시 여러 count 쿼리 호출 비용 |
+| `GET /api/v1/rooms/open` | 토론방 목록 조회와 상태/통계 응답 비용 |
+| WebSocket chat send | 채팅 저장 시간과 브로드캐스트 시간 분리 측정 |
