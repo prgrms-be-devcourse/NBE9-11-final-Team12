@@ -7,10 +7,14 @@ import com.sisibibi.api.domain.room.dto.request.UpdateRoomReq;
 import com.sisibibi.api.domain.room.dto.response.CreateRoomRes;
 import com.sisibibi.api.domain.room.dto.response.PreviewRoomTitleRes;
 import com.sisibibi.api.domain.room.dto.response.RoomDetailRes;
+import com.sisibibi.api.domain.room.dto.response.RoomSyncStateRes;
 import com.sisibibi.api.domain.room.dto.response.RoomSummaryRes;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
 import com.sisibibi.api.domain.room.repository.RoomRepository;
+import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipant;
+import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
+import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
 import com.sisibibi.api.domain.topic.entity.Topic;
 import com.sisibibi.api.domain.topic.entity.TopicStatus;
 import com.sisibibi.api.domain.topic.repository.TopicRepository;
@@ -38,6 +42,7 @@ public class RoomService {
   private final RoomCloseCommandService roomCloseCommandService;
   private final RoomCreateCommandService roomCreateCommandService;
   private final RoomTopicGenerator roomTopicGenerator;
+  private final RoomParticipantRepository roomParticipantRepository;
 
 
 
@@ -123,6 +128,38 @@ public class RoomService {
         .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
 
     return RoomDetailRes.from(room);
+  }
+
+  public RoomSyncStateRes getRoomSyncState(Long roomId, Long userId) {
+    Room room = roomRepository.findById(roomId)
+        .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
+
+    RoomParticipantStatus participantStatus = roomParticipantRepository
+        .findByRoomIdAndUserId(roomId, userId)
+        .map(RoomParticipant::getStatus)
+        .orElse(null);
+    int participantCount = roomParticipantRepository.countByRoomIdAndStatus(
+        roomId,
+        RoomParticipantStatus.JOINED
+    );
+
+    boolean joined = participantStatus == RoomParticipantStatus.JOINED;
+    boolean open = room.getStatus() == RoomStatus.OPEN;
+    boolean canJoin = open && !joined;
+    boolean canSubscribe = open && joined;
+    boolean canWrite = canSubscribe;
+    String readMode = canWrite ? "LIVE" : "BLOCKED";
+
+    return new RoomSyncStateRes(
+        room.getId(),
+        room.getStatus(),
+        participantStatus == null ? "NONE" : participantStatus.name(),
+        participantCount,
+        canJoin,
+        canSubscribe,
+        canWrite,
+        readMode
+    );
   }
 
   // 전체 토론방 조회

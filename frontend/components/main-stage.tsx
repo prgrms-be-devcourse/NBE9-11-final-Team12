@@ -170,6 +170,8 @@ export function MainStage({
   const handledEventIdsRef = useRef<string[]>([])
   const speechesRecoveryTimerRef = useRef<number | null>(null)
   const stageRecoveryTimerRef = useRef<number | null>(null)
+  const locallyCreatedSpeechIdsRef = useRef<Map<number, number>>(new Map())
+  const localSpeechCleanupTimerRef = useRef<number | null>(null)
 
   const isCurrentUserSpeaking =
     Boolean(user && currentSpeaker?.currentSpeaker?.userId === user.userId)
@@ -189,6 +191,27 @@ export function MainStage({
     if (handledEventIdsRef.current.includes(eventId)) return false
     handledEventIdsRef.current = [...handledEventIdsRef.current.slice(-199), eventId]
     return true
+  }, [])
+
+  const rememberLocalSpeech = useCallback((speechId: number) => {
+    locallyCreatedSpeechIdsRef.current.set(speechId, Date.now() + 5000)
+    if (localSpeechCleanupTimerRef.current !== null) {
+      window.clearTimeout(localSpeechCleanupTimerRef.current)
+    }
+    localSpeechCleanupTimerRef.current = window.setTimeout(() => {
+      localSpeechCleanupTimerRef.current = null
+      const now = Date.now()
+      locallyCreatedSpeechIdsRef.current.forEach((expiresAt, id) => {
+        if (expiresAt <= now) locallyCreatedSpeechIdsRef.current.delete(id)
+      })
+    }, 5500)
+  }, [])
+
+  const consumeLocalSpeechEvent = useCallback((speechId: number) => {
+    const expiresAt = locallyCreatedSpeechIdsRef.current.get(speechId)
+    if (!expiresAt) return false
+    locallyCreatedSpeechIdsRef.current.delete(speechId)
+    return expiresAt > Date.now()
   }, [])
 
   const loadSpeeches = useCallback(async () => {
@@ -221,6 +244,9 @@ export function MainStage({
   const loadStage = useCallback(async () => {
     const requestSeq = ++stageRequestSeqRef.current
     if (!liveEnabled) {
+      setCurrentSpeaker(null)
+      setQueueSummary(null)
+      setRequestStatus(null)
       setStageLoading(false)
       setStageError("")
       return
@@ -391,6 +417,11 @@ export function MainStage({
       summaryInFlightRoomIdRef.current = null
       counterIssueInFlightRoomIdRef.current = null
       counterIssueReloadPendingRef.current = false
+      locallyCreatedSpeechIdsRef.current.clear()
+      if (localSpeechCleanupTimerRef.current !== null) {
+        window.clearTimeout(localSpeechCleanupTimerRef.current)
+        localSpeechCleanupTimerRef.current = null
+      }
     }
   }, [])
 
@@ -501,13 +532,14 @@ export function MainStage({
       `/topic/rooms/${roomId}/speeches/events`,
       (event) => {
         if (!rememberEvent(event.eventId)) return
+        if (event.eventType === "SPEECH_CREATED" && consumeLocalSpeechEvent(event.data.speechId)) return
         scheduleSpeechesRecovery()
       },
       setError,
     )
 
     return unsubscribe
-  }, [liveEnabled, rememberEvent, roomId, scheduleSpeechesRecovery, stompConnection])
+  }, [consumeLocalSpeechEvent, liveEnabled, rememberEvent, roomId, scheduleSpeechesRecovery, stompConnection])
 
   useEffect(() => {
     if (!liveEnabled || !stompConnection) return
@@ -610,6 +642,7 @@ export function MainStage({
     setImageError("")
     try {
       const speech = await speechApi.create(roomId, { content: content.trim(), stance })
+      rememberLocalSpeech(speech.speechId)
 
       if (selectedImage) {
         const upload = await speechApi.createImageUploadUrl(speech.speechId, {
@@ -973,8 +1006,14 @@ export function MainStage({
         ) : timelineItems.length === 0 ? (
           <div className="flex h-40 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
             <History className="size-6" />
-            <p className="text-sm">아직 등록된 의견이 없습니다.</p>
-            <p className="text-xs">발언권을 받은 사용자가 첫 의견을 작성할 수 있습니다.</p>
+            <p className="text-sm">
+              {liveEnabled ? "아직 의견이 없습니다." : "종료된 토론방입니다."}
+            </p>
+            <p className="text-xs">
+              {liveEnabled
+                ? "발언권을 받은 뒤 첫 의견을 남겨보세요."
+                : "종료된 토론방의 발언권과 의견 내역은 표시하지 않습니다."}
+            </p>
           </div>
         ) : (
           <div className="flex flex-col gap-3">

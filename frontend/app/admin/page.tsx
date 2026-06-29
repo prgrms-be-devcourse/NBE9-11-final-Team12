@@ -931,7 +931,7 @@ export default function AdminDashboardPage() {
             <div className="flex size-8 items-center justify-center rounded-lg bg-primary">
               <Zap className="size-4 text-primary-foreground" />
             </div>
-            <span className="font-bold text-foreground">시시비비</span>
+            <span className="font-bold text-foreground">이슈톡</span>
             <Badge className="border-accent/30 bg-accent/20 text-[10px] text-accent">
               관리자
             </Badge>

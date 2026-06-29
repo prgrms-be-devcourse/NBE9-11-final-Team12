@@ -162,6 +162,21 @@ export type RoomParticipantCount = {
   participantCount: number
 }
 
+export type RoomParticipantSyncStatus = RoomParticipantStatus | "NONE"
+
+export type RoomReadMode = "LIVE" | "BLOCKED"
+
+export type RoomSyncState = {
+  roomId: number
+  roomStatus: "OPEN" | "CLOSED"
+  myParticipantStatus: RoomParticipantSyncStatus
+  participantCount: number
+  canJoin: boolean
+  canSubscribe: boolean
+  canWrite: boolean
+  readMode: RoomReadMode
+}
+
 export type SpringPage<T> = {
   content: T[]
   totalElements: number
