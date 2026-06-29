@@ -197,9 +197,12 @@ public class AiReportPersistenceService {
         AiReport report = aiReportRepository.findByRoomIdForUpdate(roomId)
             .orElseThrow(() -> new CustomException(ErrorCode.AI_REPORT_NOT_FOUND));
 
-        if (report.getStatus() != com.sisibibi.api.domain.report.entity.AiReportStatus.COMPLETED) {
+        if (report.getStatus() != com.sisibibi.api.domain.report.entity.AiReportStatus.COMPLETED
+            && report.getStatus() != com.sisibibi.api.domain.report.entity.AiReportStatus.PUBLISH_FAILED) {
             throw new CustomException(ErrorCode.AI_REPORT_ALREADY_EXISTS);
         }
+
+        report.requestCustomReports(toSnapshots(userId, customPrompts));
 
         report.requestCustomReports(toSnapshots(userId, customPrompts));
 
