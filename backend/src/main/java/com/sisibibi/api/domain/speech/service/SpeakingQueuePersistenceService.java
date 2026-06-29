@@ -73,7 +73,7 @@ public class SpeakingQueuePersistenceService {
                     roomId,
                     userId,
                     nextQueueOrder,
-                    stance.name(),
+                    stance == null ? null : stance.name(),
                     SpeakingQueueStatus.WAITING.name(),
                     requestedAt
             );

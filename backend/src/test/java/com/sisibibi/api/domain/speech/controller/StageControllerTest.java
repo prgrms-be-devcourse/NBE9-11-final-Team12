@@ -234,6 +234,36 @@ class StageControllerTest {
     }
 
     @Test
+    void requestSpeakingTurn_returnsCreatedResponseWhenStanceIsMissing() throws Exception {
+        StageRequestRes response = new StageRequestRes(
+                SpeakingQueueStatus.WAITING,
+                1L,
+                10L,
+                null,
+                1,
+                LocalDateTime.of(2026, 6, 12, 10, 0)
+        );
+
+        given(speakingQueueService.requestSpeakingTurn(1L, 10L, null))
+                .willReturn(response);
+
+        mockMvc.perform(post("/api/v1/rooms/1/stage/requests")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}")
+                        .with(authPrincipal(10L)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.message").value("발언권 신청이 완료되었습니다."))
+                .andExpect(jsonPath("$.data.roomId").value(1))
+                .andExpect(jsonPath("$.data.userId").value(10))
+                .andExpect(jsonPath("$.data.stance").doesNotExist())
+                .andExpect(jsonPath("$.data.queueOrder").value(1))
+                .andExpect(jsonPath("$.data.status").value("WAITING"));
+
+        verify(speakingQueueService).requestSpeakingTurn(1L, 10L, null);
+    }
+
+    @Test
     void requestSpeakingTurn_returnsConflictWhenDuplicateActiveRequestExists() throws Exception {
         given(speakingQueueService.requestSpeakingTurn(1L, 10L, SpeechStance.PRO))
                 .willThrow(new CustomException(ErrorCode.SPEAKING_REQUEST_ALREADY_EXISTS));

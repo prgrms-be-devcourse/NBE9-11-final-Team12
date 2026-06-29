@@ -54,6 +54,21 @@ const REPORT_REASONS: { value: SpeechReportReason; label: string }[] = [
 
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"]
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024
+type OpinionStance = SpeechStance | null
+
+const OPINION_STANCE_LABELS: Record<SpeechStance, string> = {
+  PRO: "찬성",
+  CON: "반대",
+}
+const ALL_OPINION_STANCE_OPTIONS: OpinionStance[] = ["PRO", null, "CON"]
+
+function stanceLabel(stance: OpinionStance) {
+  return stance === null ? "중립" : OPINION_STANCE_LABELS[stance]
+}
+
+function opinionStanceLabel(stance: OpinionStance) {
+  return `${stanceLabel(stance)} 의견`
+}
 
 function messageOf(error: unknown) {
   return error instanceof ApiError ? error.message : "요청 처리 중 오류가 발생했습니다."
@@ -123,7 +138,8 @@ export function MainStage({
   const [counterIssueError, setCounterIssueError] = useState("")
   const [createOpen, setCreateOpen] = useState(false)
   const [content, setContent] = useState("")
-  const [stance, setStance] = useState<SpeechStance>("PRO")
+  const [stance, setStance] = useState<OpinionStance>("PRO")
+  const [stageRequestStance, setStageRequestStance] = useState<OpinionStance>(null)
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
   const [imagePreviewUrl, setImagePreviewUrl] = useState("")
   const [imageError, setImageError] = useState("")
@@ -155,6 +171,11 @@ export function MainStage({
     if (!expiresAt) return null
     return Math.ceil((new Date(expiresAt).getTime() - nowTimestamp) / 1000)
   }, [currentSpeaker, nowTimestamp])
+
+  const opinionStanceOptions = useMemo<OpinionStance[]>(() => {
+    const speakerStance = currentSpeaker?.currentSpeaker?.stance
+    return speakerStance ? [speakerStance, null] : ALL_OPINION_STANCE_OPTIONS
+  }, [currentSpeaker?.currentSpeaker?.stance])
 
   const rememberEvent = useCallback((eventId: string) => {
     if (handledEventIdsRef.current.includes(eventId)) return false
@@ -506,6 +527,9 @@ export function MainStage({
   }
 
   const setCreateDialogOpen = (open: boolean) => {
+    if (open) {
+      setStance(currentSpeaker?.currentSpeaker?.stance ?? null)
+    }
     setCreateOpen(open)
     if (open) return
     setImageError("")
@@ -610,7 +634,7 @@ export function MainStage({
     setSubmitting(true)
     setStageError("")
     try {
-      await stageApi.requestTurn(roomId)
+      await stageApi.requestTurn(roomId, stageRequestStance)
       await loadStage()
     } catch (requestError) {
       setStageError(messageOf(requestError))
@@ -650,6 +674,7 @@ export function MainStage({
       setStageError("발언권을 받은 사용자만 의견을 작성할 수 있습니다.")
       return
     }
+    setStance(currentSpeaker?.currentSpeaker?.stance ?? null)
     setCreateOpen(true)
   }
 
@@ -708,6 +733,11 @@ export function MainStage({
                       ? `${currentSpeaker.currentSpeaker.nickname}님 발언 중`
                       : "현재 발언자가 없습니다"}
               </span>
+              {currentSpeaker?.hasCurrentSpeaker && currentSpeaker.currentSpeaker && (
+                <Badge variant="outline" className="text-[10px]">
+                  stance: {stanceLabel(currentSpeaker.currentSpeaker.stance)}
+                </Badge>
+              )}
               {currentSpeaker?.hasCurrentSpeaker && (
                 <Badge variant="outline" className="text-[10px]">
                   남은 시간 {formatRemainingTime(remainingSeconds)}
@@ -746,10 +776,27 @@ export function MainStage({
                 신청 취소
               </Button>
             ) : (
-              <Button size="sm" variant="outline" className="gap-1.5 text-xs" disabled={submitting || !liveEnabled} onClick={requestTurn}>
-                <Mic className="size-3.5" />
-                발언권 신청
-              </Button>
+              <>
+                <div className="grid grid-cols-3 overflow-hidden rounded-md border border-border">
+                  {(["PRO", null, "CON"] as OpinionStance[]).map((value) => (
+                    <Button
+                      key={value ?? "NEUTRAL"}
+                      type="button"
+                      size="sm"
+                      variant={stageRequestStance === value ? "default" : "ghost"}
+                      className="h-8 rounded-none px-3 text-xs"
+                      disabled={submitting || !liveEnabled}
+                      onClick={() => setStageRequestStance(value)}
+                    >
+                      {value === null ? "중립" : OPINION_STANCE_LABELS[value]}
+                    </Button>
+                  ))}
+                </div>
+                <Button size="sm" variant="outline" className="gap-1.5 text-xs" disabled={submitting || !liveEnabled} onClick={requestTurn}>
+                  <Mic className="size-3.5" />
+                  발언권 신청
+                </Button>
+              </>
             )}
           </div>
         </div>
@@ -869,12 +916,15 @@ export function MainStage({
                         <div className="flex items-center gap-2">
                           <Avatar className="size-7"><AvatarFallback className="text-[10px]">U{speech.userId}</AvatarFallback></Avatar>
                           <div>
-                            <p className="text-xs font-semibold">사용자 #{speech.userId}</p>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <p className="text-xs font-semibold">사용자 #{speech.userId}</p>
+                              <Badge variant="outline" className="text-[10px]">stance: {stanceLabel(speech.speakingStance)}</Badge>
+                            </div>
                             <p className="text-[10px] text-muted-foreground">{new Date(speech.createdAt).toLocaleString("ko-KR")}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          {speech.stance && <Badge variant="outline" className="text-[10px]">{speech.stance === "PRO" ? "찬성" : "반대"}</Badge>}
+                          <Badge variant="outline" className="text-[10px]">{opinionStanceLabel(speech.stance)}</Badge>
                           <Badge variant="secondary" className="text-[10px]">{speechStatusLabel(speech.status)}</Badge>
                         </div>
                       </>
@@ -920,12 +970,12 @@ export function MainStage({
 
       <Dialog open={createOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>메인 의견 작성</DialogTitle><DialogDescription>발언권 시간 내에 찬반 입장과 의견을 입력해주세요.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>메인 의견 작성</DialogTitle><DialogDescription>허용된 입장으로 의견을 입력해주세요.</DialogDescription></DialogHeader>
           <form className="flex flex-col gap-4" onSubmit={createSpeech}>
             {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
             {imageError && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{imageError}</p>}
-            <div className="grid grid-cols-2 gap-2">
-              {(["PRO", "CON"] as SpeechStance[]).map((value) => <Button key={value} type="button" variant={stance === value ? "default" : "outline"} onClick={() => setStance(value)}>{value === "PRO" ? "찬성" : "반대"}</Button>)}
+            <div className={`grid gap-2 ${opinionStanceOptions.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
+              {opinionStanceOptions.map((value) => <Button key={value ?? "NEUTRAL"} type="button" variant={stance === value ? "default" : "outline"} onClick={() => setStance(value)}>{value === null ? "중립" : OPINION_STANCE_LABELS[value]}</Button>)}
             </div>
             <textarea value={content} onChange={(event) => setContent(event.target.value)} rows={7} maxLength={2000} placeholder="의견을 입력하세요." className="resize-none rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
             <div className="space-y-2">

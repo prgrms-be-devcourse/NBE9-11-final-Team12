@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.inOrder;
@@ -83,6 +84,53 @@ class SpeakingQueuePersistenceServiceTest {
             LocalDateTime.of(2099, 6, 15, 10, 0),
             LocalDateTime.of(2099, 6, 15, 12, 0),
             100
+        );
+    }
+
+    @Test
+    void createWaitingRequest_persistsNeutralRequestWhenStanceIsMissing() {
+        givenEligibility(1L, 7L, eligibility(
+                1,
+                1,
+                1,
+                0,
+                0
+        ));
+        given(roomQueueSequenceRepository.issueNextQueueOrderIfRoomActive(eq(1L), any()))
+                .willReturn(1);
+        given(roomQueueSequenceRepository.findNextQueueOrderByRoomId(1L))
+                .willReturn(Optional.of(2));
+        given(speakingQueueRepository.insertWaitingRequest(
+                eq(1L),
+                eq(7L),
+                eq(1),
+                isNull(),
+                eq(SpeakingQueueStatus.WAITING.name()),
+                any()
+        )).willReturn(1);
+
+        SpeakingQueue saved = speakingQueuePersistenceService.createWaitingRequest(
+                1L,
+                7L,
+                null
+        );
+
+        assertThat(saved.getQueueOrder()).isEqualTo(1);
+        assertThat(saved.getStatus()).isEqualTo(SpeakingQueueStatus.WAITING);
+        assertThat(saved.getStance()).isNull();
+        verify(speakingQueueRepository).findSpeakingRequestEligibility(
+                eq(1L),
+                eq(7L),
+                any()
+        );
+        verify(roomQueueSequenceRepository).issueNextQueueOrderIfRoomActive(eq(1L), any());
+        verify(speakingQueueRepository).insertWaitingRequest(
+                eq(1L),
+                eq(7L),
+                eq(1),
+                isNull(),
+                eq(SpeakingQueueStatus.WAITING.name()),
+                any()
         );
     }
 

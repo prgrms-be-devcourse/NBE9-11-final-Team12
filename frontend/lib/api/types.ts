@@ -157,6 +157,7 @@ export type SpeechSummary = {
   userId: number
   content: string
   stance: SpeechStance | null
+  speakingStance: SpeechStance | null
   status: SpeechStatus
   imageUrl: string | null
   deleted: boolean
@@ -291,6 +292,7 @@ export type StageCurrentSpeaker = {
   currentSpeaker: {
     userId: number
     nickname: string
+    stance: SpeechStance | null
     queueOrder: number
     assignedAt: string
     expiresAt: string

@@ -213,7 +213,7 @@ export const stageApi = {
     api.get<StageQueue>(`/api/v1/rooms/${roomId}/stage/queue?offset=${offset}&size=${size}`),
   myRequestStatus: (roomId: number) =>
     api.get<StageRequestStatus>(`/api/v1/rooms/${roomId}/stage/requests/me`),
-  requestTurn: (roomId: number, stance: SpeechStance | null = null) =>
+  requestTurn: (roomId: number, stance: SpeechStance | null) =>
     api.post<StageRequest>(`/api/v1/rooms/${roomId}/stage/requests`, { stance }),
   cancelMyRequest: (roomId: number) =>
     api.delete<void>(`/api/v1/rooms/${roomId}/stage/requests/me`),
