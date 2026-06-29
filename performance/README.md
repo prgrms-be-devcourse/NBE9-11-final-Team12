@@ -394,6 +394,37 @@ TOKEN_VERSION=0 \
 k6 run performance/k6/stage-request.js
 ```
 
+### 발언권 신청 rate sweep
+
+동일 seed를 재사용하는 단건 스크립트 대신, 방과 사용자를 테스트 전에 직접 만들고 정리하면서 `50/100/200/300 TPS`를 연속 실행하려면 다음 스크립트를 사용한다.
+
+```bash
+bash performance/k6/run-stage-request-rate-scenarios.sh
+```
+
+기본 구성:
+
+| 값 | 기본값 |
+| --- | ---: |
+| `ROOM_COUNT` | 15 |
+| `USERS_PER_ROOM` | 300 |
+| 총 테스트 사용자 | 4,500 |
+
+기본 시나리오:
+
+| 시나리오 | RATE | DURATION |
+| --- | ---: | --- |
+| `rate-50` | 50 TPS | 20s |
+| `rate-100` | 100 TPS | 20s |
+| `rate-200` | 200 TPS | 20s |
+| `rate-300` | 300 TPS | 20s |
+
+특정 구간만 실행:
+
+```bash
+RUN_SCENARIOS=rate-100,rate-200 bash performance/k6/run-stage-request-rate-scenarios.sh
+```
+
 ### 발언권 신청·순번 조회·종료 혼합
 
 ```bash
