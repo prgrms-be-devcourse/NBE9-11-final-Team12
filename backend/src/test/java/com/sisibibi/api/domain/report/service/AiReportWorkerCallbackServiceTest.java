@@ -1,6 +1,5 @@
 package com.sisibibi.api.domain.report.service;
 
-import com.sisibibi.api.domain.report.dto.event.AiReportPdfGenerationRequestedEvent;
 import com.sisibibi.api.domain.report.dto.request.AiReportWorkerCompleteReq;
 import com.sisibibi.api.domain.report.dto.request.AiReportWorkerFailReq;
 import com.sisibibi.api.domain.report.dto.response.AiReportRes;
@@ -10,6 +9,7 @@ import com.sisibibi.api.domain.report.entity.AiReport;
 import com.sisibibi.api.domain.report.entity.AiReportCustomPrompt;
 import com.sisibibi.api.domain.report.entity.AiReportPdfExport;
 import com.sisibibi.api.domain.report.entity.AiReportStatus;
+import com.sisibibi.api.domain.report.outbox.AiReportPdfGenerationOutboxWriter;
 import com.sisibibi.api.domain.report.repository.AiReportPdfExportRepository;
 import com.sisibibi.api.domain.report.repository.AiReportRepository;
 import com.sisibibi.api.domain.room.entity.Room;
@@ -28,7 +28,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Duration;
@@ -38,6 +37,9 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -64,7 +66,7 @@ class AiReportWorkerCallbackServiceTest {
     private AiReportProperties aiReportProperties;
 
     @Mock
-    private ApplicationEventPublisher eventPublisher;
+    private AiReportPdfGenerationOutboxWriter outboxWriter;
 
     @InjectMocks
     private AiReportWorkerCallbackService callbackService;
@@ -140,7 +142,7 @@ class AiReportWorkerCallbackServiceTest {
                 AiReportGenerationType.BASE_ONLY, "core", List.of("issue"), "summary", "common", "opinion", List.of()
         ));
 
-        verify(eventPublisher).publishEvent(new AiReportPdfGenerationRequestedEvent(99L));
+        verify(outboxWriter).record(eq(99L), any(LocalDateTime.class));
     }
 
     @Test
@@ -159,7 +161,7 @@ class AiReportWorkerCallbackServiceTest {
                 List.of(new com.sisibibi.api.domain.report.client.dto.AiReportCustomReportPayload("custom result", "custom content"))
         ));
 
-        verify(eventPublisher, never()).publishEvent(org.mockito.ArgumentMatchers.any(AiReportPdfGenerationRequestedEvent.class));
+        verify(outboxWriter, never()).record(anyLong(), any(LocalDateTime.class));
     }
 
     @Test

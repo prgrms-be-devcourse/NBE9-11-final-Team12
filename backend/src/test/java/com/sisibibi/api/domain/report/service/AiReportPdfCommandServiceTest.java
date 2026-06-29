@@ -1,12 +1,12 @@
 package com.sisibibi.api.domain.report.service;
 
-import com.sisibibi.api.domain.report.dto.event.AiReportPdfGenerationRequestedEvent;
 import com.sisibibi.api.domain.report.dto.response.AiReportPdfDownloadUrlRes;
 import com.sisibibi.api.domain.report.dto.response.AiReportPdfStatusRes;
 import com.sisibibi.api.domain.report.dto.response.AiReportStatusRes;
 import com.sisibibi.api.domain.report.entity.AiReport;
 import com.sisibibi.api.domain.report.entity.AiReportPdfExport;
 import com.sisibibi.api.domain.report.entity.AiReportStatus;
+import com.sisibibi.api.domain.report.outbox.AiReportPdfGenerationOutboxWriter;
 import com.sisibibi.api.domain.report.repository.AiReportPdfExportRepository;
 import com.sisibibi.api.domain.report.repository.AiReportRepository;
 import com.sisibibi.api.global.exception.CustomException;
@@ -16,15 +16,16 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -48,7 +49,7 @@ class AiReportPdfCommandServiceTest {
     private AiReportPdfStorage storage;
 
     @Mock
-    private ApplicationEventPublisher eventPublisher;
+    private AiReportPdfGenerationOutboxWriter outboxWriter;
 
     @Test
     void getStatus_returnsNotStartedPdf_whenExportMissing() {
@@ -63,7 +64,7 @@ class AiReportPdfCommandServiceTest {
     }
 
     @Test
-    void requestPdf_createsExportAndPublishesEvent_whenReportCompleted() {
+    void requestPdf_createsExportAndRecordsOutboxEvent_whenReportCompleted() {
         AiReport report = completedReport(10L, 1L);
         AiReportPdfExport export = AiReportPdfExport.notStarted(10L, 1L, 7L);
         ReflectionTestUtils.setField(export, "id", 99L);
@@ -73,7 +74,7 @@ class AiReportPdfCommandServiceTest {
         AiReportPdfStatusRes result = commandService.requestPdf(1L, 7L);
 
         assertThat(result.pdfStatus()).isEqualTo("NOT_STARTED");
-        verify(eventPublisher).publishEvent(new AiReportPdfGenerationRequestedEvent(99L));
+        verify(outboxWriter).record(eq(99L), any(LocalDateTime.class));
     }
 
     @Test

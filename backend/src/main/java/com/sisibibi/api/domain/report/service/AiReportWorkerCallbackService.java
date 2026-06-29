@@ -7,7 +7,6 @@ import com.sisibibi.api.domain.report.client.dto.AiReportGenerateRes;
 import com.sisibibi.api.domain.report.client.dto.AiReportRoomPayload;
 import com.sisibibi.api.domain.report.client.dto.AiReportSpeechPayload;
 import com.sisibibi.api.domain.report.client.dto.AiReportTopicPayload;
-import com.sisibibi.api.domain.report.dto.event.AiReportPdfGenerationRequestedEvent;
 import com.sisibibi.api.domain.report.dto.request.AiReportWorkerCompleteReq;
 import com.sisibibi.api.domain.report.dto.request.AiReportWorkerFailReq;
 import com.sisibibi.api.domain.report.dto.response.AiReportRes;
@@ -16,6 +15,7 @@ import com.sisibibi.api.domain.report.entity.AiReport;
 import com.sisibibi.api.domain.report.entity.AiReportCustomPrompt;
 import com.sisibibi.api.domain.report.entity.AiReportStatus;
 import com.sisibibi.api.domain.report.prompt.CustomPromptCommand;
+import com.sisibibi.api.domain.report.outbox.AiReportPdfGenerationOutboxWriter;
 import com.sisibibi.api.domain.report.repository.AiReportPdfExportRepository;
 import com.sisibibi.api.domain.report.repository.AiReportRepository;
 import com.sisibibi.api.domain.room.entity.Room;
@@ -28,7 +28,6 @@ import com.sisibibi.api.domain.topic.repository.TopicRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,7 +48,7 @@ public class AiReportWorkerCallbackService {
     private final AiReportRepository aiReportRepository;
     private final AiReportPdfExportRepository aiReportPdfExportRepository;
     private final AiReportProperties aiReportProperties;
-    private final ApplicationEventPublisher eventPublisher;
+    private final AiReportPdfGenerationOutboxWriter outboxWriter;
 
     @Transactional
     public AiReportWorkerProcessingRes startProcessing(Long reportId, AiReportGenerationType generationType) {
@@ -108,11 +107,10 @@ public class AiReportWorkerCallbackService {
 
         report.complete(response);
 
+        LocalDateTime now = LocalDateTime.now();
         aiReportPdfExportRepository.findByAiReportId(report.getId()).stream()
                 .filter(export -> export.shouldStartGeneration())
-                .forEach(export -> eventPublisher.publishEvent(
-                        new AiReportPdfGenerationRequestedEvent(export.getId())
-                ));
+                .forEach(export -> outboxWriter.record(export.getId(), now));
 
         return AiReportRes.from(report);
     }

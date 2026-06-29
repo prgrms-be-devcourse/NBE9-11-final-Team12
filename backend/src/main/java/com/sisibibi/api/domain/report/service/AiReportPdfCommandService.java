@@ -1,6 +1,5 @@
 package com.sisibibi.api.domain.report.service;
 
-import com.sisibibi.api.domain.report.dto.event.AiReportPdfGenerationRequestedEvent;
 import com.sisibibi.api.domain.report.dto.response.AiReportPdfDownloadUrlRes;
 import com.sisibibi.api.domain.report.dto.response.AiReportPdfStatusRes;
 import com.sisibibi.api.domain.report.dto.response.AiReportStatusRes;
@@ -8,14 +7,16 @@ import com.sisibibi.api.domain.report.entity.AiReport;
 import com.sisibibi.api.domain.report.entity.AiReportPdfExport;
 import com.sisibibi.api.domain.report.entity.AiReportPdfStatus;
 import com.sisibibi.api.domain.report.entity.AiReportStatus;
+import com.sisibibi.api.domain.report.outbox.AiReportPdfGenerationOutboxWriter;
 import com.sisibibi.api.domain.report.repository.AiReportPdfExportRepository;
 import com.sisibibi.api.domain.report.repository.AiReportRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -26,7 +27,7 @@ public class AiReportPdfCommandService {
     private final AiReportPdfExportRepository exportRepository;
     private final AiReportPdfPersistenceService persistenceService;
     private final AiReportPdfStorage storage;
-    private final ApplicationEventPublisher eventPublisher;
+    private final AiReportPdfGenerationOutboxWriter outboxWriter;
 
     public AiReportStatusRes getStatus(Long roomId, Long userId) {
         AiReport report = aiReportRepository.findByRoomId(roomId)
@@ -46,7 +47,7 @@ public class AiReportPdfCommandService {
         }
         AiReportPdfExport export = persistenceService.createIfMissing(report.getId(), roomId, userId);
         if (export.shouldStartGeneration()) {
-            eventPublisher.publishEvent(new AiReportPdfGenerationRequestedEvent(export.getId()));
+            outboxWriter.record(export.getId(), LocalDateTime.now());
         }
         return AiReportPdfStatusRes.from(export);
     }
