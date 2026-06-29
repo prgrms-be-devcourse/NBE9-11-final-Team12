@@ -63,7 +63,7 @@ class AiReportPdfGenerationServiceTest {
     }
 
     @Test
-    void generate_pdfFailureMarksPdfFailedThrowsAndDoesNotSendEmail() {
+    void generate_pdfFailureRetriesThreeTimesAndThrows() {
         AiReportPdfExport export = AiReportPdfExport.notStarted(10L, 1L, 5L);
 
         given(persistenceService.prepareGeneration(EXPORT_ID)).willReturn(export);
@@ -73,6 +73,7 @@ class AiReportPdfGenerationServiceTest {
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("render failed");
 
+        verify(dataCollector, org.mockito.Mockito.times(3)).collect(export);
         verify(persistenceService).failPdf(eq(EXPORT_ID), any());
         verify(notificationSender, never()).sendPdfReady(any());
         verify(persistenceService, never()).completePdf(any(), any());

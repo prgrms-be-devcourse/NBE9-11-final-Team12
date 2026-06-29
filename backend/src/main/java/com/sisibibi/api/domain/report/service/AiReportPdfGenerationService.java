@@ -18,21 +18,42 @@ public class AiReportPdfGenerationService {
     private final AiReportNotificationSender notificationSender;
     private final AiReportNotificationProperties notificationProperties;
 
+    private static final int MAX_ATTEMPTS = 3;
+    private static final long RETRY_DELAY_MS = 100;
+
     public void generate(Long exportId) {
         AiReportPdfExport export = persistenceService.prepareGeneration(exportId);
-        AiReportPdfModel model;
-        try {
-            model = dataCollector.collect(export);
-            byte[] pdfBytes = renderer.render(model);
-            String objectKey = storage.upload(model.roomId(), model.reportId(), export.getRequestedByUserId(), pdfBytes);
-            persistenceService.completePdf(exportId, objectKey);
-        } catch (RuntimeException e) {
-            log.warn("AI report PDF generation failed. exportId={}", exportId, e);
-            persistenceService.failPdf(exportId, e.getMessage());
-            throw e;
-        }
-
+        AiReportPdfModel model = generateWithRetry(exportId, export);
         sendNotificationQuietly(exportId, model);
+    }
+
+    private AiReportPdfModel generateWithRetry(Long exportId, AiReportPdfExport export) {
+        RuntimeException lastException = null;
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            try {
+                AiReportPdfModel model = dataCollector.collect(export);
+                byte[] pdfBytes = renderer.render(model);
+                String objectKey = storage.upload(model.roomId(), model.reportId(), export.getRequestedByUserId(), pdfBytes);
+                persistenceService.completePdf(exportId, objectKey);
+                return model;
+            } catch (RuntimeException e) {
+                lastException = e;
+                log.warn("AI report PDF generation attempt {}/{} failed. exportId={}", attempt, MAX_ATTEMPTS, exportId, e);
+                if (attempt < MAX_ATTEMPTS) {
+                    sleep(RETRY_DELAY_MS);
+                }
+            }
+        }
+        persistenceService.failPdf(exportId, lastException.getMessage());
+        throw lastException;
+    }
+
+    private void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     public void retryNotification(Long exportId) {
