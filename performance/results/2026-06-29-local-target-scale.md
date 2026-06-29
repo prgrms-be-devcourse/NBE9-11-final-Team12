@@ -233,3 +233,65 @@ HTTP 읽기 300 RPS는 k6 결과 기준으로 별도 기록했다.
 4. 운영 서버에서는 ramp-up, soak, spike 테스트를 분리
 5. Grafana Cloud 또는 별도 모니터링 서버로 운영 지표 수집 구조 확장
 
+
+## 10. 발언권 추가 Stress 테스트
+
+기존 `20 TPS × 60초`는 목표 규모 기준 load 테스트다.
+발언권 신청은 사용자가 지속적으로 초당 수십 번 호출하는 API가 아니라, 토론 진행 중 특정 시점에 몰리는 burst 성격의 쓰기 API다.
+따라서 20 TPS는 기준 부하 검증으로 보고, 추가로 30 TPS와 50 TPS를 stress 성격으로 검증했다.
+
+### 30 TPS 결과
+
+```bash
+RATE=30 DURATION=30s k6 run performance/k6/target-scale-stage.js
+```
+
+| 지표 | 결과 |
+| --- | ---: |
+| 총 요청 수 | 901 |
+| 생성 성공 | 901 |
+| 실패율 | 0% |
+| p95 | 40.59ms |
+| p99 | 48.73ms |
+| max | 101.93ms |
+
+### 50 TPS 결과
+
+```bash
+RATE=50 DURATION=20s k6 run performance/k6/target-scale-stage.js
+```
+
+| 지표 | 결과 |
+| --- | ---: |
+| 총 요청 수 | 1001 |
+| 생성 성공 | 1000 |
+| 비즈니스 거절 | 1 |
+| 서버 오류율 | 0% |
+| p95 | 68.92ms |
+| p99 | 422.84ms |
+| max | 552.28ms |
+
+50 TPS에서는 p95는 안정적이지만 p99와 max가 튀었다.
+Prometheus 기준으로는 다음 문제가 확인되지 않았다.
+
+- HTTP 5xx 증가 없음
+- Hikari pending 0
+- MySQL slow query 증가 없음
+- Host CPU 여유 있음
+
+따라서 현재 관측 기준 병목은 DB 커넥션 고갈이나 slow query라기보다, 방 단위 발언권 순번 발급과 상태 변경이 순간적으로 직렬화되는 구간에서 일부 tail latency가 발생한 것으로 판단한다.
+
+### 결론
+
+- 목표 기준인 20 TPS는 통과함
+- 30 TPS도 안정적으로 통과함
+- 50 TPS도 서버 오류 없이 통과했지만 p99 tail latency가 상승함
+- 다음 성능 개선은 평균 응답이 아니라 p99 tail latency를 줄이는 방향으로 진행해야 함
+
+### 다음 확인 대상
+
+1. `room_queue_sequences` 비관적 락 대기 시간 측정
+2. 같은 방 집중 부하와 10개 방 분산 부하 비교
+3. Hibernate SQL 로그 비활성화 후 재측정
+4. 발언권 신청 트랜잭션 내부 쿼리 수 축소 가능성 검토
+5. 운영 서버에서는 ramp-up 방식으로 50 TPS 이상 재검증
