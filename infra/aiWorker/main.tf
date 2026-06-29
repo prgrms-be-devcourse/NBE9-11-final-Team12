@@ -127,16 +127,15 @@ resource "aws_iam_instance_profile" "ai_worker_profile" {
 locals {
   ai_worker_user_data = <<-EOF
 #!/bin/bash
-set -e
+set -euo pipefail
 
 mkdir -p /opt/ai-models
 mkdir -p /opt/ai-worker
 
-cat <<ENV_EOF > /opt/ai-worker/.env.example
+cat > /opt/ai-worker/.env.template <<ENV_TEMPLATE_EOF
 AI_REPORT_QUEUE_URL=${var.academy_ai_report_queue_url}
 AI_REPORT_QUEUE_REGION=${var.region}
 AI_REPORT_BACKEND_BASE_URL=${var.backend_base_url}
-AI_REPORT_WORKER_TOKEN=CHANGE_ME
 AI_REPORT_BACKEND_TIMEOUT_SECONDS=10
 AI_REPORT_WORKER_BATCH_SIZE=1
 AI_REPORT_WORKER_WAIT_TIME_SECONDS=10
@@ -146,17 +145,90 @@ AI_REPORT_TEMPERATURE=0.3
 AI_REPORT_CONTEXT_SIZE=32768
 AI_REPORT_MAX_TOKENS=2048
 AI_REPORT_GPU_LAYERS=-1
-ENV_EOF
+ENV_TEMPLATE_EOF
+
+if ! command -v docker >/dev/null 2>&1; then
+  if command -v yum >/dev/null 2>&1; then
+    yum install -y docker
+  elif command -v apt-get >/dev/null 2>&1; then
+    apt-get update
+    apt-get install -y docker.io
+  fi
+fi
+
+systemctl enable docker
+systemctl start docker
+
+cat <<'RUNNER_EOF' > /opt/ai-worker/run-worker.sh
+#!/bin/bash
+set -euo pipefail
+
+REGION="${var.region}"
+IMAGE="${var.ai_worker_image}"
+CONTAINER_NAME="${var.ai_worker_container_name}"
+MODEL_PATH="${var.ai_worker_host_model_path}"
+ENV_FILE="/opt/ai-worker/.env"
+
+if [ ! -f "$ENV_FILE" ]; then
+  echo "AI Worker env file is missing: $ENV_FILE"
+  echo "Run the GitHub Actions deploy workflow once after the instance is online."
+  exit 1
+fi
+
+if [ ! -f "$MODEL_PATH" ]; then
+  echo "AI model file is missing: $MODEL_PATH"
+  exit 1
+fi
+
+docker pull "$IMAGE"
+docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+docker run -d \
+  --name "$CONTAINER_NAME" \
+  --restart unless-stopped \
+  --gpus all \
+  --env-file "$ENV_FILE" \
+  -v /opt/ai-models:/models \
+  "$IMAGE"
+RUNNER_EOF
+
+chmod 700 /opt/ai-worker/run-worker.sh
+
+cat <<'SERVICE_EOF' > /etc/systemd/system/ai-worker.service
+[Unit]
+Description=AI Report SQS Worker
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/ai-worker/run-worker.sh
+ExecStop=/bin/sh -c 'docker rm -f ${var.ai_worker_container_name} >/dev/null 2>&1 || true'
+
+[Install]
+WantedBy=multi-user.target
+SERVICE_EOF
+
+systemctl daemon-reload
+systemctl enable ai-worker.service
+systemctl start ai-worker.service || true
 EOF
 }
 
 resource "aws_instance" "ai_worker" {
   ami                         = var.ai_worker_ami_id
-  instance_type               = "t2.micro"
+  instance_type               = "g4dn.xlarge"
   subnet_id                   = aws_subnet.ai_public_subnet.id
   vpc_security_group_ids      = [aws_security_group.ai_worker_sg.id]
   associate_public_ip_address = true
   iam_instance_profile        = aws_iam_instance_profile.ai_worker_profile.name
+
+
+  instance_market_options {
+    market_type = "spot"
+  }
+
 
   root_block_device {
     volume_type = "gp3"

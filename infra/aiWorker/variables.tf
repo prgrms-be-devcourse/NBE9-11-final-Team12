@@ -30,7 +30,7 @@ variable "ai_worker_ami_id" {
 variable "root_volume_size" {
   description = "Root EBS volume size in GiB"
   type        = number
-  default     = 20
+  default     = 100
 }
 
 variable "academy_ai_report_queue_url" {
@@ -46,4 +46,21 @@ variable "academy_ai_report_queue_arn" {
 variable "backend_base_url" {
   description = "Spring backend base URL reachable from the AI Worker"
   type        = string
+}
+
+variable "ai_worker_image" {
+  description = "AI Worker Docker image URI"
+  type        = string
+}
+
+variable "ai_worker_container_name" {
+  description = "AI Worker Docker container name"
+  type        = string
+  default     = "ai-report-worker"
+}
+
+variable "ai_worker_host_model_path" {
+  description = "Model file path on the EC2 host"
+  type        = string
+  default     = "/opt/ai-models/Qwen2.5-7B-Instruct-Q4_K_M.gguf"
 }

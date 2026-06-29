@@ -17,8 +17,8 @@ permissions:
   packages: write
 
 jobs:
-  buildImageAndPush:
-    name: Build and push AI Worker image
+  buildImagePushAndDeploy:
+    name: Build, push, and deploy AI Worker image
     runs-on: ubuntu-latest
 
     steps:
@@ -50,3 +50,85 @@ jobs:
           tags: |
             ghcr.io/${{ steps.export_owner.outputs.owner_lc }}/${{ env.IMAGE_NAME }}:latest
             ghcr.io/${{ steps.export_owner.outputs.owner_lc }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Configure personal AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.PERSONAL_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.PERSONAL_AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.PERSONAL_AWS_REGION }}
+
+      - name: Restart AI Worker through SSM
+        env:
+          AI_WORKER_INSTANCE_ID: ${{ secrets.AI_WORKER_INSTANCE_ID }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          AI_REPORT_WORKER_TOKEN: ${{ secrets.AI_REPORT_WORKER_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          PING_STATUS=$(aws ssm describe-instance-information \
+            --filters "Key=InstanceIds,Values=$AI_WORKER_INSTANCE_ID" \
+            --query "InstanceInformationList[0].PingStatus" \
+            --output text)
+
+          if [ "$PING_STATUS" != "Online" ]; then
+            echo "AI Worker instance is not online through SSM. It will pull the latest image on the next boot."
+            exit 0
+          fi
+
+          GHCR_TOKEN_B64=$(printf "%s" "$GHCR_TOKEN" | base64 -w 0)
+          AI_REPORT_WORKER_TOKEN_B64=$(printf "%s" "$AI_REPORT_WORKER_TOKEN" | base64 -w 0)
+
+          python3 - <<'PY'
+          import json
+          import os
+
+          commands = [
+              "sudo mkdir -p /opt/ai-worker",
+              "sudo cp /opt/ai-worker/.env.template /opt/ai-worker/.env",
+              f"printf '%s' '{os.environ['AI_REPORT_WORKER_TOKEN_B64']}' | base64 -d | sudo sed 's/^/AI_REPORT_WORKER_TOKEN=/' | sudo tee -a /opt/ai-worker/.env >/dev/null",
+              "sudo chmod 600 /opt/ai-worker/.env",
+              f"printf '%s' '{os.environ['GHCR_TOKEN_B64']}' | base64 -d | sudo docker login ghcr.io -u '{os.environ['GHCR_USERNAME']}' --password-stdin",
+              "sudo systemctl restart ai-worker.service",
+              "sudo systemctl status ai-worker.service --no-pager",
+              "sudo docker ps --filter name=ai-report-worker",
+          ]
+
+          payload = {
+              "InstanceIds": [os.environ["AI_WORKER_INSTANCE_ID"]],
+              "DocumentName": "AWS-RunShellScript",
+              "Comment": f"Deploy AI Worker {os.environ['GITHUB_SHA']}",
+              "Parameters": {
+                  "commands": commands,
+              },
+          }
+
+          with open("ssm-ai-worker-deploy.json", "w", encoding="utf-8") as f:
+              json.dump(payload, f)
+          PY
+
+          COMMAND_ID=$(aws ssm send-command \
+            --cli-input-json file://ssm-ai-worker-deploy.json \
+            --query "Command.CommandId" \
+            --output text)
+
+          aws ssm wait command-executed \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$AI_WORKER_INSTANCE_ID"
+
+          STATUS=$(aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$AI_WORKER_INSTANCE_ID" \
+            --query "Status" \
+            --output text)
+
+          aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$AI_WORKER_INSTANCE_ID" \
+            --query "{Status:Status,StandardOutputContent:StandardOutputContent,StandardErrorContent:StandardErrorContent}" \
+            --output json
+
+          if [ "$STATUS" != "Success" ]; then
+            exit 1
+          fi

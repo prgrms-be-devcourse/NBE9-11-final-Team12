@@ -30,3 +30,7 @@ backend/logs/
 
 # Local helper scripts
 /scripts/
+
+#infra
+terraform.tfvars
+*.tfvars
