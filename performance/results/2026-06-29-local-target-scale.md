@@ -773,3 +773,136 @@ k6 run performance/k6/target-scale-websocket.js
 
 현재 로컬 기준으로는 “서버가 바로 실패하는 지점”보다 “tail latency가 급격히 증가하는 지점”이 먼저 확인됐다.
 따라서 다음 성능 개선은 실패율만 보는 것이 아니라 p95/p99, Tomcat thread, DB connection, JVM CPU, Redis latency를 같은 시간축에서 같이 봐야 한다.
+
+## 19. REST + WebSocket 혼합 부하 테스트
+
+단독 API 한계가 아니라 실제 서비스처럼 HTTP 조회/쓰기/발언권 신청과 WebSocket 채팅이 동시에 발생하는 상황을 확인했다.
+혼합 부하에서는 같은 Spring Boot 인스턴스가 HTTP 요청, WebSocket 세션, STOMP 메시지 처리, 채팅 저장, DB/Redis 접근을 함께 처리하므로 단독 테스트보다 병목이 더 빨리 드러날 수 있다.
+
+### 19.1 혼합 부하 스크립트
+
+```bash
+k6 run performance/k6/target-scale-mixed-limit.js
+```
+
+동시에 실행한 작업:
+
+| 시나리오 | 내용 |
+| --- | --- |
+| `readApis` | 내 정보, 토론방 목록/상세, 참여자 수, 의견 목록, 발언권 상태, 베스트 의견, 신뢰도 조회 |
+| `writeApis` | 공감 등록/취소, 의견 신고 |
+| `stageRequests` | 발언권 신청 |
+| `websocketChat` | WebSocket 연결, STOMP CONNECT, SUBSCRIBE, SEND, 브로드캐스트 수신 |
+
+### 19.2 혼합 부하 1차: HTTP 350 RPS 목표 + WebSocket 500명
+
+```bash
+READ_RATE=200 \
+WRITE_RATE=50 \
+STAGE_RATE=100 \
+WS_VUS=500 \
+MESSAGE_INTERVAL_SECONDS=5 \
+DURATION=30s \
+k6 run performance/k6/target-scale-mixed-limit.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| HTTP 요청 수 | 35,120 |
+| HTTP 처리량 | 1,063.71 req/s |
+| HTTP 실패율 | 0% |
+| HTTP p95 | 881.62ms |
+| HTTP p99 | 1.05s |
+| dropped iterations | 2,775 |
+| WebSocket 연결 수 | 500 |
+| WebSocket connect p95 | 425.04ms |
+| WebSocket 메시지 전송 | 2,646 |
+| WebSocket 메시지 수신 | 101 |
+| WebSocket failure rate | 79.80% |
+
+판단:
+
+- HTTP 자체는 5xx 없이 처리됐지만, k6가 목표 도착률을 유지하지 못해 dropped iteration이 크게 발생했다.
+- WebSocket 연결과 STOMP 연결은 가능했지만 브로드캐스트 수신이 급격히 줄었다.
+- 이 조건에서는 HTTP와 WebSocket을 동시에 처리할 때 채팅 브로드캐스트/수신 경로가 먼저 깨진다.
+
+### 19.3 혼합 부하 2차: HTTP 175 RPS 목표 + WebSocket 500명
+
+```bash
+READ_RATE=100 \
+WRITE_RATE=25 \
+STAGE_RATE=50 \
+WS_VUS=500 \
+MESSAGE_INTERVAL_SECONDS=5 \
+DURATION=30s \
+k6 run performance/k6/target-scale-mixed-limit.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| HTTP 요청 수 | 28,977 |
+| HTTP 처리량 | 913.58 req/s |
+| HTTP 실패율 | 0% |
+| HTTP p95 | 344.96ms |
+| HTTP p99 | 543.34ms |
+| dropped iterations | 114 |
+| WebSocket 연결 수 | 500 |
+| WebSocket connect p95 | 458ms |
+| WebSocket 메시지 전송 | 2,400 |
+| WebSocket 메시지 수신 | 1,498 |
+| WebSocket failure rate | 34.18% |
+
+판단:
+
+- HTTP p95는 안정권으로 내려갔고 dropped iteration도 크게 줄었다.
+- 하지만 WebSocket 수신 실패는 여전히 남았다.
+- 단독 WebSocket 기준선과 비교하면 혼합 부하가 WebSocket 브로드캐스트 처리에 직접적인 영향을 준다.
+
+### 19.4 WebSocket 단독 기준선: 500명 / 5초 주기
+
+```bash
+VUS=500 \
+MESSAGE_INTERVAL_SECONDS=5 \
+CONNECTION_DURATION_SECONDS=30 \
+k6 run performance/k6/target-scale-websocket.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| WebSocket 연결 수 | 500 |
+| STOMP CONNECT | 500 |
+| SUBSCRIBE | 500 |
+| WebSocket failure rate | 0% |
+| connect p95 | 254ms |
+| 메시지 전송 | 2,646 |
+| 메시지 수신 | 125,013 |
+| checks | 100% |
+
+판단:
+
+- 같은 500명/5초 조건에서 WebSocket 단독 테스트는 정상 통과했다.
+- 따라서 WebSocket 자체 연결 수 한계라기보다, REST 부하와 동시에 발생할 때 브로드캐스트 처리량이 감소하는 혼합 부하 병목으로 보는 것이 타당하다.
+
+### 19.5 현재 병목 해석
+
+| 병목 후보 | 근거 | 우선순위 |
+| --- | --- | ---: |
+| WebSocket 브로드캐스트 처리 경로 | 단독 500명은 통과, 혼합 부하에서 수신 실패율 34~79% | 1 |
+| HTTP 조회 시나리오의 누적 비용 | 읽기 시나리오가 iteration당 여러 API를 직렬 호출하며 dropped iteration 발생 | 2 |
+| DB connection/transaction 경합 | 채팅 저장, 신고, 공감, 발언권 신청이 동시에 DB 사용 | 3 |
+| 단일 애플리케이션 인스턴스 자원 경합 | HTTP와 WebSocket이 같은 JVM/스레드/DB pool 공유 | 4 |
+
+결론:
+
+- 현재 로컬 기준 실제 병목은 “HTTP API 5xx”가 아니라 “혼합 부하에서 WebSocket 메시지 수신이 밀리는 현상”으로 먼저 나타났다.
+- WebSocket 단독 결과만으로는 운영 안정성을 판단하면 안 된다.
+- 다음 개선은 WebSocket 메시지 저장/브로드캐스트 경로의 계측과 분리가 우선이다.
+
+개선 후보:
+
+1. WebSocket 메시지 처리 시간, DB 저장 시간, 브로드캐스트 시간 로그/메트릭 추가
+2. 채팅 저장과 브로드캐스트의 트랜잭션 경계 확인
+3. 단순 브로커 대신 외부 broker relay 검토
+4. 채팅 저장 실패/지연 시 브로드캐스트 정책 결정
+5. HTTP 읽기 시나리오를 API별 단독 테스트로 분해해 가장 비싼 조회 분리
+6. 운영 서버에서는 부하 발생기와 애플리케이션 서버를 분리해 재측정
