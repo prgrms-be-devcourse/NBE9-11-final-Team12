@@ -34,3 +34,5 @@ backend/logs/
 #infra
 terraform.tfvars
 *.tfvars
+terraform.tfstate
+*.tfstate
