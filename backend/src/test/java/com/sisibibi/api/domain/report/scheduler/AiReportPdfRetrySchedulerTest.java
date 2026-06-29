@@ -1,8 +1,8 @@
 package com.sisibibi.api.domain.report.scheduler;
 
+import com.sisibibi.api.domain.report.entity.AiReportNotificationStatus;
 import com.sisibibi.api.domain.report.entity.AiReportPdfExport;
 import com.sisibibi.api.domain.report.entity.AiReportPdfStatus;
-import com.sisibibi.api.domain.report.entity.AiReportNotificationStatus;
 import com.sisibibi.api.domain.report.repository.AiReportPdfExportRepository;
 import com.sisibibi.api.domain.report.service.AiReportPdfGenerationService;
 import com.sisibibi.api.domain.report.service.AiReportPdfProperties;
@@ -38,79 +38,41 @@ class AiReportPdfRetrySchedulerTest {
     }
 
     @Test
-    void retryFailedPdfs_callsGenerationForPdfCandidates() {
-        AiReportPdfExport failedExport = exportWithId(99L);
-        given(exportRepository.findPdfRetryCandidates(
-                any(AiReportPdfStatus.class), any(LocalDateTime.class), anyInt(), any(Pageable.class)
-        )).willReturn(List.of(failedExport));
-        given(exportRepository.findNotificationRetryCandidates(
-                any(AiReportPdfStatus.class), any(AiReportNotificationStatus.class),
-                any(LocalDateTime.class), anyInt(), any(Pageable.class)
-        )).willReturn(List.of());
-        given(exportRepository.findNotificationPendingCandidates(
-                any(AiReportPdfStatus.class), any(AiReportNotificationStatus.class),
-                any(LocalDateTime.class), anyInt(), any(Pageable.class)
-        )).willReturn(List.of());
-
-        scheduler.retryFailedExports();
-
-        verify(generationService).generate(99L);
-    }
-
-    @Test
-    void retryFailedNotifications_callsGenerationForNotificationCandidates() {
+    void retryFailedNotifications_callsRetryNotificationForCandidates() {
         AiReportPdfExport notifFailedExport = exportWithId(77L);
-        given(exportRepository.findPdfRetryCandidates(
-                any(AiReportPdfStatus.class), any(LocalDateTime.class), anyInt(), any(Pageable.class)
-        )).willReturn(List.of());
         given(exportRepository.findNotificationRetryCandidates(
                 any(AiReportPdfStatus.class), any(AiReportNotificationStatus.class),
                 any(LocalDateTime.class), anyInt(), any(Pageable.class)
         )).willReturn(List.of(notifFailedExport));
-        given(exportRepository.findNotificationPendingCandidates(
-                any(AiReportPdfStatus.class), any(AiReportNotificationStatus.class),
-                any(LocalDateTime.class), anyInt(), any(Pageable.class)
-        )).willReturn(List.of());
 
-        scheduler.retryFailedExports();
+        scheduler.retryFailedNotifications();
 
-        verify(generationService).generate(77L);
+        verify(generationService).retryNotification(77L);
     }
 
     @Test
-    void retryPendingNotifications_callsGenerationForReadyNotSentCandidates() {
-        AiReportPdfExport notSentExport = exportWithId(88L);
-        given(exportRepository.findPdfRetryCandidates(
-                any(AiReportPdfStatus.class), any(LocalDateTime.class), anyInt(), any(Pageable.class)
-        )).willReturn(List.of());
+    void retryFailedNotifications_doesNotCallGenerate() {
         given(exportRepository.findNotificationRetryCandidates(
                 any(AiReportPdfStatus.class), any(AiReportNotificationStatus.class),
                 any(LocalDateTime.class), anyInt(), any(Pageable.class)
         )).willReturn(List.of());
-        given(exportRepository.findNotificationPendingCandidates(
-                any(AiReportPdfStatus.class), any(AiReportNotificationStatus.class),
-                any(LocalDateTime.class), anyInt(), any(Pageable.class)
-        )).willReturn(List.of(notSentExport));
 
-        scheduler.retryFailedExports();
+        scheduler.retryFailedNotifications();
 
-        verify(generationService).generate(88L);
+        verify(generationService, never()).generate(any());
     }
 
     @Test
     void disabledScheduler_skipsWork() {
         properties.setEnabled(false);
 
-        scheduler.retryFailedExports();
+        scheduler.retryFailedNotifications();
 
-        verify(exportRepository, never()).findPdfRetryCandidates(
-                any(AiReportPdfStatus.class), any(LocalDateTime.class), anyInt(), any(Pageable.class)
-        );
-        verify(exportRepository, never()).findNotificationPendingCandidates(
+        verify(exportRepository, never()).findNotificationRetryCandidates(
                 any(AiReportPdfStatus.class), any(AiReportNotificationStatus.class),
                 any(LocalDateTime.class), anyInt(), any(Pageable.class)
         );
-        verify(generationService, never()).generate(any());
+        verify(generationService, never()).retryNotification(any());
     }
 
     private AiReportPdfExport exportWithId(long id) {

@@ -13,6 +13,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -62,13 +63,15 @@ class AiReportPdfGenerationServiceTest {
     }
 
     @Test
-    void generate_pdfFailureMarksPdfFailedAndDoesNotSendEmail() {
+    void generate_pdfFailureMarksPdfFailedThrowsAndDoesNotSendEmail() {
         AiReportPdfExport export = AiReportPdfExport.notStarted(10L, 1L, 5L);
 
         given(persistenceService.prepareGeneration(EXPORT_ID)).willReturn(export);
         given(dataCollector.collect(export)).willThrow(new RuntimeException("render failed"));
 
-        service.generate(EXPORT_ID);
+        assertThatThrownBy(() -> service.generate(EXPORT_ID))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("render failed");
 
         verify(persistenceService).failPdf(eq(EXPORT_ID), any());
         verify(notificationSender, never()).sendPdfReady(any());

@@ -4,31 +4,18 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sisibibi.api.domain.report.service.AiReportPdfGenerationService;
-import com.sisibibi.api.global.config.AsyncConfig;
 import com.sisibibi.api.global.outbox.OutboxEvent;
 import com.sisibibi.api.global.outbox.OutboxEventPublisher;
 import com.sisibibi.api.global.outbox.OutboxEventType;
-import org.springframework.beans.factory.annotation.Qualifier;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import java.util.concurrent.Executor;
-
 @Component
+@RequiredArgsConstructor
 public class AiReportPdfGenerationOutboxPublisher implements OutboxEventPublisher {
 
     private final ObjectMapper objectMapper;
     private final AiReportPdfGenerationService generationService;
-    private final Executor taskExecutor;
-
-    public AiReportPdfGenerationOutboxPublisher(
-            ObjectMapper objectMapper,
-            AiReportPdfGenerationService generationService,
-            @Qualifier(AsyncConfig.DOMAIN_EVENT_TASK_EXECUTOR) Executor taskExecutor
-    ) {
-        this.objectMapper = objectMapper;
-        this.generationService = generationService;
-        this.taskExecutor = taskExecutor;
-    }
 
     @Override
     public boolean supports(OutboxEventType eventType) {
@@ -37,8 +24,7 @@ public class AiReportPdfGenerationOutboxPublisher implements OutboxEventPublishe
 
     @Override
     public void publish(OutboxEvent event) {
-        Long exportId = exportIdFrom(event);
-        taskExecutor.execute(() -> generationService.generate(exportId));
+        generationService.generate(exportIdFrom(event));
     }
 
     private Long exportIdFrom(OutboxEvent event) {

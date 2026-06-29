@@ -50,6 +50,12 @@ public class AiReportPdfPersistenceService {
         findForUpdate(exportId).markNotificationFailed(errorMessage, LocalDateTime.now());
     }
 
+    @Transactional(readOnly = true)
+    public AiReportPdfExport loadExport(Long exportId) {
+        return exportRepository.findById(exportId)
+                .orElseThrow(() -> new CustomException(ErrorCode.AI_REPORT_PDF_EXPORT_NOT_FOUND));
+    }
+
     private AiReportPdfExport findForUpdate(Long exportId) {
         return exportRepository.findByIdForUpdate(exportId)
                 .orElseThrow(() -> new CustomException(ErrorCode.AI_REPORT_PDF_EXPORT_NOT_FOUND));

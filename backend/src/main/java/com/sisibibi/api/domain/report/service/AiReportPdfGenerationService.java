@@ -27,11 +27,28 @@ public class AiReportPdfGenerationService {
             String objectKey = storage.upload(model.roomId(), model.reportId(), export.getRequestedByUserId(), pdfBytes);
             persistenceService.completePdf(exportId, objectKey);
         } catch (RuntimeException e) {
-            log.error("AI report PDF generation failed. exportId={}", exportId, e);
+            log.warn("AI report PDF generation failed. exportId={}", exportId, e);
             persistenceService.failPdf(exportId, e.getMessage());
-            return;
+            throw e;
         }
 
+        sendNotificationQuietly(exportId, model);
+    }
+
+    public void retryNotification(Long exportId) {
+        AiReportPdfExport export = persistenceService.loadExport(exportId);
+        AiReportPdfModel model;
+        try {
+            model = dataCollector.collect(export);
+        } catch (RuntimeException e) {
+            log.warn("Failed to collect data for PDF notification retry. exportId={}", exportId, e);
+            persistenceService.markNotificationFailed(exportId, e.getMessage());
+            return;
+        }
+        sendNotificationQuietly(exportId, model);
+    }
+
+    private void sendNotificationQuietly(Long exportId, AiReportPdfModel model) {
         try {
             notificationSender.sendPdfReady(new AiReportPdfReadyCommand(
                     exportId,
@@ -42,7 +59,7 @@ public class AiReportPdfGenerationService {
             ));
             persistenceService.markNotificationSent(exportId);
         } catch (RuntimeException e) {
-            log.error("AI report PDF notification failed. exportId={}", exportId, e);
+            log.warn("AI report PDF notification failed. exportId={}", exportId, e);
             persistenceService.markNotificationFailed(exportId, e.getMessage());
         }
     }

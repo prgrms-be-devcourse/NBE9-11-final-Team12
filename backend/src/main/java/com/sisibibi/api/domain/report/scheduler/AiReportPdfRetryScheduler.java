@@ -23,40 +23,25 @@ public class AiReportPdfRetryScheduler {
     private final AiReportPdfProperties properties;
 
     @Scheduled(fixedDelayString = "${app.ai-report.pdf.retry-fixed-delay-ms:60000}")
-    public void retryFailedExports() {
+    public void retryFailedNotifications() {
         if (!properties.isEnabled()) {
             return;
         }
         LocalDateTime attemptedBefore = LocalDateTime.now().minus(properties.getRetryStaleThreshold());
-        exportRepository.findPdfRetryCandidates(
-                AiReportPdfStatus.FAILED,
-                attemptedBefore,
-                properties.getMaxPdfRetryCount(),
-                PageRequest.of(0, properties.getRetryBatchSize())
-        ).forEach(export -> generateQuietly(export.getId()));
-
         exportRepository.findNotificationRetryCandidates(
                 AiReportPdfStatus.READY,
                 AiReportNotificationStatus.FAILED,
                 attemptedBefore,
                 properties.getMaxNotificationRetryCount(),
                 PageRequest.of(0, properties.getRetryBatchSize())
-        ).forEach(export -> generateQuietly(export.getId()));
-
-        exportRepository.findNotificationPendingCandidates(
-                AiReportPdfStatus.READY,
-                AiReportNotificationStatus.NOT_SENT,
-                attemptedBefore,
-                properties.getMaxNotificationRetryCount(),
-                PageRequest.of(0, properties.getRetryBatchSize())
-        ).forEach(export -> generateQuietly(export.getId()));
+        ).forEach(export -> retryNotificationQuietly(export.getId()));
     }
 
-    private void generateQuietly(Long exportId) {
+    private void retryNotificationQuietly(Long exportId) {
         try {
-            generationService.generate(exportId);
+            generationService.retryNotification(exportId);
         } catch (RuntimeException e) {
-            log.warn("Failed to retry AI report PDF export. exportId={}", exportId, e);
+            log.warn("Failed to retry AI report PDF notification. exportId={}", exportId, e);
         }
     }
 }
