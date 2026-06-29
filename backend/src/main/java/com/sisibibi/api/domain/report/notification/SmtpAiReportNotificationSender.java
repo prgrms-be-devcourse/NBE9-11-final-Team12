@@ -2,9 +2,11 @@ package com.sisibibi.api.domain.report.notification;
 
 import com.sisibibi.api.domain.report.service.AiReportNotificationSender;
 import com.sisibibi.api.domain.report.service.AiReportPdfReadyCommand;
+import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Component;
@@ -33,7 +35,7 @@ public class SmtpAiReportNotificationSender implements AiReportNotificationSende
                     %s
                     """.formatted(command.recipientNickname(), command.roomTitle(), command.homepageUrl()), false);
             mailSender.send(message);
-        } catch (Exception e) {
+        } catch (MessagingException | MailException e) {
             throw new IllegalStateException("Failed to send AI report PDF ready email.", e);
         }
     }

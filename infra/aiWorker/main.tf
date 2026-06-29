@@ -131,8 +131,9 @@ set -euo pipefail
 
 mkdir -p /opt/ai-models
 mkdir -p /opt/ai-worker
+mkdir -p /etc/ai-worker
 
-cat > /opt/ai-worker/.env.template <<ENV_TEMPLATE_EOF
+cat > /etc/ai-worker/ai-worker.env.template <<ENV_TEMPLATE_EOF
 AI_REPORT_QUEUE_URL=${var.academy_ai_report_queue_url}
 AI_REPORT_QUEUE_REGION=${var.region}
 AI_REPORT_BACKEND_BASE_URL=${var.backend_base_url}
@@ -146,6 +147,7 @@ AI_REPORT_CONTEXT_SIZE=32768
 AI_REPORT_MAX_TOKENS=2048
 AI_REPORT_GPU_LAYERS=-1
 ENV_TEMPLATE_EOF
+chmod 600 /etc/ai-worker/ai-worker.env.template
 
 if ! command -v docker >/dev/null 2>&1; then
   if command -v yum >/dev/null 2>&1; then
@@ -167,11 +169,33 @@ REGION="${var.region}"
 IMAGE="${var.ai_worker_image}"
 CONTAINER_NAME="${var.ai_worker_container_name}"
 MODEL_PATH="${var.ai_worker_host_model_path}"
-ENV_FILE="/opt/ai-worker/.env"
 
-if [ ! -f "$ENV_FILE" ]; then
-  echo "AI Worker env file is missing: $ENV_FILE"
-  echo "Run the GitHub Actions deploy workflow once after the instance is online."
+REQUIRED_ENV_VARS=(
+  AI_REPORT_QUEUE_URL
+  AI_REPORT_QUEUE_REGION
+  AI_REPORT_BACKEND_BASE_URL
+  AI_REPORT_WORKER_TOKEN
+  AI_REPORT_BACKEND_TIMEOUT_SECONDS
+  AI_REPORT_WORKER_BATCH_SIZE
+  AI_REPORT_WORKER_WAIT_TIME_SECONDS
+  AI_REPORT_WORKER_VISIBILITY_TIMEOUT_SECONDS
+  AI_REPORT_MODEL_PATH
+  AI_REPORT_TEMPERATURE
+  AI_REPORT_CONTEXT_SIZE
+  AI_REPORT_MAX_TOKENS
+  AI_REPORT_GPU_LAYERS
+)
+
+for env_var in "$${REQUIRED_ENV_VARS[@]}"; do
+  if [ -z "$${!env_var:-}" ]; then
+    echo "AI Worker environment variable is missing: $env_var"
+    echo "Run the GitHub Actions deploy workflow once after the instance is online."
+    exit 1
+  fi
+done
+
+if ! docker info >/dev/null 2>&1; then
+  echo "Docker daemon is not ready."
   exit 1
 fi
 
@@ -186,7 +210,19 @@ docker run -d \
   --name "$CONTAINER_NAME" \
   --restart unless-stopped \
   --gpus all \
-  --env-file "$ENV_FILE" \
+  -e AI_REPORT_QUEUE_URL \
+  -e AI_REPORT_QUEUE_REGION \
+  -e AI_REPORT_BACKEND_BASE_URL \
+  -e AI_REPORT_WORKER_TOKEN \
+  -e AI_REPORT_BACKEND_TIMEOUT_SECONDS \
+  -e AI_REPORT_WORKER_BATCH_SIZE \
+  -e AI_REPORT_WORKER_WAIT_TIME_SECONDS \
+  -e AI_REPORT_WORKER_VISIBILITY_TIMEOUT_SECONDS \
+  -e AI_REPORT_MODEL_PATH \
+  -e AI_REPORT_TEMPERATURE \
+  -e AI_REPORT_CONTEXT_SIZE \
+  -e AI_REPORT_MAX_TOKENS \
+  -e AI_REPORT_GPU_LAYERS \
   -v /opt/ai-models:/models \
   "$IMAGE"
 RUNNER_EOF
@@ -203,6 +239,7 @@ Requires=docker.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+EnvironmentFile=/etc/ai-worker/ai-worker.env
 ExecStart=/opt/ai-worker/run-worker.sh
 ExecStop=/bin/sh -c 'docker rm -f ${var.ai_worker_container_name} >/dev/null 2>&1 || true'
 

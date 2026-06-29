@@ -6,6 +6,7 @@ import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
@@ -16,35 +17,35 @@ public class AiReportPdfPersistenceService {
 
     private final AiReportPdfExportRepository exportRepository;
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRED)
     public AiReportPdfExport createIfMissing(Long aiReportId, Long roomId, Long userId) {
         return exportRepository.findByAiReportIdAndRequestedByUserIdForUpdate(aiReportId, userId)
                 .orElseGet(() -> exportRepository.save(AiReportPdfExport.notStarted(aiReportId, roomId, userId)));
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRED)
     public AiReportPdfExport prepareGeneration(Long exportId) {
         AiReportPdfExport export = findForUpdate(exportId);
         export.markGenerating(LocalDateTime.now());
         return export;
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRED)
     public void completePdf(Long exportId, String objectKey) {
         findForUpdate(exportId).markPdfReady(objectKey, LocalDateTime.now());
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRED)
     public void failPdf(Long exportId, String errorMessage) {
         findForUpdate(exportId).markPdfFailed(errorMessage, LocalDateTime.now());
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRED)
     public void markNotificationSent(Long exportId) {
         findForUpdate(exportId).markNotificationSent(LocalDateTime.now());
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRED)
     public void markNotificationFailed(Long exportId, String errorMessage) {
         findForUpdate(exportId).markNotificationFailed(errorMessage, LocalDateTime.now());
     }
