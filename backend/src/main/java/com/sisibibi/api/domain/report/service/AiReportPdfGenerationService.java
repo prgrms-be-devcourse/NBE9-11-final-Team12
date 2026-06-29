@@ -27,7 +27,7 @@ public class AiReportPdfGenerationService {
             String objectKey = storage.upload(model.roomId(), model.reportId(), export.getRequestedByUserId(), pdfBytes);
             persistenceService.completePdf(exportId, objectKey);
         } catch (RuntimeException e) {
-            log.warn("AI report PDF generation failed. exportId={}", exportId, e);
+            log.error("AI report PDF generation failed. exportId={}", exportId, e);
             persistenceService.failPdf(exportId, e.getMessage());
             return;
         }
@@ -42,7 +42,7 @@ public class AiReportPdfGenerationService {
             ));
             persistenceService.markNotificationSent(exportId);
         } catch (RuntimeException e) {
-            log.warn("AI report PDF notification failed. exportId={}", exportId, e);
+            log.error("AI report PDF notification failed. exportId={}", exportId, e);
             persistenceService.markNotificationFailed(exportId, e.getMessage());
         }
     }

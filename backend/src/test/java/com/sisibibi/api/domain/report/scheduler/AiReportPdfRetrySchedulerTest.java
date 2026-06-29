@@ -47,6 +47,10 @@ class AiReportPdfRetrySchedulerTest {
                 any(AiReportPdfStatus.class), any(AiReportNotificationStatus.class),
                 any(LocalDateTime.class), anyInt(), any(Pageable.class)
         )).willReturn(List.of());
+        given(exportRepository.findNotificationPendingCandidates(
+                any(AiReportPdfStatus.class), any(AiReportNotificationStatus.class),
+                any(LocalDateTime.class), anyInt(), any(Pageable.class)
+        )).willReturn(List.of());
 
         scheduler.retryFailedExports();
 
@@ -63,10 +67,34 @@ class AiReportPdfRetrySchedulerTest {
                 any(AiReportPdfStatus.class), any(AiReportNotificationStatus.class),
                 any(LocalDateTime.class), anyInt(), any(Pageable.class)
         )).willReturn(List.of(notifFailedExport));
+        given(exportRepository.findNotificationPendingCandidates(
+                any(AiReportPdfStatus.class), any(AiReportNotificationStatus.class),
+                any(LocalDateTime.class), anyInt(), any(Pageable.class)
+        )).willReturn(List.of());
 
         scheduler.retryFailedExports();
 
         verify(generationService).generate(77L);
+    }
+
+    @Test
+    void retryPendingNotifications_callsGenerationForReadyNotSentCandidates() {
+        AiReportPdfExport notSentExport = exportWithId(88L);
+        given(exportRepository.findPdfRetryCandidates(
+                any(AiReportPdfStatus.class), any(LocalDateTime.class), anyInt(), any(Pageable.class)
+        )).willReturn(List.of());
+        given(exportRepository.findNotificationRetryCandidates(
+                any(AiReportPdfStatus.class), any(AiReportNotificationStatus.class),
+                any(LocalDateTime.class), anyInt(), any(Pageable.class)
+        )).willReturn(List.of());
+        given(exportRepository.findNotificationPendingCandidates(
+                any(AiReportPdfStatus.class), any(AiReportNotificationStatus.class),
+                any(LocalDateTime.class), anyInt(), any(Pageable.class)
+        )).willReturn(List.of(notSentExport));
+
+        scheduler.retryFailedExports();
+
+        verify(generationService).generate(88L);
     }
 
     @Test
@@ -77,6 +105,10 @@ class AiReportPdfRetrySchedulerTest {
 
         verify(exportRepository, never()).findPdfRetryCandidates(
                 any(AiReportPdfStatus.class), any(LocalDateTime.class), anyInt(), any(Pageable.class)
+        );
+        verify(exportRepository, never()).findNotificationPendingCandidates(
+                any(AiReportPdfStatus.class), any(AiReportNotificationStatus.class),
+                any(LocalDateTime.class), anyInt(), any(Pageable.class)
         );
         verify(generationService, never()).generate(any());
     }

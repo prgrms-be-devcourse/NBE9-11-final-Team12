@@ -58,12 +58,17 @@ jobs:
           aws-secret-access-key: ${{ secrets.PERSONAL_AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.PERSONAL_AWS_REGION }}
 
+      - name: Encode AI Worker secrets
+        env:
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          AI_REPORT_WORKER_TOKEN: ${{ secrets.AI_REPORT_WORKER_TOKEN }}
+        run: |
+          echo "GHCR_TOKEN_B64=$(printf '%s' "$GHCR_TOKEN" | base64 -w0)" >> "$GITHUB_ENV"
+          echo "AI_REPORT_WORKER_TOKEN_B64=$(printf '%s' "$AI_REPORT_WORKER_TOKEN" | base64 -w0)" >> "$GITHUB_ENV"
+
       - name: Restart AI Worker through SSM
         env:
           AI_WORKER_INSTANCE_ID: ${{ secrets.AI_WORKER_INSTANCE_ID }}
-          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
-          AI_REPORT_WORKER_TOKEN: ${{ secrets.AI_REPORT_WORKER_TOKEN }}
         run: |
           set -euo pipefail
 
@@ -73,61 +78,95 @@ jobs:
             --output text)
 
           if [ "$PING_STATUS" != "Online" ]; then
-            echo "AI Worker instance is not online through SSM. It will pull the latest image on the next boot."
+            echo "AI Worker instance is not online through SSM. Start the instance and rerun this workflow."
             exit 0
           fi
 
-          GHCR_TOKEN_B64=$(printf "%s" "$GHCR_TOKEN" | base64 -w 0)
-          AI_REPORT_WORKER_TOKEN_B64=$(printf "%s" "$AI_REPORT_WORKER_TOKEN" | base64 -w 0)
+          DEPLOY_SCRIPT=$(cat << 'SCRIPT_EOF'
+          set -Eeuo pipefail
 
-          python3 - <<'PY'
-          import json
-          import os
+          SCRIPT_TS="$(date +%Y%m%d_%H%M%S)"
+          LOG="/tmp/ssm-ai-worker-${SCRIPT_TS}.log"
 
-          commands = [
-              "sudo mkdir -p /opt/ai-worker",
-              "sudo cp /opt/ai-worker/.env.template /opt/ai-worker/.env",
-              f"printf '%s' '{os.environ['AI_REPORT_WORKER_TOKEN_B64']}' | base64 -d | sudo sed 's/^/AI_REPORT_WORKER_TOKEN=/' | sudo tee -a /opt/ai-worker/.env >/dev/null",
-              "sudo chmod 600 /opt/ai-worker/.env",
-              f"printf '%s' '{os.environ['GHCR_TOKEN_B64']}' | base64 -d | sudo docker login ghcr.io -u '{os.environ['GHCR_USERNAME']}' --password-stdin",
-              "sudo systemctl restart ai-worker.service",
-              "sudo systemctl status ai-worker.service --no-pager",
-              "sudo docker ps --filter name=ai-report-worker",
-          ]
+          exec > >(awk '{ fflush(); print strftime("[%Y-%m-%d %H:%M:%S]"), $0 }' | tee -a "$LOG")
+          exec 2> >(awk '{ fflush(); print strftime("[%Y-%m-%d %H:%M:%S]"), $0 }' | tee -a "$LOG" >&2)
 
-          payload = {
-              "InstanceIds": [os.environ["AI_WORKER_INSTANCE_ID"]],
-              "DocumentName": "AWS-RunShellScript",
-              "Comment": f"Deploy AI Worker {os.environ['GITHUB_SHA']}",
-              "Parameters": {
-                  "commands": commands,
-              },
+          echo "===== AI Worker Deploy Start ====="
+
+          [[ -f /opt/ai-worker/.env.template ]] || {
+            echo "/opt/ai-worker/.env.template is missing"
+            exit 1
           }
 
-          with open("ssm-ai-worker-deploy.json", "w", encoding="utf-8") as f:
-              json.dump(payload, f)
-          PY
+          [[ -f /opt/ai-worker/run-worker.sh ]] || {
+            echo "/opt/ai-worker/run-worker.sh is missing"
+            exit 1
+          }
+
+          sudo cp /opt/ai-worker/.env.template /opt/ai-worker/.env
+          printf '%s' "${{ env.AI_REPORT_WORKER_TOKEN_B64 }}" \
+            | base64 -d \
+            | sudo sed 's/^/AI_REPORT_WORKER_TOKEN=/' \
+            | sudo tee -a /opt/ai-worker/.env >/dev/null
+          sudo chmod 600 /opt/ai-worker/.env
+
+          printf '%s' "${{ env.GHCR_TOKEN_B64 }}" \
+            | base64 -d \
+            | sudo docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
+
+          sudo systemctl restart ai-worker.service
+          sudo systemctl status ai-worker.service --no-pager
+          sudo docker ps --filter name=ai-report-worker
+
+          echo "===== AI Worker Deploy Complete ====="
+          SCRIPT_EOF
+          )
+
+          PARAMS=$(jq -nc --arg s "$DEPLOY_SCRIPT" '{"commands":[$s]}')
 
           COMMAND_ID=$(aws ssm send-command \
-            --cli-input-json file://ssm-ai-worker-deploy.json \
+            --instance-ids "$AI_WORKER_INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy AI Worker $GITHUB_SHA" \
+            --parameters "$PARAMS" \
             --query "Command.CommandId" \
             --output text)
 
-          aws ssm wait command-executed \
-            --command-id "$COMMAND_ID" \
-            --instance-id "$AI_WORKER_INSTANCE_ID"
+          echo "SSM Command ID: $COMMAND_ID"
 
-          STATUS=$(aws ssm get-command-invocation \
-            --command-id "$COMMAND_ID" \
-            --instance-id "$AI_WORKER_INSTANCE_ID" \
-            --query "Status" \
-            --output text)
+          WAIT_MAX=900
+          WAIT_INTERVAL=10
+          WAIT_ELAPSED=0
 
-          aws ssm get-command-invocation \
+          while (( WAIT_ELAPSED < WAIT_MAX )); do
+            CMD_STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$AI_WORKER_INSTANCE_ID" \
+              --query 'Status' \
+              --output text 2>/dev/null || echo "Unknown")
+
+            echo "Current status: $CMD_STATUS"
+
+            if [[ "$CMD_STATUS" != "InProgress" && "$CMD_STATUS" != "Pending" ]]; then
+              break
+            fi
+
+            sleep "$WAIT_INTERVAL"
+            WAIT_ELAPSED=$((WAIT_ELAPSED + WAIT_INTERVAL))
+          done
+
+          INVOCATION=$(aws ssm get-command-invocation \
             --command-id "$COMMAND_ID" \
-            --instance-id "$AI_WORKER_INSTANCE_ID" \
-            --query "{Status:Status,StandardOutputContent:StandardOutputContent,StandardErrorContent:StandardErrorContent}" \
-            --output json
+            --instance-id "$AI_WORKER_INSTANCE_ID")
+
+          STATUS=$(echo "$INVOCATION" | jq -r '.Status')
+
+          echo "===== stdout ====="
+          echo "$INVOCATION" | jq -r '.StandardOutputContent'
+          echo "===== stderr ====="
+          echo "$INVOCATION" | jq -r '.StandardErrorContent'
+          echo "=================="
+          echo "Status: $STATUS"
 
           if [ "$STATUS" != "Success" ]; then
             exit 1

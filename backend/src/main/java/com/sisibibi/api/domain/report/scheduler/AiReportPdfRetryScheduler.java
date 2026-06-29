@@ -42,6 +42,14 @@ public class AiReportPdfRetryScheduler {
                 properties.getMaxNotificationRetryCount(),
                 PageRequest.of(0, properties.getRetryBatchSize())
         ).forEach(export -> generateQuietly(export.getId()));
+
+        exportRepository.findNotificationPendingCandidates(
+                AiReportPdfStatus.READY,
+                AiReportNotificationStatus.NOT_SENT,
+                attemptedBefore,
+                properties.getMaxNotificationRetryCount(),
+                PageRequest.of(0, properties.getRetryBatchSize())
+        ).forEach(export -> generateQuietly(export.getId()));
     }
 
     private void generateQuietly(Long exportId) {

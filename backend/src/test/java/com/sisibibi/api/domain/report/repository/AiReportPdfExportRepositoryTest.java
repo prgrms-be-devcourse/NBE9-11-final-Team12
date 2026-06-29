@@ -116,4 +116,35 @@ class AiReportPdfExportRepositoryTest {
         assertThat(results).extracting(AiReportPdfExport::getId)
                 .containsExactly(retryable.getId());
     }
+
+    @Test
+    void findNotificationPendingCandidates_returnsReadyUnsentExportsStaleEnough() {
+        AiReportPdfExport retryable = repository.saveAndFlush(AiReportPdfExport.notStarted(20L, 30L, 17L));
+        retryable.markGenerating(LocalDateTime.of(2026, 6, 28, 12, 0));
+        retryable.markPdfReady("ai-reports/30/20/17.pdf", LocalDateTime.of(2026, 6, 28, 12, 1));
+
+        AiReportPdfExport pendingPdf = repository.saveAndFlush(AiReportPdfExport.notStarted(21L, 31L, 18L));
+
+        AiReportPdfExport tooNew = repository.saveAndFlush(AiReportPdfExport.notStarted(22L, 32L, 19L));
+        tooNew.markGenerating(LocalDateTime.of(2026, 6, 28, 12, 3));
+        tooNew.markPdfReady("ai-reports/32/22/19.pdf", LocalDateTime.of(2026, 6, 28, 12, 5));
+
+        AiReportPdfExport alreadyFailed = repository.saveAndFlush(AiReportPdfExport.notStarted(23L, 33L, 20L));
+        alreadyFailed.markGenerating(LocalDateTime.of(2026, 6, 28, 12, 0));
+        alreadyFailed.markPdfReady("ai-reports/33/23/20.pdf", LocalDateTime.of(2026, 6, 28, 12, 1));
+        alreadyFailed.markNotificationFailed("smtp failed", LocalDateTime.of(2026, 6, 28, 12, 2));
+
+        repository.flush();
+
+        List<AiReportPdfExport> results = repository.findNotificationPendingCandidates(
+                AiReportPdfStatus.READY,
+                AiReportNotificationStatus.NOT_SENT,
+                LocalDateTime.of(2026, 6, 28, 12, 3),
+                5,
+                PageRequest.of(0, 10)
+        );
+
+        assertThat(results).extracting(AiReportPdfExport::getId)
+                .containsExactly(retryable.getId());
+    }
 }

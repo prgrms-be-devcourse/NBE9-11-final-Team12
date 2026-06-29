@@ -69,4 +69,21 @@ public interface AiReportPdfExportRepository extends JpaRepository<AiReportPdfEx
             @Param("maxRetryCount") int maxRetryCount,
             Pageable pageable
     );
+
+    @Query("""
+            select pdfExport
+            from AiReportPdfExport pdfExport
+            where pdfExport.pdfStatus = :pdfStatus
+              and pdfExport.notificationStatus = :notificationStatus
+              and pdfExport.pdfGeneratedAt <= :generatedBefore
+              and pdfExport.notificationRetryCount < :maxRetryCount
+            order by pdfExport.pdfGeneratedAt asc, pdfExport.id asc
+            """)
+    List<AiReportPdfExport> findNotificationPendingCandidates(
+            @Param("pdfStatus") AiReportPdfStatus pdfStatus,
+            @Param("notificationStatus") AiReportNotificationStatus notificationStatus,
+            @Param("generatedBefore") LocalDateTime generatedBefore,
+            @Param("maxRetryCount") int maxRetryCount,
+            Pageable pageable
+    );
 }
