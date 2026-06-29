@@ -838,17 +838,8 @@ export function MainStage({
             </div>
             {waitingTotalCount > 0 && (
               <div className="mt-2 rounded-lg border border-border/60 bg-background/70 px-2.5 py-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                    <span className="shrink-0 text-[11px] font-medium text-muted-foreground">대기열</span>
-                    {waitingPreviewItems.map((speaker) => (
-                      <Badge key={`${speaker.rank}-${speaker.userId}`} variant="outline" className="max-w-32 text-[10px]">
-                        <span className="truncate">
-                          {speaker.rank}. {speaker.nickname} · {stanceLabel(speaker.stance)}
-                        </span>
-                      </Badge>
-                    ))}
-                  </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="shrink-0 text-[11px] font-medium text-muted-foreground">대기열</span>
                   <Button
                     type="button"
                     size="xs"
@@ -867,6 +858,21 @@ export function MainStage({
                     )}
                   </Button>
                 </div>
+                <div className="mt-1.5 space-y-1">
+                  {waitingPreviewItems.map((speaker) => (
+                    <div
+                      key={`${speaker.rank}-${speaker.userId}`}
+                      className="flex items-center justify-between gap-2 rounded-md px-1 py-0.5 text-[11px]"
+                    >
+                      <span className="min-w-0 flex-1 break-words font-medium text-foreground">
+                        {speaker.rank}. {speaker.nickname}
+                      </span>
+                      <Badge variant="outline" className="shrink-0 text-[10px]">
+                        {stanceLabel(speaker.stance)}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
                 {showFullQueue && (
                   <div className="mt-2 max-h-36 overflow-y-auto rounded-md border border-border/50 bg-muted/20 p-1.5">
                     {fullQueueLoading ? (
@@ -877,15 +883,16 @@ export function MainStage({
                     ) : fullQueueError ? (
                       <p className="px-1 py-1 text-[11px] text-destructive">{fullQueueError}</p>
                     ) : (
-                      <div className="grid gap-1 sm:grid-cols-2">
+                      <div className="space-y-1">
                         {waitingFullItems.map((speaker) => (
                           <div
                             key={`${speaker.rank}-${speaker.userId}`}
-                            className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] text-muted-foreground"
+                            className="flex items-center justify-between gap-2 rounded-md px-1.5 py-1 text-[11px] text-muted-foreground"
                           >
-                            <span className="w-5 shrink-0 text-right font-medium text-foreground">{speaker.rank}</span>
-                            <span className="min-w-0 truncate">{speaker.nickname}</span>
-                            <Badge variant="outline" className="ml-auto text-[10px]">
+                            <span className="min-w-0 flex-1 break-words font-medium text-foreground">
+                              {speaker.rank}. {speaker.nickname}
+                            </span>
+                            <Badge variant="outline" className="shrink-0 text-[10px]">
                               {stanceLabel(speaker.stance)}
                             </Badge>
                           </div>
