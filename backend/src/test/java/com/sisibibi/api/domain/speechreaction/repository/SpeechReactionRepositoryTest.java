@@ -2,6 +2,7 @@ package com.sisibibi.api.domain.speechreaction.repository;
 
 import com.sisibibi.api.domain.speech.entity.Speech;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
+import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speechreaction.entity.SpeechReaction;
 import com.sisibibi.api.domain.speechreaction.repository.projection.BestSpeechReactionProjection;
@@ -14,6 +15,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -112,6 +114,32 @@ class SpeechReactionRepositoryTest {
         long count = speechReactionRepository.countReceivedByUserId(10L);
 
         assertThat(count).isEqualTo(2L);
+    }
+
+    @Test
+    void countReactionsForCompletedSpeeches_excludesIncompleteAndDeletedSpeeches() {
+        Speech completed = speechRepository.saveAndFlush(
+                Speech.createMainOpinion(1L, 10L, "완료된 발언", SpeechStance.PRO)
+        );
+        Speech incomplete = speechRepository.saveAndFlush(
+                Speech.createMainOpinion(1L, 20L, "준비 중 발언", SpeechStance.CON)
+        );
+        Speech deleted = speechRepository.saveAndFlush(
+                Speech.createMainOpinion(1L, 30L, "삭제된 발언", SpeechStance.PRO)
+        );
+        ReflectionTestUtils.setField(completed, "status", SpeechStatus.COMPLETED);
+        ReflectionTestUtils.setField(deleted, "status", SpeechStatus.COMPLETED);
+        deleted.softDelete(java.time.LocalDateTime.of(2026, 6, 22, 10, 0));
+        speechRepository.saveAllAndFlush(java.util.List.of(completed, incomplete, deleted));
+
+        speechReactionRepository.saveAllAndFlush(java.util.List.of(
+                SpeechReaction.create(completed.getId(), 101L),
+                SpeechReaction.create(completed.getId(), 102L),
+                SpeechReaction.create(incomplete.getId(), 103L),
+                SpeechReaction.create(deleted.getId(), 104L)
+        ));
+
+        assertThat(speechReactionRepository.countReactionsForCompletedSpeeches(1L)).isEqualTo(2L);
     }
 
     @Test

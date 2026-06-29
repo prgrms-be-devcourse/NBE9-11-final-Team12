@@ -19,6 +19,18 @@ spring:
     # backend 디렉토리가 아닌 루트 디렉토리에서 .env 가져옴
     import: optional:file:../.env[.properties]
 
+  mail:
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${SMTP_AUTH:true}
+          starttls:
+            enable: ${SMTP_STARTTLS_ENABLE:true}
+
   # Database 설정 (MySQL)
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -123,6 +135,18 @@ app:
     base-url: ${AI_REPORT_BASE_URL:http://localhost:8000}
     generate-path: ${AI_REPORT_GENERATE_PATH:/report}
     timeout: ${AI_REPORT_TIMEOUT:5m}
+    pdf:
+      enabled: ${AI_REPORT_PDF_ENABLED:true}
+      presigned-url-expiration: ${AI_REPORT_PDF_PRESIGNED_URL_EXPIRATION:10m}
+      max-pdf-retry-count: ${AI_REPORT_PDF_MAX_RETRY_COUNT:3}
+      max-notification-retry-count: ${AI_REPORT_NOTIFICATION_MAX_RETRY_COUNT:5}
+      retry-fixed-delay-ms: ${AI_REPORT_PDF_RETRY_FIXED_DELAY_MS:60000}
+      retry-stale-threshold: ${AI_REPORT_PDF_RETRY_STALE_THRESHOLD:1m}
+      retry-batch-size: ${AI_REPORT_PDF_RETRY_BATCH_SIZE:20}
+    notification:
+      provider: ${AI_REPORT_NOTIFICATION_PROVIDER:smtp}
+      from-email: ${AI_REPORT_NOTIFICATION_FROM_EMAIL:}
+      homepage-url: ${FRONTEND_URL:http://localhost:3000}
   ai-counter-issue:
     generate-timeout: ${AI_COUNTER_ISSUE_GENERATE_TIMEOUT:10s}
     max-generation-attempts: ${AI_COUNTER_ISSUE_MAX_GENERATION_ATTEMPTS:3}
@@ -171,6 +195,8 @@ app:
       public-base-url: ${S3_PUBLIC_BASE_URL:}
       presigned-url-expiration: ${S3_PRESIGNED_URL_EXPIRATION:10m}
       max-image-size: ${SPEECH_IMAGE_MAX_SIZE:5242880}
+      access-key-id: ${AWS_ACCESS_KEY_ID:}
+      secret-access-key: ${AWS_SECRET_ACCESS_KEY:}
   outbox:
     relay:
       enabled: false

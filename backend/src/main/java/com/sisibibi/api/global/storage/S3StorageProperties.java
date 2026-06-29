@@ -17,4 +17,6 @@ public class S3StorageProperties {
   private String publicBaseUrl;
   private Duration presignedUrlExpiration = Duration.ofMinutes(10);
   private long maxImageSize = 5 * 1024 * 1024;
+  private String accessKeyId;
+  private String secretAccessKey;
 }

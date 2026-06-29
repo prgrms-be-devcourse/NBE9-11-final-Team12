@@ -4,6 +4,7 @@ import com.sisibibi.api.domain.report.client.dto.AiReportGenerateReq;
 import com.sisibibi.api.domain.report.dto.request.AiReportWorkerCompleteReq;
 import com.sisibibi.api.domain.report.dto.request.AiReportWorkerFailReq;
 import com.sisibibi.api.domain.report.dto.request.AiReportWorkerProcessingReq;
+import com.sisibibi.api.domain.report.dto.response.AiReportPdfStatusRes;
 import com.sisibibi.api.domain.report.dto.response.AiReportRes;
 import com.sisibibi.api.domain.report.dto.response.AiReportWorkerProcessingRes;
 import com.sisibibi.api.domain.report.service.AiReportGenerationType;
@@ -105,7 +106,8 @@ class AiReportWorkerCallbackControllerTest {
                 List.of(),
                 null,
                 LocalDateTime.of(2026, 6, 25, 12, 0),
-                LocalDateTime.of(2026, 6, 25, 12, 2)
+                LocalDateTime.of(2026, 6, 25, 12, 2),
+                AiReportPdfStatusRes.notStarted()
         );
     }
 
@@ -122,7 +124,8 @@ class AiReportWorkerCallbackControllerTest {
                 List.of(),
                 "local LLM timed out",
                 LocalDateTime.of(2026, 6, 25, 12, 0),
-                null
+                null,
+                AiReportPdfStatusRes.notStarted()
         );
     }
 }
