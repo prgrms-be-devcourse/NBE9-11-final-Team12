@@ -195,6 +195,8 @@ app:
       public-base-url: ${S3_PUBLIC_BASE_URL:}
       presigned-url-expiration: ${S3_PRESIGNED_URL_EXPIRATION:10m}
       max-image-size: ${SPEECH_IMAGE_MAX_SIZE:5242880}
+      access-key-id: ${AWS_ACCESS_KEY_ID:}
+      secret-access-key: ${AWS_SECRET_ACCESS_KEY:}
   outbox:
     relay:
       enabled: false
