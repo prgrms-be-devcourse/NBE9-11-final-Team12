@@ -49,7 +49,8 @@ class RoomControllerTest {
                 "진행 중인 토론방",
                 RoomStatus.OPEN,
                 LocalDateTime.of(2026, 6, 15, 10, 0),
-                LocalDateTime.of(2026, 6, 15, 10, 0)
+                LocalDateTime.of(2026, 6, 15, 11, 0),
+                LocalDateTime.of(2026, 6, 15, 9, 50)
             )
         ));
 
@@ -89,7 +90,8 @@ class RoomControllerTest {
                 "토론방 목록",
                 RoomStatus.OPEN,
                 LocalDateTime.of(2026, 6, 15, 10, 0),
-                LocalDateTime.of(2026, 6, 15, 10, 0)
+                LocalDateTime.of(2026, 6, 15, 11, 0),
+                LocalDateTime.of(2026, 6, 15, 9, 50)
             )
         ));
 

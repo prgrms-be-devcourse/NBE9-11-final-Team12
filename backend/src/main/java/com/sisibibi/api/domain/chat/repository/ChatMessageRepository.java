@@ -25,4 +25,6 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
             @Param("cursor") Long cursor,
             Pageable pageable
     );
+
+    long countByRoomIdAndDeletedFalse(Long roomId);
 }

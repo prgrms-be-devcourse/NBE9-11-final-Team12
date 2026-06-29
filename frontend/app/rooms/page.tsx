@@ -30,6 +30,24 @@ function messageOf(error: unknown) {
   return error instanceof ApiError ? error.message : "토론방 목록을 불러오지 못했습니다."
 }
 
+function formatRoomClock(value: string | null | undefined) {
+  if (!value) return null
+
+  return new Date(value).toLocaleTimeString("ko-KR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
+function roomTimeLabel(room: RoomSummary) {
+  const startedAt = formatRoomClock(room.startedAt)
+  const endedAt = formatRoomClock(room.endedAt)
+
+  if (startedAt && endedAt) return `${startedAt} - ${endedAt}`
+  if (startedAt) return `${startedAt} 시작`
+  return room.status === "OPEN" ? "진행 중" : undefined
+}
+
 function toTopicCard(
   room: RoomSummary,
   topic: TopicSummary | null,
@@ -44,7 +62,7 @@ function toTopicCard(
     category,
     status: room.status,
     participants: participantCount,
-    timeLeft: room.status === "OPEN" ? "진행 중" : undefined,
+    timeLeft: roomTimeLabel(room),
     tags: [category],
     isLive: room.status === "OPEN",
   }
