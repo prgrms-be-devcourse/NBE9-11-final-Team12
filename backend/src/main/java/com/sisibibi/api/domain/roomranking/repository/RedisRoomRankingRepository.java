@@ -26,6 +26,7 @@ public class RedisRoomRankingRepository {
 
           local nextCount = redis.call('HINCRBY', KEYS[statKeyIndex], roomId, delta)
           if nextCount < 0 then
+            nextCount = 0
             redis.call('HSET', KEYS[statKeyIndex], roomId, 0)
           end
 
