@@ -13,3 +13,7 @@ app:
       secure: true
       same-site: Lax
       domain: .issuetok.site
+
+
+room-ranking:
+  rebuild-on-startup: true

@@ -4,8 +4,13 @@ import com.sisibibi.api.domain.roomranking.service.RoomRankingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+@ConditionalOnProperty(
+    name = "room-ranking.rebuild-on-startup",
+    havingValue = "true"
+)
 @Component
 @RequiredArgsConstructor
 public class RoomRankingInitializer implements ApplicationRunner {
