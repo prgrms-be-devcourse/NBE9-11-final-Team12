@@ -12,6 +12,7 @@ public class RoomRankingInitializer implements ApplicationRunner {
 
   private final RoomRankingService roomRankingService;
 
+  // 초기 db 랭킹 세팅
   @Override
   public void run(ApplicationArguments args) {
     roomRankingService.rebuildOpenRoomRanking();
