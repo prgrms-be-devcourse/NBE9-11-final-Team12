@@ -31,6 +31,10 @@ public record TossPaymentWebhookReq(
     }
   }
 
+  public boolean isPaymentStatusChanged() {
+    return "PAYMENT_STATUS_CHANGED".equals(eventType);
+  }
+
   public boolean isPaymentApproved() {
     return "DONE".equals(status);
   }

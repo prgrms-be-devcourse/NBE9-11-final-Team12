@@ -100,6 +100,31 @@ export type AiReportGenerateRequest = {
   customPrompts?: AiReportCustomPrompt[]
 }
 
+export type CreateCustomAiReportPaymentRequest = {
+  roomId: number
+  amount: number
+  customPrompts?: AiReportCustomPrompt[]
+}
+
+export type ConfirmPaymentRequest = {
+  orderId: string
+  paymentKey: string
+  amount: number
+}
+
+export type Payment = {
+  paymentId: number
+  orderId: string
+  paymentKey: string | null
+  amount: number
+  orderName: string
+  status: "PENDING" | "COMPLETED" | "FAILED" | "CANCELED"
+  targetType: "CUSTOM_AI_REPORT"
+  targetId: number
+  approvedAt: string | null
+  createdAt: string | null
+}
+
 export type AiReportCustomReport = {
   requestLabel: string
   prompt: string

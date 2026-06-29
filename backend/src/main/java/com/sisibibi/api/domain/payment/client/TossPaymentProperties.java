@@ -13,6 +13,5 @@ public class TossPaymentProperties {
 
   private String baseUrl = "https://api.tosspayments.com";
   private String secretKey;
-  private String webhookSecret;
 
 }
