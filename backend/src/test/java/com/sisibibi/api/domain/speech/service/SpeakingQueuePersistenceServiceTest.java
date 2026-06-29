@@ -41,6 +41,7 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class SpeakingQueuePersistenceServiceTest {
@@ -602,14 +603,14 @@ class SpeakingQueuePersistenceServiceTest {
         order.verify(speakingQueueRepository)
                 .existsByRoomIdAndStatus(1L, SpeakingQueueStatus.ASSIGNED);
         order.verify(speakingQueueRepository)
-                .findTop3ByRoomIdAndStatusInAndStanceIsNotNullOrderByAssignedAtDesc(
-                        1L,
-                        List.of(SpeakingQueueStatus.COMPLETED)
-                );
-        order.verify(speakingQueueRepository)
                 .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
                         1L,
                         SpeakingQueueStatus.WAITING
+                );
+        order.verify(speakingQueueRepository)
+                .findTop3ByRoomIdAndStatusInAndStanceIsNotNullOrderByAssignedAtDesc(
+                        1L,
+                        List.of(SpeakingQueueStatus.COMPLETED)
                 );
     }
 
@@ -664,6 +665,13 @@ class SpeakingQueuePersistenceServiceTest {
 
     @Test
     void assignNextSpeaker_prioritizesOppositeStanceAfterThreeSameStanceAssignments() {
+        SpeakingQueue firstWaiting = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                SpeechStance.PRO,
+                java.time.LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
         SpeakingQueue oppositeWaiting = SpeakingQueue.waiting(
                 1L,
                 8L,
@@ -671,6 +679,8 @@ class SpeakingQueuePersistenceServiceTest {
                 SpeechStance.CON,
                 java.time.LocalDateTime.of(2026, 6, 12, 11, 40)
         );
+        ReflectionTestUtils.setField(firstWaiting, "id", 101L);
+        ReflectionTestUtils.setField(oppositeWaiting, "id", 102L);
         given(roomRepository.findByIdForUpdate(1L))
             .willReturn(Optional.of(openRoom(1L, "토론방")));
         givenJoined(1L, 8L);
@@ -678,6 +688,12 @@ class SpeakingQueuePersistenceServiceTest {
                 1L,
                 SpeakingQueueStatus.ASSIGNED
         )).willReturn(false);
+        given(speakingQueueRepository
+                .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
+                        1L,
+                        SpeakingQueueStatus.WAITING
+                ))
+                .willReturn(Optional.of(firstWaiting));
         given(speakingQueueRepository
                 .findTop3ByRoomIdAndStatusInAndStanceIsNotNullOrderByAssignedAtDesc(
                         1L,
@@ -705,8 +721,9 @@ class SpeakingQueuePersistenceServiceTest {
 
         assertThat(result.assignedRequest()).contains(oppositeWaiting);
         assertThat(result.canceledRequests()).isEmpty();
+        assertThat(result.balancedAssignment()).isTrue();
         assertThat(oppositeWaiting.getStatus()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
-        verify(speakingQueueRepository, never())
+        verify(speakingQueueRepository)
                 .findFirstByRoomIdAndStatusOrderByQueueOrderAsc(
                         1L,
                         SpeakingQueueStatus.WAITING
