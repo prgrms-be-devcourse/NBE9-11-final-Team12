@@ -16,6 +16,10 @@ permissions:
   contents: read
   packages: write
 
+concurrency:
+  group: deploy-ai-worker-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   buildImagePushAndDeploy:
     name: Build, push, and deploy AI Worker image
@@ -50,6 +54,8 @@ jobs:
           tags: |
             ghcr.io/${{ steps.export_owner.outputs.owner_lc }}/${{ env.IMAGE_NAME }}:latest
             ghcr.io/${{ steps.export_owner.outputs.owner_lc }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Configure personal AWS credentials
         uses: aws-actions/configure-aws-credentials@v4

@@ -1,19 +1,15 @@
-FROM nvidia/cuda:12.4.1-devel-ubuntu22.04
+FROM nvidia/cuda:11.8.0-devel-ubuntu22.04
 
 ENV PYTHONUNBUFFERED=1
 ENV PIP_NO_CACHE_DIR=1
-ENV CMAKE_ARGS="-DGGML_CUDA=on"
-ENV FORCE_CMAKE=1
 
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     ca-certificates \
-    cmake \
     curl \
     git \
-    ninja-build \
     python3 \
     python3-dev \
     python3-pip \
@@ -23,7 +19,9 @@ RUN python3 -m pip install --upgrade pip setuptools wheel
 
 COPY requirements.txt .
 RUN python3 -m pip install -r requirements.txt
-RUN python3 -m pip install --no-binary llama-cpp-python llama-cpp-python
+
+RUN python3 -m pip install "llama-cpp-python>=0.3.0" \
+    --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu118
 
 COPY aireport ./aireport
 COPY prompts ./prompts
