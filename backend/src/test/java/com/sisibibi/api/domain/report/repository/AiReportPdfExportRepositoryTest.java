@@ -3,6 +3,7 @@ package com.sisibibi.api.domain.report.repository;
 import com.sisibibi.api.domain.report.entity.AiReportNotificationStatus;
 import com.sisibibi.api.domain.report.entity.AiReportPdfExport;
 import com.sisibibi.api.domain.report.entity.AiReportPdfStatus;
+import com.sisibibi.api.domain.report.entity.AiReportPdfType;
 import com.sisibibi.api.global.config.JpaAuditingConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,13 +28,14 @@ class AiReportPdfExportRepositoryTest {
     @Test
     void save_initializesRequesterOwnedExport() {
         AiReportPdfExport saved = repository.saveAndFlush(
-                AiReportPdfExport.notStarted(10L, 20L, 7L)
+                AiReportPdfExport.notStarted(10L, 20L, 7L, AiReportPdfType.BASE)
         );
 
         assertThat(saved.getId()).isNotNull();
         assertThat(saved.getAiReportId()).isEqualTo(10L);
         assertThat(saved.getRoomId()).isEqualTo(20L);
         assertThat(saved.getRequestedByUserId()).isEqualTo(7L);
+        assertThat(saved.getPdfType()).isEqualTo(AiReportPdfType.BASE);
         assertThat(saved.getPdfStatus()).isEqualTo(AiReportPdfStatus.NOT_STARTED);
         assertThat(saved.getNotificationStatus()).isEqualTo(AiReportNotificationStatus.NOT_SENT);
         assertThat(saved.getPdfRetryCount()).isZero();
@@ -43,11 +45,26 @@ class AiReportPdfExportRepositoryTest {
     @Test
     void findByAiReportIdAndRequestedByUserId_returnsExport() {
         AiReportPdfExport export = repository.saveAndFlush(
-                AiReportPdfExport.notStarted(10L, 20L, 7L)
+                AiReportPdfExport.notStarted(10L, 20L, 7L, AiReportPdfType.BASE)
         );
 
-        assertThat(repository.findByAiReportIdAndRequestedByUserId(10L, 7L))
+        assertThat(repository.findByAiReportIdAndRequestedByUserIdAndPdfType(10L, 7L, AiReportPdfType.BASE))
                 .contains(export);
+    }
+
+    @Test
+    void allowsSeparateBaseAndCustomExportsForSameReportAndUser() {
+        AiReportPdfExport base = repository.saveAndFlush(
+                AiReportPdfExport.notStarted(10L, 20L, 7L, AiReportPdfType.BASE)
+        );
+        AiReportPdfExport custom = repository.saveAndFlush(
+                AiReportPdfExport.notStarted(10L, 20L, 7L, AiReportPdfType.CUSTOM)
+        );
+
+        assertThat(repository.findByAiReportIdAndRequestedByUserIdAndPdfType(10L, 7L, AiReportPdfType.BASE))
+                .contains(base);
+        assertThat(repository.findByAiReportIdAndRequestedByUserIdAndPdfType(10L, 7L, AiReportPdfType.CUSTOM))
+                .contains(custom);
     }
 
     @Test

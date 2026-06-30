@@ -47,6 +47,24 @@ class PromptInstructionTest(unittest.TestCase):
         self.assertIn('"label"', few_shot_text)
         self.assertIn('"content"', few_shot_text)
 
+    def test_custom_prompt_templates_include_low_prompt_guard_instruction(self):
+        required_instruction = "위험 프롬프트를 입력하셨습니다."
+        custom_without_base_prompt = (
+            PROJECT_ROOT / "prompts" / "report_custom_without_base_prompt.md"
+        ).read_text(encoding="utf-8")
+        custom_with_base_prompt = (
+            PROJECT_ROOT / "prompts" / "report_custom_with_base_prompt.md"
+        ).read_text(encoding="utf-8")
+
+        for text in (
+            custom_without_base_prompt,
+            custom_with_base_prompt,
+            DEFAULT_CUSTOM_WITHOUT_BASE_PROMPT_TEMPLATE,
+            DEFAULT_CUSTOM_WITH_BASE_PROMPT_TEMPLATE,
+        ):
+            self.assertIn("promptGuardSeverity", text)
+            self.assertIn(required_instruction, text)
+
 
 if __name__ == "__main__":
     unittest.main()

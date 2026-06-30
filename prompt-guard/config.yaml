@@ -5,7 +5,7 @@ prompt_guard:
   canary_tokens: []
   actions:
     LOW: log
-    MEDIUM: warn
+    MEDIUM: block
     HIGH: block
     CRITICAL: block
   logging:

@@ -139,6 +139,14 @@ public class AiReport {
                 || status == AiReportStatus.PROCESSING;
     }
 
+    public boolean hasBaseReportContent() {
+        return coreLine != null
+                && keyIssues != null
+                && aiSummary != null
+                && commonGround != null
+                && aiOpinion != null;
+    }
+
     public void retry() {
         retry(List.of());
     }
@@ -158,6 +166,12 @@ public class AiReport {
         this.requestedAt = LocalDateTime.now();
         this.queuedAt = null;
         this.failedAt = null;
+    }
+
+    public void rememberCustomPrompts(List<AiReportCustomPrompt> customPrompts) {
+        this.customPrompts = customPrompts == null ? List.of() : List.copyOf(customPrompts);
+        this.lastErrorCode = null;
+        this.lastErrorMessage = null;
     }
 
     public void markProcessing(LocalDateTime startedAt, Duration lockDuration) {

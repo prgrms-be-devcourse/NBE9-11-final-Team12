@@ -2,6 +2,7 @@ package com.sisibibi.api.domain.report.service;
 
 import com.sisibibi.api.domain.report.entity.AiReportCustomReport;
 import com.sisibibi.api.domain.report.entity.AiReportPdfExport;
+import com.sisibibi.api.domain.report.entity.AiReportPdfType;
 import com.sisibibi.api.domain.report.notification.AiReportNotificationProperties;
 import com.sisibibi.api.domain.report.outbox.AiReportPdfNotificationOutboxWriter;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
@@ -55,12 +56,12 @@ class AiReportPdfGenerationServiceTest {
         given(persistenceService.prepareGeneration(EXPORT_ID)).willReturn(export);
         given(dataCollector.collect(export)).willReturn(model);
         given(renderer.render(model)).willReturn(new byte[]{1, 2, 3});
-        given(storage.upload(model.roomId(), model.reportId(), export.getRequestedByUserId(), new byte[]{1, 2, 3}))
-                .willReturn("ai-reports/1/10/5.pdf");
+        given(storage.upload(model.roomId(), model.reportId(), export.getRequestedByUserId(), AiReportPdfType.BASE, new byte[]{1, 2, 3}))
+                .willReturn("ai-reports/1/10/5-base.pdf");
 
         service.generate(EXPORT_ID);
 
-        verify(persistenceService).completePdf(EXPORT_ID, "ai-reports/1/10/5.pdf");
+        verify(persistenceService).completePdf(EXPORT_ID, "ai-reports/1/10/5-base.pdf");
         verify(notificationSender).sendPdfReady(any(AiReportPdfReadyCommand.class));
         verify(persistenceService).markNotificationSent(EXPORT_ID);
         verify(persistenceService, never()).failPdf(any(), any());
@@ -91,7 +92,7 @@ class AiReportPdfGenerationServiceTest {
         given(persistenceService.prepareGeneration(EXPORT_ID)).willReturn(export);
         given(dataCollector.collect(export)).willReturn(model);
         given(renderer.render(model)).willReturn(new byte[]{1});
-        given(storage.upload(any(), any(), any(), any())).willReturn("key");
+        given(storage.upload(any(), any(), any(), any(), any())).willReturn("key");
         willThrow(new RuntimeException("smtp failed")).given(notificationSender).sendPdfReady(any());
 
         service.generate(EXPORT_ID);

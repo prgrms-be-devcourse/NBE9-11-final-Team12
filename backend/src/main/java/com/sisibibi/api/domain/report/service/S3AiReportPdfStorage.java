@@ -3,6 +3,7 @@ package com.sisibibi.api.domain.report.service;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.storage.S3StorageProperties;
+import com.sisibibi.api.domain.report.entity.AiReportPdfType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -29,9 +30,15 @@ public class S3AiReportPdfStorage implements AiReportPdfStorage {
     private final AiReportPdfProperties pdfProperties;
 
     @Override
-    public String upload(Long roomId, Long reportId, Long userId, byte[] pdfBytes) {
+    public String upload(Long roomId, Long reportId, Long userId, AiReportPdfType pdfType, byte[] pdfBytes) {
         validateConfig();
-        String objectKey = "ai-reports/%d/%d/%d.pdf".formatted(roomId, reportId, userId);
+        AiReportPdfType actualType = pdfType == null ? AiReportPdfType.BASE : pdfType;
+        String objectKey = "ai-reports/%d/%d/%d-%s.pdf".formatted(
+                roomId,
+                reportId,
+                userId,
+                actualType.name().toLowerCase()
+        );
         try {
             s3Client.putObject(
                     PutObjectRequest.builder()
