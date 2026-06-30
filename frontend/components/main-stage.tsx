@@ -862,6 +862,11 @@ export function MainStage({
   const waitingPreviewItems = queueSummary?.items ?? []
   const waitingFullItems = fullQueue?.items ?? waitingPreviewItems
   const waitingTotalCount = queueSummary?.totalWaitingCount ?? 0
+  const isWaitingForSpeakerAssignment =
+    liveEnabled &&
+    !stageLoading &&
+    !currentSpeaker?.hasCurrentSpeaker &&
+    waitingTotalCount > 0
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -899,6 +904,8 @@ export function MainStage({
                     ? "발언권 상태 확인 중..."
                     : currentSpeaker?.hasCurrentSpeaker && currentSpeaker.currentSpeaker
                       ? `${currentSpeaker.currentSpeaker.nickname}님 발언 중`
+                      : isWaitingForSpeakerAssignment
+                        ? "잠시만 대기해주세요."
                       : "현재 발언자가 없습니다"}
               </span>
               {currentSpeaker?.hasCurrentSpeaker && currentSpeaker.currentSpeaker && (
