@@ -11,6 +11,8 @@ public record SpeechListRes(
         Long speechId,
         Long roomId,
         Long userId,
+        Long speakingQueueId,
+        String nickname,
         String content,
         SpeechStance stance,
         SpeechStance speakingStance,
@@ -30,6 +32,8 @@ public record SpeechListRes(
             Long speechId,
             Long roomId,
             Long userId,
+            Long speakingQueueId,
+            String nickname,
             String content,
             SpeechStance stance,
             SpeechStatus status,
@@ -42,6 +46,8 @@ public record SpeechListRes(
                 speechId,
                 roomId,
                 userId,
+                speakingQueueId,
+                nickname,
                 content,
                 stance,
                 stance,
@@ -57,6 +63,7 @@ public record SpeechListRes(
 
     public static SpeechListRes from(
             Speech speech,
+            String nickname,
             long reactionCount,
             boolean reactedByMe
     ) {
@@ -64,6 +71,8 @@ public record SpeechListRes(
                 speech.getId(),
                 speech.getRoomId(),
                 speech.getUserId(),
+                speech.getSpeakingQueueId(),
+                nickname,
                 displayContent(speech),
                 speech.getStance(),
                 speech.getSpeakingStance(),
