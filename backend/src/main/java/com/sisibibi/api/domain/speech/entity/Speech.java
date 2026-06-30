@@ -24,10 +24,16 @@ import java.time.LocalDateTime;
 @EntityListeners(AuditingEntityListener.class)
 @Table(
         name = "speeches",
-        indexes = @Index(
-                name = "idx_speeches_room_deleted_id",
-                columnList = "room_id, is_deleted, id"
-        )
+        indexes = {
+                @Index(
+                        name = "idx_speeches_room_deleted_id",
+                        columnList = "room_id, is_deleted, id"
+                ),
+                @Index(
+                        name = "idx_speeches_user_deleted",
+                        columnList = "user_id, is_deleted"
+                )
+        }
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Speech {

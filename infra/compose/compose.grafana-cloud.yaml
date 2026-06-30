@@ -1,0 +1,67 @@
+services:
+  alloy:
+    image: grafana/alloy:v1.5.1
+    container_name: sisibibi-alloy
+    restart: unless-stopped
+    mem_limit: 256m
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - /etc/alloy/config.alloy
+    environment:
+      GRAFANA_CLOUD_PROM_URL: ${GRAFANA_CLOUD_PROM_URL:?GRAFANA_CLOUD_PROM_URL must be set}
+      GRAFANA_CLOUD_PROM_USER: ${GRAFANA_CLOUD_PROM_USER:?GRAFANA_CLOUD_PROM_USER must be set}
+      GRAFANA_CLOUD_API_KEY: ${GRAFANA_CLOUD_API_KEY:?GRAFANA_CLOUD_API_KEY must be set}
+      GRAFANA_CLOUD_LOKI_URL: ${GRAFANA_CLOUD_LOKI_URL:?GRAFANA_CLOUD_LOKI_URL must be set}
+      GRAFANA_CLOUD_LOKI_USER: ${GRAFANA_CLOUD_LOKI_USER:?GRAFANA_CLOUD_LOKI_USER must be set}
+      BACKEND_TARGET: ${BACKEND_TARGET:-backend:8080}
+      BACKEND_BLUE_TARGET: ${BACKEND_BLUE_TARGET:-backend-blue:8080}
+      BACKEND_GREEN_TARGET: ${BACKEND_GREEN_TARGET:-backend-green:8080}
+      NODE_EXPORTER_TARGET: ${NODE_EXPORTER_TARGET:-node-exporter:9100}
+      REDIS_EXPORTER_TARGET: ${REDIS_EXPORTER_TARGET:-redis-exporter:9121}
+      MYSQLD_EXPORTER_TARGET: ${MYSQLD_EXPORTER_TARGET:-mysqld-exporter:9104}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./alloy/${ALLOY_CONFIG_FILE:-config.cloud.alloy}:/etc/alloy/config.alloy:ro
+      - type: bind
+        source: ${BACKEND_LOG_PATH:-../../backend/logs}
+        target: /var/log/sisibibi
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      - node-exporter
+      - redis-exporter
+      - mysqld-exporter
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.1
+    container_name: sisibibi-node-exporter
+    restart: unless-stopped
+    mem_limit: 128m
+    command:
+      - --path.rootfs=/host
+    volumes:
+      - /:/host:ro,rslave
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    container_name: sisibibi-redis-exporter
+    restart: unless-stopped
+    mem_limit: 128m
+    environment:
+      REDIS_ADDR: ${REDIS_EXPORTER_ADDR:-redis://redis:6379}
+
+  mysqld-exporter:
+    image: prom/mysqld-exporter:v0.14.0
+    container_name: sisibibi-mysqld-exporter
+    restart: unless-stopped
+    mem_limit: 128m
+    environment:
+      DATA_SOURCE_NAME: ${MYSQL_EXPORTER_USER:?MYSQL_EXPORTER_USER must be set}:${MYSQL_EXPORTER_PASSWORD:?MYSQL_EXPORTER_PASSWORD must be set}@(${MYSQL_EXPORTER_ADDR:-db:3306})/
+
+networks:
+  default:
+    name: ${APP_DOCKER_NETWORK:?APP_DOCKER_NETWORK must be set}
+    external: true

@@ -1,7 +1,7 @@
 import ws from "k6/ws";
 import { check } from "k6";
 import { Counter, Rate, Trend } from "k6/metrics";
-import { accessToken } from "./lib/auth.js";
+import { authCookieJar } from "./lib/auth.js";
 
 // 실행 전 준비:
 // 1. ROOM_ID에 해당하는 OPEN 토론방을 생성한다.
@@ -48,9 +48,9 @@ export default function () {
         wsUrl,
         {
             headers: {
-                Cookie: `accessToken=${accessToken(userId)}`,
                 Origin: frontendOrigin,
             },
+            jar: authCookieJar(baseUrl, userId),
             tags: { name: "WS /api/v1/ws" },
         },
         (socket) => {

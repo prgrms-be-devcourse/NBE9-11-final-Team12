@@ -3,6 +3,7 @@ package com.sisibibi.api.domain.speechreaction.dto.response;
 import com.sisibibi.api.domain.speech.entity.Speech;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.entity.SpeechStatus;
+import com.sisibibi.api.domain.speechreaction.repository.projection.BestSpeechReactionProjection;
 
 import java.time.LocalDateTime;
 
@@ -27,6 +28,19 @@ public record BestSpeechRes(
                 speech.getStatus(),
                 speech.getCreatedAt(),
                 reactionCount
+        );
+    }
+
+    public static BestSpeechRes from(BestSpeechReactionProjection projection) {
+        return new BestSpeechRes(
+                projection.getSpeechId(),
+                projection.getRoomId(),
+                projection.getUserId(),
+                projection.getContent(),
+                projection.getStance(),
+                projection.getStatus(),
+                projection.getCreatedAt(),
+                projection.getReactionCount()
         );
     }
 }

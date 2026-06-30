@@ -86,11 +86,7 @@ public class SpeechReactionService {
             throw new CustomException(ErrorCode.BEST_SPEECH_NOT_FOUND);
         }
 
-        BestSpeechReactionProjection bestReaction = results.getFirst();
-        Speech speech = speechRepository.findByIdAndDeletedFalse(bestReaction.getSpeechId())
-                .orElseThrow(() -> new CustomException(ErrorCode.BEST_SPEECH_NOT_FOUND));
-
-        return BestSpeechRes.from(speech, bestReaction.getReactionCount());
+        return BestSpeechRes.from(results.getFirst());
     }
 
     private Speech getActiveSpeech(Long speechId) {

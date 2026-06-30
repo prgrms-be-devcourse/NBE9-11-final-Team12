@@ -1,0 +1,2425 @@
+# 2026-06-29 로컬 목표 규모 성능 테스트 결과
+
+## 1. 테스트 목적
+
+현재 프로젝트 기준으로 다음 목표 규모를 로컬 환경에서 검증했다.
+
+```text
+토론방: 10개
+방당 참여자: 100명
+총 동시 접속자: 1000명
+HTTP 읽기 목표: 약 300 RPS
+발언권 신청 목표: 20 TPS
+WebSocket 목표: 1000 연결, 약 100 chat TPS
+```
+
+## 2. 테스트 환경
+
+| 항목 | 값 |
+| --- | --- |
+| Backend | Spring Boot local,monitoring profile |
+| DB | MySQL Docker, localhost:23306 |
+| Redis | Redis Docker, localhost:26379 |
+| Load tool | k6 |
+| Metrics | Prometheus, Grafana, Loki, Promtail |
+| Grafana | http://localhost:3001 |
+| Dashboard | Sisibibi Performance Triage |
+
+Backend는 `local,monitoring` 프로필로 실행했다.
+
+```bash
+DB_HOST=localhost \
+DB_PORT=23306 \
+DB_NAME=sisibibi \
+DB_USERNAME=root \
+DB_PASSWORD=root \
+REDIS_HOST=localhost \
+REDIS_PORT=26379 \
+SPRING_PROFILES_ACTIVE=local,monitoring \
+SPRING_AI_OPENAI_API_KEY=dummy \
+./gradlew bootRun
+```
+
+## 3. 테스트 데이터
+
+`performance/sql/seed-performance-data.sql`로 다음 데이터를 생성했다.
+
+| 데이터 | 규모 |
+| --- | ---: |
+| 사용자 | 1200명 |
+| 토론방 | 10개 |
+| 발언권 순번 데이터 | 10개 |
+| 방 참여자 | 1000명 |
+| 의견 | 500개 |
+| 공감 | 10000개 |
+
+초기 발언권 TPS 테스트에서 모든 요청이 500으로 실패했다.
+원인은 성능 테스트 SQL이 `rooms`는 생성했지만 `room_queue_sequences`를 생성하지 않아 발언권 순번 발급 시 내부 오류가 발생한 것이었다.
+
+수정 후 seed에 다음 데이터를 포함했다.
+
+```text
+room_queue_sequences(room_id, next_queue_order, created_at, updated_at)
+```
+
+## 4. HTTP 읽기 테스트
+
+### 실행 조건
+
+```bash
+BASE_URL=http://localhost:8080 \
+ROOM_IDS=900001,900002,900003,900004,900005,900006,900007,900008,900009,900010 \
+USER_ID_BASE=100000 \
+USER_COUNT=1000 \
+RATE=30 \
+DURATION=60s \
+PRE_ALLOCATED_VUS=100 \
+MAX_VUS=500 \
+TOKEN_VERSION=0 \
+k6 run performance/k6/target-scale-read.js
+```
+
+### 결과
+
+| 지표 | 결과 |
+| --- | ---: |
+| 총 요청 수 | 18010 |
+| 처리량 | 약 299.67 req/s |
+| 실패율 | 0% |
+| p95 | 14.62ms |
+| p99 | 24.06ms |
+
+상대적으로 지연 시간이 높았던 API는 다음 순서였다.
+
+| API | p95 |
+| --- | ---: |
+| `GET /api/v1/users/me/trust` | 16.68ms |
+| `GET /api/v1/users/{userId}/trust` | 16.47ms |
+| `GET /api/v1/rooms/{roomId}/speeches` | 15.05ms |
+| `GET /api/v1/rooms/{roomId}/best-speech` | 14.50ms |
+
+현재 규모에서는 읽기 API 병목은 확인되지 않았다.
+다만 신뢰도 조회는 여러 집계 쿼리를 사용하므로, 목록 화면에서 다수 사용자에 대해 반복 호출하면 병목 후보가 될 수 있다.
+
+## 5. 발언권 신청 TPS 테스트
+
+### 실행 조건
+
+```bash
+BASE_URL=http://localhost:8080 \
+ROOM_IDS=900001,900002,900003,900004,900005,900006,900007,900008,900009,900010 \
+USER_ID_BASE=100000 \
+USERS_PER_ROOM=100 \
+RATE=20 \
+DURATION=60s \
+PRE_ALLOCATED_VUS=100 \
+MAX_VUS=500 \
+TOKEN_VERSION=0 \
+k6 run performance/k6/target-scale-stage.js
+```
+
+### 결과
+
+| 지표 | 결과 |
+| --- | ---: |
+| 총 요청 수 | 1201 |
+| 처리량 | 약 20 TPS |
+| 서버 오류율 | 0% |
+| 생성 성공 | 1010건 |
+| 비즈니스 거절 | 191건 |
+| p95 | 52.78ms |
+| p99 | 65.69ms |
+| max | 190.84ms |
+
+비즈니스 거절은 중복 신청, 이미 배정된 발언권 등 정책상 정상적으로 발생 가능한 응답이다.
+k6 스크립트는 `400`, `403`, `409`를 서버 실패로 보지 않고 비즈니스 거절로 분리한다.
+
+현재 20 TPS에서는 DB 커넥션 대기나 서버 오류가 확인되지 않았다.
+
+## 6. WebSocket 1000 연결 테스트
+
+### 실행 조건
+
+```bash
+BASE_URL=http://localhost:8080 \
+ROOM_IDS=900001,900002,900003,900004,900005,900006,900007,900008,900009,900010 \
+USER_ID_BASE=100000 \
+USERS_PER_ROOM=100 \
+VUS=1000 \
+MAX_DURATION=100s \
+CONNECTION_DURATION_SECONDS=45 \
+MESSAGE_INTERVAL_SECONDS=10 \
+TOKEN_VERSION=0 \
+k6 run performance/k6/target-scale-websocket.js
+```
+
+### 결과
+
+| 지표 | 결과 |
+| --- | ---: |
+| WebSocket 연결 | 1000/1000 성공 |
+| STOMP CONNECT | 1000건 |
+| SUBSCRIBE | 1000건 |
+| SEND | 4000건 |
+| 브로드캐스트 수신 | 314755건 |
+| 실패율 | 0% |
+| 연결 p95 | 1.58s |
+| 세션 유지 | 약 45초 |
+
+검증 항목은 다음과 같다.
+
+- WebSocket upgrade 성공
+- STOMP CONNECT 성공
+- 방별 채팅 topic 구독 성공
+- 메시지 전송 성공
+- 브로드캐스트 수신 성공
+
+현재 로컬 환경에서 1000 연결은 통과했다.
+다만 1000 연결을 한 번에 생성하므로 연결 p95가 1.58초까지 상승했다.
+운영 테스트에서는 ramp-up 방식으로 실제 유입 패턴을 나눠 검증해야 한다.
+
+## 7. Prometheus 지표 요약
+
+테스트 직후 Prometheus에서 5분 구간 기준으로 확인한 주요 지표다.
+
+| 지표 | 값 |
+| --- | ---: |
+| HTTP RPS max | 20.27 RPS |
+| 발언권 API p95 max | 53.5ms |
+| HTTP 5xx RPS max | 0 |
+| Hikari active max | 1 |
+| Hikari pending max | 0 |
+| JVM live threads max | 239 |
+| Redis ops max | 약 225 ops/s |
+| MySQL threads connected max | 12 |
+| MySQL slow query 증가 | 0 |
+| Host CPU 사용률 max | 약 4.9% |
+| Host memory 사용률 max | 약 24.3% |
+
+Prometheus 조회 시점이 발언권 테스트 직후라 HTTP RPS는 발언권 테스트 구간 기준이다.
+HTTP 읽기 300 RPS는 k6 결과 기준으로 별도 기록했다.
+
+## 8. 병목 판단
+
+현재 목표 규모 테스트에서는 명확한 병목은 확인되지 않았다.
+
+확인 근거는 다음과 같다.
+
+- HTTP 읽기 300 RPS 실패율 0%
+- 발언권 20 TPS 서버 오류율 0%
+- WebSocket 1000 연결 실패율 0%
+- Hikari pending 0
+- MySQL slow query 증가 0
+- Redis ops 처리 정상
+- Host CPU와 memory 여유 있음
+
+다만 다음 영역은 이후 고도화 후보로 남긴다.
+
+| 후보 | 이유 | 대응 방향 |
+| --- | --- | --- |
+| 발언권 신청 | 방 단위 순번 발급과 상태 변경이 직렬화될 수 있음 | 50 TPS 이상 stress 테스트, room별 lock 대기 확인 |
+| 신뢰도 조회 | 여러 집계 쿼리 기반 | 목록 반복 호출 시 캐시 또는 스냅샷 검토 |
+| WebSocket fan-out | 1000명 기준 브로드캐스트 수신량이 급증 | 방별 메시지 TPS 증가 테스트, broker relay 검토 |
+| SQL 로그 | local 프로필에서 Hibernate SQL 로그가 많음 | 성능 테스트 전용 프로필에서는 SQL 로그 비활성화 |
+| 스케줄러 | 발언권/AI 리포트/요약 스케줄러가 테스트 중 같이 동작 | 병목 분석 시 스케줄러 on/off 비교 |
+
+## 9. 다음 테스트 계획
+
+다음 단계에서는 부하를 더 높여 병목 지점을 의도적으로 찾아야 한다.
+
+1. HTTP 읽기 `RATE=50~100`으로 500~1000 RPS stress 테스트
+2. 발언권 신청 `RATE=30~50`으로 lock 대기와 p95 증가 확인
+3. WebSocket `MESSAGE_INTERVAL_SECONDS=5`로 채팅 TPS 200 수준 검증
+4. 운영 서버에서는 ramp-up, soak, spike 테스트를 분리
+5. Grafana Cloud 또는 별도 모니터링 서버로 운영 지표 수집 구조 확장
+
+
+## 10. 발언권 추가 Stress 테스트
+
+기존 `20 TPS × 60초`는 목표 규모 기준 load 테스트다.
+발언권 신청은 사용자가 지속적으로 초당 수십 번 호출하는 API가 아니라, 토론 진행 중 특정 시점에 몰리는 burst 성격의 쓰기 API다.
+따라서 20 TPS는 기준 부하 검증으로 보고, 추가로 30 TPS와 50 TPS를 stress 성격으로 검증했다.
+
+### 30 TPS 결과
+
+```bash
+RATE=30 DURATION=30s k6 run performance/k6/target-scale-stage.js
+```
+
+| 지표 | 결과 |
+| --- | ---: |
+| 총 요청 수 | 901 |
+| 생성 성공 | 901 |
+| 실패율 | 0% |
+| p95 | 40.59ms |
+| p99 | 48.73ms |
+| max | 101.93ms |
+
+### 50 TPS 결과
+
+```bash
+RATE=50 DURATION=20s k6 run performance/k6/target-scale-stage.js
+```
+
+| 지표 | 결과 |
+| --- | ---: |
+| 총 요청 수 | 1001 |
+| 생성 성공 | 1000 |
+| 비즈니스 거절 | 1 |
+| 서버 오류율 | 0% |
+| p95 | 68.92ms |
+| p99 | 422.84ms |
+| max | 552.28ms |
+
+50 TPS에서는 p95는 안정적이지만 p99와 max가 튀었다.
+Prometheus 기준으로는 다음 문제가 확인되지 않았다.
+
+- HTTP 5xx 증가 없음
+- Hikari pending 0
+- MySQL slow query 증가 없음
+- Host CPU 여유 있음
+
+따라서 현재 관측 기준 병목은 DB 커넥션 고갈이나 slow query라기보다, 방 단위 발언권 순번 발급과 상태 변경이 순간적으로 직렬화되는 구간에서 일부 tail latency가 발생한 것으로 판단한다.
+
+### 결론
+
+- 목표 기준인 20 TPS는 통과함
+- 30 TPS도 안정적으로 통과함
+- 50 TPS도 서버 오류 없이 통과했지만 p99 tail latency가 상승함
+- 다음 성능 개선은 평균 응답이 아니라 p99 tail latency를 줄이는 방향으로 진행해야 함
+
+### 다음 확인 대상
+
+1. `room_queue_sequences` 비관적 락 대기 시간 측정
+2. 같은 방 집중 부하와 10개 방 분산 부하 비교
+3. Hibernate SQL 로그 비활성화 후 재측정
+4. 발언권 신청 트랜잭션 내부 쿼리 수 축소 가능성 검토
+5. 운영 서버에서는 ramp-up 방식으로 50 TPS 이상 재검증
+
+## 11. 목표 기준 산정 근거
+
+이번 목표는 다음 서비스 가정을 기준으로 잡았다.
+
+```text
+토론방 수: 10개
+방당 동시 접속자: 50~100명
+총 동시 접속자: 500~1000명
+```
+
+동시 접속자 수가 그대로 RPS가 되는 것은 아니다.
+RPS/TPS는 사용자가 몇 초마다 어떤 행동을 하는지로 환산한다.
+
+| 사용자 행동 | 산정 방식 | 목표값 |
+| --- | --- | ---: |
+| 화면 상태 조회 | 1000명이 10~30초마다 조회 | 약 30~100 RPS |
+| 의견 목록·상세 조회 | 1000명이 10~20초마다 갱신 | 약 50~100 RPS |
+| 보조 조회 | 내 정보, 제재, 신뢰도 등을 30~60초마다 조회 | 약 10~30 RPS |
+| HTTP 읽기 혼합 | 여러 조회 API를 한 iteration에 묶어 호출 | 약 300 RPS |
+| 채팅 | 방당 1~3 msg/s | 약 10~30 TPS |
+| 발언권 신청 | 특정 시점에 몰리는 burst 요청 | 약 10~50 TPS |
+| WebSocket | 접속자 수와 동일 | 500~1000 연결 |
+
+따라서 이번 테스트의 기준은 다음과 같이 해석한다.
+
+- `300 RPS` 읽기 테스트는 1000명 규모에서 여러 조회 API가 동시에 섞이는 상황을 가정한 load 테스트다.
+- `20 TPS` 발언권 테스트는 목표 운영 부하 기준의 load 테스트다.
+- `30~50 TPS` 발언권 테스트는 순간 집중 요청을 보는 stress 테스트다.
+- `1000 WebSocket` 테스트는 목표 동시 접속 상한 검증이다.
+
+## 12. 성능 테스트와 동시성 테스트 구분
+
+이번 테스트는 성능 테스트와 동시성 테스트가 섞여 있다.
+
+성능 테스트는 다음을 본다.
+
+- 목표 RPS/TPS를 처리할 수 있는가
+- p95/p99 응답 시간이 허용 가능한가
+- DB 커넥션, Redis, JVM, CPU, 메모리에 병목이 있는가
+
+동시성 테스트는 다음을 본다.
+
+- 동시에 요청해도 정원, 중복, 상태 전이 규칙이 깨지지 않는가
+- DB unique constraint, 비관적 락, Redis Lua/script 기반 처리가 실제로 동작하는가
+- 성공해야 할 요청과 거절되어야 할 요청이 정책대로 나뉘는가
+
+즉 `발언권 신청 TPS`는 성능 테스트이면서 동시에 동시성 테스트다.
+발언권 신청은 같은 방의 순번 발급과 현재 발언자 배정이 얽혀 있으므로 tail latency와 정합성을 함께 봐야 한다.
+
+## 13. 추가 동시성 불변식 테스트
+
+최신 dev 반영 후 다음 경합 시나리오를 추가로 검증했다.
+
+### 13.1 토론방 정원 초과 입장
+
+```bash
+ROOM_ID=900001 \
+USER_ID_BASE=101000 \
+ATTEMPTS=20 \
+ROOM_CAPACITY=100 \
+KNOWN_EXISTING_PARTICIPANTS=100 \
+k6 run performance/k6/room-join-capacity.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| 기존 참여자 | 100 |
+| 정원 | 100 |
+| 동시 입장 시도 | 20 |
+| 추가 입장 성공 | 0 |
+| 정원 불변식 | 유지 |
+
+### 13.2 같은 사용자의 동일 의견 공감 중복 생성
+
+```bash
+SPEECH_ID=22 \
+USER_ID=100030 \
+ATTEMPTS=20 \
+k6 run performance/k6/reaction-race.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| 동시 공감 요청 | 20 |
+| 생성된 공감 | 1 |
+| 중복 생성 방어 | 유지 |
+| DB 확인 | `speech_reactions` 1건 |
+
+### 13.3 같은 사용자의 동일 의견 중복 신고
+
+```bash
+SPEECH_ID=22 \
+USER_ID=100030 \
+ATTEMPTS=20 \
+k6 run performance/k6/speech-report-race.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| 동시 신고 요청 | 20 |
+| 생성된 신고 | 1 |
+| 중복 생성 방어 | 유지 |
+| DB 확인 | `speech_reports` 1건 |
+
+## 14. 추가로 동시성 고려가 필요한 영역
+
+이번에 검증한 영역 외에도 다음은 별도 시나리오로 확장할 수 있다.
+
+| 영역 | 위험 | 검증 방향 |
+| --- | --- | --- |
+| 발언 종료와 자동 만료 | 동시에 완료 처리되면 다음 발언자 중복 배정 가능 | 완료/만료 동시 요청 경합 |
+| 발언권 신청 취소와 자동 배정 | 취소 중인 사용자가 배정될 가능성 | 취소/배정 동시 경합 |
+| 신고 처리 | 두 관리자가 같은 신고를 동시에 처리 | `findByIdForUpdate` 기반 상태 전이 검증 |
+| 사용자 제재 등록/해제 | 중복 제재, 해제와 연장 경합 | 동일 사용자 제재 동시 처리 |
+| 채팅 rate limiter | Redis 장애 또는 동시 증가 시 제한 누락 | Redis 카운터 및 fail-open 정책 검증 |
+| WebSocket presence | 접속/해제 이벤트 순서 꼬임 | Redis presence expiration 검증 |
+| Outbox relay | 다중 인스턴스에서 같은 이벤트 중복 발행 | relay lock 및 deduplication 검증 |
+
+MVP 이후 안정화에서는 위 항목을 기능별로 나눠 k6 또는 통합 테스트로 추가하는 것이 적절하다.
+
+## 15. 의도적 고부하 재측정
+
+목표 기준의 여유 한계를 보기 위해 기존 목표보다 부하를 높여 재측정했다.
+
+### 15.1 읽기 혼합 500 iteration/s
+
+```bash
+RATE=500 \
+DURATION=30s \
+PRE_ALLOCATED_VUS=200 \
+MAX_VUS=1000 \
+k6 run performance/k6/target-scale-read.js
+```
+
+`target-scale-read.js`는 한 iteration에서 주요 조회 API 10개를 호출한다.
+따라서 `RATE=500`은 실제 HTTP 요청 기준 약 `500 × 10 = 5000 req/s`를 목표로 시도한 것이다.
+
+| 항목 | 결과 |
+| --- | ---: |
+| 실제 HTTP 요청 수 | 35,720 |
+| 실제 평균 HTTP RPS | 약 991 req/s |
+| HTTP 실패율 | 0% |
+| p95 | 1.23s |
+| p99 | 1.39s |
+| dropped iterations | 11,428 |
+
+엔드포인트별 p95는 대부분 1.1~1.3초 구간으로 함께 상승했다.
+
+| API | p95 |
+| --- | ---: |
+| `GET /api/v1/rooms/{roomId}/best-speech` | 1.31s |
+| `GET /api/v1/users/{userId}/trust` | 1.28s |
+| `GET /api/v1/rooms/{roomId}/stage/requests/me` | 1.27s |
+| `GET /api/v1/rooms/{roomId}/stage` | 1.21s |
+| `GET /api/v1/rooms/open` | 1.18s |
+
+실행 중 Prometheus 기준:
+
+| 지표 | 값 |
+| --- | ---: |
+| HTTP 5xx | 없음 |
+| Hikari active | 1 |
+| Hikari pending | 0 |
+| MySQL threads connected | 11 |
+| MySQL slow query rate | 0 |
+| Redis ops/sec | 약 13.4 |
+| JVM live threads | 약 246 |
+| system CPU | 약 60% |
+
+판단:
+
+- DB 커넥션 대기, slow query, Redis 병목은 확인되지 않았다.
+- 특정 API 하나만 느려진 것이 아니라 조회 API 전반의 p95가 같이 상승했다.
+- k6가 `MAX_VUS=1000`에 도달했고 dropped iteration이 발생했으므로, 목표 arrival rate를 서버와 클라이언트가 끝까지 유지하지 못했다.
+- 현재 병목 후보는 단일 쿼리보다 로컬 환경의 HTTP 처리량, Tomcat worker/thread 증가, 인증 필터와 다수 조회 API 혼합 처리 비용이다.
+
+다음 개선 방향:
+
+1. 운영 서버 또는 별도 부하 발생기에서 동일 테스트 재측정
+2. 조회 혼합 테스트를 API별 단독 테스트로 쪼개 가장 비싼 조회 식별
+3. 인증 검증 비용과 신뢰도 조회 집계 비용 분리 측정
+4. `GET /api/v1/users/{userId}/trust`, `GET /api/v1/rooms/{roomId}/best-speech` 캐시 또는 스냅샷 필요성 검토
+5. Grafana에서 Tomcat thread, JVM thread, CPU, HTTP duration을 같은 시간축으로 비교
+
+### 15.2 발언권 신청 80 TPS
+
+```bash
+RATE=80 \
+DURATION=20s \
+k6 run performance/k6/target-scale-stage.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| 전체 요청 | 1,601 |
+| 생성 성공 | 1,000 |
+| 비즈니스 거절 | 601 |
+| 서버 실패율 | 0% |
+| p95 | 18.46ms |
+| p99 | 28.59ms |
+| max | 75.12ms |
+
+비즈니스 거절은 성능 실패가 아니라 테스트 데이터 범위 내에서 이미 발언권 신청이 생성된 사용자에 대한 중복/불가 요청이다.
+80 TPS에서도 서버 오류와 응답 지연은 발생하지 않았다.
+
+판단:
+
+- 발언권 신청은 현재 로컬 기준 80 TPS까지 큰 병목이 확인되지 않았다.
+- 이전 50 TPS 테스트에서 p99가 튄 것은 순간 경합 또는 로컬 환경 편차로 보이며, 반복 측정이 필요하다.
+- 더 정확한 한계 측정을 하려면 사용자 수를 더 늘리고 100~200 TPS ramp-up 테스트를 별도로 수행해야 한다.
+
+## 16. 한계 탐색 추가 측정
+
+운영 예상 부하를 보수적으로 잡는 것과 별개로, Redis projection과 발언권 구조의 근거를 확인하려면 더 높은 부하에서 한계 신호를 확인해야 한다.
+따라서 발언권 신청은 TPS 기준 테스트와 별도로 동시 burst 테스트를 추가로 수행했다.
+
+### 16.1 발언권 15개 방 × 100명 동시 신청 burst
+
+```bash
+RUN_SCENARIOS=multi-15rooms-100 \
+bash performance/k6/run-stage-request-scenarios.sh
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| 방 수 | 15 |
+| 방당 신청자 | 100 |
+| 총 신청자 | 1,500 |
+| 생성 성공 | 1,500 |
+| 비즈니스 거절 | 0 |
+| DB 저장 건수 | 1,500 |
+| Redis 대기열 건수 | 1,500 |
+| 평균 응답 시간 | 1,566.56ms |
+| p95 | 2,909.10ms |
+| p99 | 2,996.57ms |
+| 처리량 | 476.91 req/s |
+| HTTP 실패율 | 0% |
+| checks | 100% |
+
+판단:
+
+- 정합성은 유지됐다. DB와 Redis 대기열 모두 1,500건으로 맞았다.
+- 서버 오류는 없었지만 p95가 약 2.9초까지 상승했다.
+- 이 시나리오는 “평균 운영 부하”가 아니라 토론 시작 직후 사용자가 동시에 발언권을 신청하는 burst 상황이다.
+- 발언권 신청의 한계 신호는 실패율보다 먼저 tail latency로 나타난다.
+- Redis projection은 대기열 조회와 실시간 상태 제공에는 유리하지만, 신청 저장 경로 자체는 여전히 DB insert, 순번 발급, 트랜잭션 경합 영향을 받는다.
+
+운영 목표 재조정:
+
+| 구분 | 기존 보수 기준 | 조정 가능 기준 | 의미 |
+| --- | ---: | ---: | --- |
+| 발언권 운영 예상 부하 | 20~50 TPS | 50~100 TPS | 일반 운영 목표 |
+| 발언권 burst 검증 | 50 TPS | 300~500 req/s | 토론 시작 직후 집중 요청 |
+| 발언권 한계 탐색 | 미정 | 500 req/s 이상 | tail latency와 경합 확인 |
+
+### 16.2 WebSocket 1,200 연결 시도
+
+```bash
+VUS=1200 \
+USERS_PER_ROOM=120 \
+CONNECTION_DURATION_SECONDS=30 \
+MESSAGE_INTERVAL_SECONDS=10 \
+k6 run performance/k6/target-scale-websocket.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| WebSocket upgrade | 1,200 |
+| STOMP CONNECT | 1,200 |
+| SUBSCRIBE | 1,200 |
+| connect p95 | 812.05ms |
+| WebSocket failure rate | 42.85% |
+| 메시지 전송 성공 체크 | 300 / 1,200 |
+| 브로드캐스트 수신 성공 체크 | 300 / 1,200 |
+
+판단:
+
+- 연결과 구독 자체는 1,200개까지 성공했다.
+- 메시지 전송/수신 검증은 실패율이 높았다.
+- 현재 seed 데이터는 방당 100명 참여자를 기준으로 구성되어 있는데, 테스트는 방당 120명으로 실행했다. 따라서 일부 사용자는 실제 참여자 조건과 맞지 않을 수 있다.
+- 이 결과는 “1,200 연결 불가”라기보다 “현재 테스트 데이터/스크립트 조건으로는 1,200명 채팅 송수신 검증이 깨진다”로 해석해야 한다.
+- WebSocket 한계 측정은 방당 120명 이상의 참여자 seed를 별도로 만든 뒤 재측정해야 한다.
+
+## 17. 현재 병목 후보 우선순위
+
+| 우선순위 | 영역 | 근거 | 다음 액션 |
+| --- | --- | --- | --- |
+| 1 | 읽기 혼합 부하 | 약 1,000 RPS에서 p95 1초 초과, dropped iteration 발생 | API별 단독 부하로 비싼 조회 분리 |
+| 2 | 발언권 burst | 1,500명 동시 신청에서 p95 약 2.9초 | 300/500/800 req/s rate 테스트와 DB lock 지표 확인 |
+| 3 | WebSocket 채팅 송수신 | 1,200 연결은 성공, 송수신 검증 실패 | 1,200명 참여자 seed 보강 후 재측정 |
+| 4 | 신뢰도/베스트 의견 조회 | 고부하 읽기에서 p95 상위권 | 캐시 또는 스냅샷 검토 후보 |
+
+현재 운영 예상 부하는 기존보다 높게 잡을 수 있다.
+다만 문서에는 “운영 목표”와 “한계 탐색”을 분리해서 적어야 한다.
+
+```text
+운영 목표 = 안정적으로 감당해야 하는 기준
+한계 탐색 = 어디서 tail latency, 실패율, dropped iteration이 발생하는지 찾는 기준
+```
+
+## 18. 한계 탐색 재측정
+
+사용자가 지정한 고정 규모에 맞추기보다, 현재 로컬 환경에서 의미 있는 한계 신호가 어디서 나타나는지 확인했다.
+발언권은 TPS 기반 rate 테스트와 순수 동시 burst 테스트를 분리했고, WebSocket은 같은 1,000명 연결에서 메시지 주기를 줄이며 한계 구간을 확인했다.
+
+### 18.1 발언권 신청 rate 테스트
+
+#### 200 TPS
+
+```bash
+RATE=200 \
+DURATION=10s \
+ROOM_COUNT=10 \
+USER_ID_BASE=100000 \
+k6 run performance/k6/target-scale-stage.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| 전체 요청 | 2,000 |
+| 생성 성공 | 1,000 |
+| 비즈니스 거절 | 1,000 |
+| 서버 실패율 | 0% |
+| p95 | 16.13ms |
+| p99 | 34.69ms |
+| 처리량 | 199.95 req/s |
+
+#### 500 TPS
+
+```bash
+RATE=500 \
+DURATION=10s \
+ROOM_COUNT=10 \
+USER_ID_BASE=100000 \
+k6 run performance/k6/target-scale-stage.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| 전체 요청 | 5,001 |
+| 생성 성공 | 1,000 |
+| 비즈니스 거절 | 4,001 |
+| 서버 실패율 | 0% |
+| p95 | 83.60ms |
+| p99 | 178.74ms |
+| 처리량 | 499.63 req/s |
+
+판단:
+
+- 200 TPS와 500 TPS 모두 서버 실패는 없었다.
+- 다만 seed 데이터가 1,000명의 유효 사용자 기준이라, 1,000건 생성 이후에는 중복 신청 등 비즈니스 거절이 포함된다.
+- 따라서 이 결과는 “500 TPS까지 요청 처리 경로가 무너지지 않는다”는 의미이며, “500 TPS 순수 생성 성공”을 의미하지는 않는다.
+- 순수 생성 한계는 아래 burst 테스트로 별도 확인했다.
+
+### 18.2 발언권 30개 방 × 100명 동시 신청 burst
+
+```bash
+RUN_SCENARIOS=multi-15rooms-100 \
+MULTI_ROOM_COUNT=30 \
+bash performance/k6/run-stage-request-scenarios.sh
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| 방 수 | 30 |
+| 방당 신청자 | 100 |
+| 총 신청자 | 3,000 |
+| 생성 성공 | 3,000 |
+| 비즈니스 거절 | 0 |
+| DB 저장 건수 | 3,000 |
+| Redis 대기열 건수 | 3,000 |
+| 평균 응답 시간 | 2,266.89ms |
+| p95 | 4,467.78ms |
+| p99 | 4,647.38ms |
+| 처리량 | 606.74 req/s |
+| HTTP 실패율 | 0% |
+| checks | 100% |
+
+판단:
+
+- 정합성은 유지됐다. DB 저장 건수와 Redis 대기열 건수가 모두 3,000건으로 일치했다.
+- 서버 오류는 없었지만 p95가 약 4.47초까지 상승했다.
+- 발언권 신청의 한계 신호는 실패율보다 tail latency로 먼저 나타난다.
+- 현재 구조에서 발언권 신청 저장 경로는 RDB 원본 저장, 순번 확정, Redis projection 반영을 거치므로 burst 상황에서는 DB insert/트랜잭션/Redis 동기화 비용이 누적된다.
+- 운영 부하 목표와 한계 탐색 목표는 분리해서 봐야 한다.
+
+| 구분 | 현재 판단 |
+| --- | --- |
+| 일반 운영 목표 | 100~200 TPS 수준은 안정권으로 볼 수 있음 |
+| 고부하 검증 목표 | 500 TPS 이상에서 tail latency 확인 필요 |
+| burst 한계 신호 | 3,000명 동시 신청 시 p95 4초대 |
+| 개선 후보 | 신청 저장 경로 지표 분리, DB insert/락 대기/Redis 반영 시간 계측 |
+
+### 18.3 WebSocket 1,000명 메시지 주기별 테스트
+
+WebSocket은 연결 수만 보는 것이 아니라 STOMP CONNECT, SUBSCRIBE, SEND, 브로드캐스트 수신까지 확인했다.
+같은 1,000명 기준에서 메시지 전송 주기를 5초, 2초, 1초로 줄이며 한계 구간을 확인했다.
+
+#### 1,000명 / 5초마다 메시지 전송
+
+```bash
+VUS=1000 \
+CONNECTION_DURATION_SECONDS=30 \
+MESSAGE_INTERVAL_SECONDS=5 \
+k6 run performance/k6/target-scale-websocket.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| 연결 성공 | 1,000 |
+| STOMP CONNECT | 1,000 |
+| SUBSCRIBE | 1,000 |
+| WebSocket failure rate | 0% |
+| connect p95 | 774ms |
+| 애플리케이션 메시지 전송률 | 약 170.97 msg/s |
+| 브로드캐스트 수신률 | 약 6,494.76 msg/s |
+| checks | 100% |
+
+#### 1,000명 / 2초마다 메시지 전송
+
+```bash
+VUS=1000 \
+CONNECTION_DURATION_SECONDS=30 \
+MESSAGE_INTERVAL_SECONDS=2 \
+k6 run performance/k6/target-scale-websocket.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| 연결 성공 | 1,000 |
+| STOMP CONNECT | 1,000 |
+| SUBSCRIBE | 1,000 |
+| WebSocket failure rate | 0% |
+| connect p95 | 509.04ms |
+| 애플리케이션 메시지 전송률 | 약 466.53 msg/s |
+| 브로드캐스트 수신률 | 약 3,650.81 msg/s |
+| checks | 100% |
+
+#### 1,000명 / 1초마다 메시지 전송
+
+```bash
+VUS=1000 \
+CONNECTION_DURATION_SECONDS=20 \
+MESSAGE_INTERVAL_SECONDS=1 \
+k6 run performance/k6/target-scale-websocket.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| WebSocket upgrade | 1,000 |
+| STOMP CONNECT | 1,000 |
+| SUBSCRIBE | 1,000 |
+| WebSocket failure rate | 7.91% |
+| connect p95 | 18.92s |
+| 메시지 전송 성공 체크 | 914 / 1,000 |
+| 브로드캐스트 수신 성공 체크 | 821 / 1,000 |
+| 애플리케이션 메시지 전송률 | 약 56.65 msg/s |
+| 브로드캐스트 수신률 | 약 84 msg/s |
+
+판단:
+
+- 1,000명 연결 자체는 가능하다.
+- 1,000명이 5초 또는 2초마다 채팅을 보내는 수준은 로컬 기준 통과했다.
+- 1,000명이 1초마다 채팅을 보내는 수준에서는 실패율과 connect p95가 급증했다.
+- 현재 WebSocket 한계 신호는 단순 연결 수보다 메시지 처리량과 브로드캐스트 처리량에서 먼저 나타난다.
+- 운영 목표는 1,000명 동접 기준 2~5초 메시지 주기를 기준으로 잡고, 1초 주기 수준을 요구하려면 메시지 브로커, 브로드캐스트 최적화, 저장 경로 분리 등을 검토해야 한다.
+
+### 18.4 최종 해석
+
+| 영역 | 한계 신호 | 현재 판단 | 다음 개선 후보 |
+| --- | --- | --- | --- |
+| 발언권 신청 | burst p95 4초대 | 정합성은 유지, tail latency가 먼저 증가 | DB/Redis 단계별 시간 계측, 순번 발급 경로 분석 |
+| WebSocket 채팅 | 1초 주기에서 실패율 증가 | 1,000명 연결은 가능, 초고빈도 송수신은 병목 | 브로커 릴레이, 메시지 저장/브로드캐스트 분리, 백프레셔 정책 |
+| 읽기 혼합 API | 약 1,000 RPS에서 p95 1초 초과 | API별 병목 분리 필요 | 신뢰도/베스트 의견/목록 조회 단독 테스트 |
+
+현재 로컬 기준으로는 “서버가 바로 실패하는 지점”보다 “tail latency가 급격히 증가하는 지점”이 먼저 확인됐다.
+따라서 다음 성능 개선은 실패율만 보는 것이 아니라 p95/p99, Tomcat thread, DB connection, JVM CPU, Redis latency를 같은 시간축에서 같이 봐야 한다.
+
+## 19. REST + WebSocket 혼합 부하 테스트
+
+단독 API 한계가 아니라 실제 서비스처럼 HTTP 조회/쓰기/발언권 신청과 WebSocket 채팅이 동시에 발생하는 상황을 확인했다.
+혼합 부하에서는 같은 Spring Boot 인스턴스가 HTTP 요청, WebSocket 세션, STOMP 메시지 처리, 채팅 저장, DB/Redis 접근을 함께 처리하므로 단독 테스트보다 병목이 더 빨리 드러날 수 있다.
+
+### 19.1 혼합 부하 스크립트
+
+```bash
+k6 run performance/k6/target-scale-mixed-limit.js
+```
+
+동시에 실행한 작업:
+
+| 시나리오 | 내용 |
+| --- | --- |
+| `readApis` | 내 정보, 토론방 목록/상세, 참여자 수, 의견 목록, 발언권 상태, 베스트 의견, 신뢰도 조회 |
+| `writeApis` | 공감 등록/취소, 의견 신고 |
+| `stageRequests` | 발언권 신청 |
+| `websocketChat` | WebSocket 연결, STOMP CONNECT, SUBSCRIBE, SEND, 브로드캐스트 수신 |
+
+### 19.2 혼합 부하 1차: HTTP 350 RPS 목표 + WebSocket 500명
+
+```bash
+READ_RATE=200 \
+WRITE_RATE=50 \
+STAGE_RATE=100 \
+WS_VUS=500 \
+MESSAGE_INTERVAL_SECONDS=5 \
+DURATION=30s \
+k6 run performance/k6/target-scale-mixed-limit.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| HTTP 요청 수 | 35,120 |
+| HTTP 처리량 | 1,063.71 req/s |
+| HTTP 실패율 | 0% |
+| HTTP p95 | 881.62ms |
+| HTTP p99 | 1.05s |
+| dropped iterations | 2,775 |
+| WebSocket 연결 수 | 500 |
+| WebSocket connect p95 | 425.04ms |
+| WebSocket 메시지 전송 | 2,646 |
+| WebSocket 메시지 수신 | 101 |
+| WebSocket failure rate | 79.80% |
+
+판단:
+
+- HTTP 자체는 5xx 없이 처리됐지만, k6가 목표 도착률을 유지하지 못해 dropped iteration이 크게 발생했다.
+- WebSocket 연결과 STOMP 연결은 가능했지만 브로드캐스트 수신이 급격히 줄었다.
+- 이 조건에서는 HTTP와 WebSocket을 동시에 처리할 때 채팅 브로드캐스트/수신 경로가 먼저 깨진다.
+
+### 19.3 혼합 부하 2차: HTTP 175 RPS 목표 + WebSocket 500명
+
+```bash
+READ_RATE=100 \
+WRITE_RATE=25 \
+STAGE_RATE=50 \
+WS_VUS=500 \
+MESSAGE_INTERVAL_SECONDS=5 \
+DURATION=30s \
+k6 run performance/k6/target-scale-mixed-limit.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| HTTP 요청 수 | 28,977 |
+| HTTP 처리량 | 913.58 req/s |
+| HTTP 실패율 | 0% |
+| HTTP p95 | 344.96ms |
+| HTTP p99 | 543.34ms |
+| dropped iterations | 114 |
+| WebSocket 연결 수 | 500 |
+| WebSocket connect p95 | 458ms |
+| WebSocket 메시지 전송 | 2,400 |
+| WebSocket 메시지 수신 | 1,498 |
+| WebSocket failure rate | 34.18% |
+
+판단:
+
+- HTTP p95는 안정권으로 내려갔고 dropped iteration도 크게 줄었다.
+- 하지만 WebSocket 수신 실패는 여전히 남았다.
+- 단독 WebSocket 기준선과 비교하면 혼합 부하가 WebSocket 브로드캐스트 처리에 직접적인 영향을 준다.
+
+### 19.4 WebSocket 단독 기준선: 500명 / 5초 주기
+
+```bash
+VUS=500 \
+MESSAGE_INTERVAL_SECONDS=5 \
+CONNECTION_DURATION_SECONDS=30 \
+k6 run performance/k6/target-scale-websocket.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| WebSocket 연결 수 | 500 |
+| STOMP CONNECT | 500 |
+| SUBSCRIBE | 500 |
+| WebSocket failure rate | 0% |
+| connect p95 | 254ms |
+| 메시지 전송 | 2,646 |
+| 메시지 수신 | 125,013 |
+| checks | 100% |
+
+판단:
+
+- 같은 500명/5초 조건에서 WebSocket 단독 테스트는 정상 통과했다.
+- 따라서 WebSocket 자체 연결 수 한계라기보다, REST 부하와 동시에 발생할 때 브로드캐스트 처리량이 감소하는 혼합 부하 병목으로 보는 것이 타당하다.
+
+### 19.5 현재 병목 해석
+
+| 병목 후보 | 근거 | 우선순위 |
+| --- | --- | ---: |
+| WebSocket 브로드캐스트 처리 경로 | 단독 500명은 통과, 혼합 부하에서 수신 실패율 34~79% | 1 |
+| HTTP 조회 시나리오의 누적 비용 | 읽기 시나리오가 iteration당 여러 API를 직렬 호출하며 dropped iteration 발생 | 2 |
+| DB connection/transaction 경합 | 채팅 저장, 신고, 공감, 발언권 신청이 동시에 DB 사용 | 3 |
+| 단일 애플리케이션 인스턴스 자원 경합 | HTTP와 WebSocket이 같은 JVM/스레드/DB pool 공유 | 4 |
+
+결론:
+
+- 현재 로컬 기준 실제 병목은 “HTTP API 5xx”가 아니라 “혼합 부하에서 WebSocket 메시지 수신이 밀리는 현상”으로 먼저 나타났다.
+- WebSocket 단독 결과만으로는 운영 안정성을 판단하면 안 된다.
+- 다음 개선은 WebSocket 메시지 저장/브로드캐스트 경로의 계측과 분리가 우선이다.
+
+개선 후보:
+
+1. WebSocket 메시지 처리 시간, DB 저장 시간, 브로드캐스트 시간 로그/메트릭 추가
+2. 채팅 저장과 브로드캐스트의 트랜잭션 경계 확인
+3. 단순 브로커 대신 외부 broker relay 검토
+4. 채팅 저장 실패/지연 시 브로드캐스트 정책 결정
+5. HTTP 읽기 시나리오를 API별 단독 테스트로 분해해 가장 비싼 조회 분리
+6. 운영 서버에서는 부하 발생기와 애플리케이션 서버를 분리해 재측정
+
+## 20. 혼합 부하 재측정 및 병목 원인 정정
+
+19장 측정 이후 테스트 데이터와 스크립트를 재확인한 결과, 초기 혼합 부하 스크립트가 `SPEECH_ID_BASE=1`을 기본값으로 사용하고 있었다.
+하지만 성능 테스트 seed는 의견을 auto increment로 생성하고 cleanup 시 auto increment를 초기화하지 않았다.
+따라서 반복 테스트 후에는 실제 성능 테스트 의견 ID가 `1~500`이 아니었고, 일부 write API가 존재하지 않는 의견을 대상으로 요청될 수 있었다.
+
+이를 보정하기 위해 성능 테스트 의견 ID를 `910001~910500` 고정 범위로 생성하도록 변경했다.
+
+```text
+users: 100000~101199
+rooms: 900001~900010
+speeches: 910001~910500
+```
+
+따라서 20장의 결과를 기준 결과로 사용하고, 19장은 혼합 부하 병목 탐색 과정의 참고 기록으로만 본다.
+
+### 20.1 재측정 1차: HTTP 목표 175 RPS + WebSocket 500명
+
+```bash
+READ_RATE=100 \
+WRITE_RATE=25 \
+STAGE_RATE=50 \
+WS_VUS=500 \
+MESSAGE_INTERVAL_SECONDS=5 \
+DURATION=30s \
+SPEECH_ID_BASE=910001 \
+SPEECH_COUNT=500 \
+k6 run performance/k6/target-scale-mixed-limit.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| HTTP 요청 수 | 28,373 |
+| HTTP 처리량 | 887.23 req/s |
+| HTTP 실패율 | 0% |
+| HTTP p95 | 436.56ms |
+| HTTP p99 | 586.58ms |
+| dropped iterations | 185 |
+| WebSocket 연결 수 | 500 |
+| WebSocket connect p95 | 619.04ms |
+| WebSocket 메시지 전송 | 2,731 |
+| WebSocket 메시지 수신 | 152 |
+| WebSocket failure rate | 69.59% |
+
+HTTP 요청은 5xx 없이 처리됐고 p95도 500ms 이내였지만, WebSocket 브로드캐스트 수신은 크게 밀렸다.
+
+### 20.2 재측정 2차: HTTP 목표 350 RPS + WebSocket 500명
+
+```bash
+READ_RATE=200 \
+WRITE_RATE=50 \
+STAGE_RATE=100 \
+WS_VUS=500 \
+MESSAGE_INTERVAL_SECONDS=5 \
+DURATION=30s \
+SPEECH_ID_BASE=910001 \
+SPEECH_COUNT=500 \
+k6 run performance/k6/target-scale-mixed-limit.js
+```
+
+| 항목 | 결과 |
+| --- | ---: |
+| HTTP 요청 수 | 33,997 |
+| HTTP 처리량 | 973.74 req/s |
+| HTTP 실패율 | 0% |
+| HTTP p95 | 1.64s |
+| HTTP p99 | 1.84s |
+| dropped iterations | 2,979 |
+| WebSocket 연결 수 | 500 |
+| WebSocket connect p95 | 526ms |
+| WebSocket 메시지 전송 | 2,635 |
+| WebSocket 메시지 수신 | 49 |
+| WebSocket failure rate | 90.20% |
+
+부하를 높이면 HTTP p95가 1초 이상으로 증가하고, k6 dropped iteration도 크게 증가했다.
+WebSocket 연결 자체는 유지되지만 메시지 수신은 거의 되지 않았다.
+
+### 20.3 DB 반영량 확인
+
+재측정 후 DB 반영량을 확인했다.
+
+| 데이터 | 결과 |
+| --- | ---: |
+| chat_messages | 5,366 |
+| speech_reports | 475 |
+| speech_reactions | 10,000 |
+| speaking_queue | 120 |
+
+write API가 단순히 404로 빠지는 테스트가 아니라 실제 DB 저장과 상태 변경을 발생시키는 부하였음을 확인했다.
+
+### 20.4 Prometheus 지표
+
+혼합 부하 시간대의 주요 지표는 다음과 같다.
+
+| 지표 | 결과 |
+| --- | ---: |
+| Hikari active connections max | 10 |
+| Hikari pending connections max | 191 |
+| Hikari acquire max | 1.109s |
+| Hikari usage max | 1.395s |
+| MySQL threads running max | 5 |
+| WebSocket inbound executor pool size | 1 |
+| WebSocket outbound executor pool size | 1 |
+| WebSocket inbound queued tasks max | 100,527 |
+| WebSocket outbound queued tasks max | 100,527 |
+| WebSocket heartbeat scheduler queued tasks max | 100,527 |
+
+API별 평균 응답 시간은 대부분 180~203ms 수준으로 비슷하게 증가했다.
+특정 단일 API 하나만 느려진 것이 아니라 DB 커넥션 풀 대기와 WebSocket executor 큐 적체가 같이 나타났다.
+
+### 20.5 병목 원인
+
+현재 로컬 혼합 부하의 1차 병목은 WebSocket 메시지 처리 executor 큐 적체다.
+
+근거:
+
+- WebSocket 단독 500명/5초 테스트는 failure rate 0%로 통과했다.
+- 같은 WebSocket 조건에서 REST 조회/쓰기/발언권 신청을 동시에 실행하면 수신 실패율이 69~90%로 증가했다.
+- Prometheus에서 `clientInboundChannelExecutor`, `clientOutboundChannelExecutor`, `webSocketHeartbeatTaskScheduler`의 queued task가 100,000 이상까지 증가했다.
+- WebSocket executor pool size가 1로 관측됐다.
+- HTTP 5xx는 없지만 Hikari pending connection이 191까지 증가해 DB 커넥션 대기도 동시에 발생했다.
+
+즉, 병목은 단순히 DB 하나만의 문제가 아니라 다음 조합으로 보는 것이 맞다.
+
+```text
+HTTP 조회/쓰기/발언권 신청 증가
+→ DB 커넥션 풀 대기 증가
+→ 채팅 저장 및 이벤트 처리 지연
+→ WebSocket inbound/outbound executor 큐 적체
+→ STOMP 메시지 브로드캐스트 수신 지연/누락
+```
+
+### 20.6 개선 우선순위
+
+| 우선순위 | 개선 후보 | 이유 |
+| ---: | --- | --- |
+| 1 | WebSocket inbound/outbound channel executor pool/queue 설정 | 현재 pool size 1, queue 100k 이상 적체 |
+| 2 | WebSocket heartbeat scheduler pool size 조정 | heartbeat 작업도 큐 적체에 포함됨 |
+| 3 | 채팅 저장 시간과 브로드캐스트 시간 메트릭 분리 | 저장 병목인지 발행 병목인지 더 세밀하게 분해 필요 |
+| 4 | Hikari pool size와 DB query 비용 재측정 | pending 191로 DB 대기 발생 |
+| 5 | 신뢰도/베스트 의견/목록 조회 캐시 또는 집계 최적화 검토 | 혼합 조회가 누적 DB 부하를 만든다 |
+| 6 | 운영 환경에서 외부 broker relay 검토 | 단일 인스턴스 simple broker의 브로드캐스트 한계 대비 |
+
+현재 단계에서 바로 확인된 가장 명확한 수정 후보는 WebSocket 채널 executor 설정이다.
+단, executor pool만 키우면 DB 대기가 더 커질 수 있으므로 적용 후 같은 혼합 부하로 재측정해야 한다.
+
+## 21. WebSocket executor 튜닝 후 재측정
+
+### 21.1 적용한 변경
+
+혼합 부하에서 WebSocket executor pool size가 1로 동작하고 큐가 100,000건 이상 적체되는 것이 확인되어 WebSocket 채널 executor 설정을 명시했다.
+
+| 설정 | 변경 후 기본값 |
+| --- | ---: |
+| inbound core pool size | 4 |
+| inbound max pool size | 16 |
+| inbound queue capacity | 2,000 |
+| outbound core pool size | 4 |
+| outbound max pool size | 16 |
+| outbound queue capacity | 2,000 |
+| heartbeat scheduler pool size | 4 |
+
+환경 변수로 조정 가능하도록 구성했다.
+
+```text
+WEBSOCKET_INBOUND_CORE_POOL_SIZE
+WEBSOCKET_INBOUND_MAX_POOL_SIZE
+WEBSOCKET_INBOUND_QUEUE_CAPACITY
+WEBSOCKET_OUTBOUND_CORE_POOL_SIZE
+WEBSOCKET_OUTBOUND_MAX_POOL_SIZE
+WEBSOCKET_OUTBOUND_QUEUE_CAPACITY
+WEBSOCKET_HEARTBEAT_POOL_SIZE
+```
+
+### 21.2 재측정 1차: HTTP 목표 175 RPS + WebSocket 500명
+
+| 항목 | 튜닝 전 | 튜닝 후 |
+| --- | ---: | ---: |
+| HTTP 요청 수 | 28,373 | 28,280 |
+| HTTP 처리량 | 887.23 req/s | 898.95 req/s |
+| HTTP 실패율 | 0% | 0% |
+| HTTP p95 | 436.56ms | 438.34ms |
+| HTTP p99 | 586.58ms | 547.28ms |
+| dropped iterations | 185 | 196 |
+| WebSocket 연결 수 | 500 | 500 |
+| WebSocket connect p95 | 619.04ms | 823.20ms |
+| WebSocket 메시지 전송 | 2,731 | 2,642 |
+| WebSocket 메시지 수신 | 152 | 9,248 |
+| WebSocket failure rate | 69.59% | 0% |
+
+낮은 혼합 부하에서는 HTTP 성능은 거의 유지되면서 WebSocket 수신 실패가 해소됐다.
+
+### 21.3 재측정 2차: HTTP 목표 350 RPS + WebSocket 500명
+
+| 항목 | 튜닝 전 | 튜닝 후 |
+| --- | ---: | ---: |
+| HTTP 요청 수 | 33,997 | 28,550 |
+| HTTP 처리량 | 973.74 req/s | 801.45 req/s |
+| HTTP 실패율 | 0% | 0% |
+| HTTP p95 | 1.64s | 2.27s |
+| HTTP p99 | 1.84s | 3.60s |
+| dropped iterations | 2,979 | 3,693 |
+| WebSocket 연결 수 | 500 | 500 |
+| WebSocket connect p95 | 526ms | 547.04ms |
+| WebSocket 메시지 전송 | 2,635 | 2,626 |
+| WebSocket 메시지 수신 | 49 | 10,252 |
+| WebSocket failure rate | 90.20% | 0% |
+
+높은 혼합 부하에서도 WebSocket 수신 실패는 해소됐다.
+다만 WebSocket 메시지가 실제로 처리되면서 애플리케이션과 DB가 수행하는 총 작업량이 증가했고, HTTP p95와 dropped iteration은 더 나빠졌다.
+
+### 21.4 튜닝 후 Prometheus 지표
+
+튜닝 후 혼합 부하 시간대 주요 지표는 다음과 같다.
+
+| 지표 | 결과 |
+| --- | ---: |
+| 현재 앱 Hikari active connections max | 10 |
+| 현재 앱 Hikari pending connections max | 194 |
+| Hikari acquire max | 1.799s |
+| Hikari usage max | 2.341s |
+| WebSocket inbound executor active max | 4 |
+| WebSocket outbound executor active max | 4 |
+| heartbeat scheduler active max | 4 |
+| WebSocket executor queued tasks max | 66,755 |
+
+WebSocket executor 큐 적체는 100,527에서 66,755로 감소했고, 수신 실패율은 0%가 됐다.
+반면 Hikari pending connection은 여전히 190 이상으로 관측되어, 다음 병목은 DB 커넥션 풀 대기와 트랜잭션 처리 비용으로 보는 것이 타당하다.
+
+### 21.5 튜닝 후 DB 반영량
+
+| 데이터 | 결과 |
+| --- | ---: |
+| chat_messages | 5,268 |
+| speech_reports | 475 |
+| speech_reactions | 10,000 |
+| speaking_queue | 120 |
+
+WebSocket 채팅과 REST 쓰기가 실제 DB 저장까지 수행되는 부하였음을 다시 확인했다.
+
+### 21.6 결론
+
+이번 튜닝으로 1차 병목이던 WebSocket executor pool size 1 문제는 완화됐다.
+
+```text
+튜닝 전:
+WebSocket executor pool size 1
+→ 큐 100,000건 이상 적체
+→ WebSocket 수신 실패율 69~90%
+
+튜닝 후:
+WebSocket executor pool size 4 이상
+→ WebSocket 수신 실패율 0%
+→ 실제 메시지 처리량 증가
+→ DB 커넥션 풀 대기 병목이 더 명확히 드러남
+```
+
+현재 남은 병목은 특정 API 하나가 아니라 혼합 부하에서 발생하는 공통 DB 대기다.
+API별 평균 응답 시간이 대부분 비슷하게 증가했고, Hikari pending connection이 194까지 증가했다.
+
+다음 개선 후보는 다음 순서가 적절하다.
+
+| 우선순위 | 개선 후보 | 판단 근거 |
+| ---: | --- | --- |
+| 1 | Hikari pool size, DB max connection, 애플리케이션 thread 수를 함께 조정 | Hikari pending connection이 190 이상 발생 |
+| 2 | 목록/집계 조회 최적화 | 의견 목록, 참여자 수, 신뢰도, 베스트 의견 조회가 혼합 조회 부하를 만든다 |
+| 3 | 채팅 저장과 브로드캐스트 시간 메트릭 분리 | DB 저장 병목과 WebSocket 발행 병목을 더 세분화해야 함 |
+| 4 | performance profile에서 불필요한 백그라운드 작업 최소화 | AI/스케줄러 로그가 테스트 중 함께 발생함 |
+| 5 | 운영 환경에서 WebSocket broker relay 검토 | 단일 인스턴스 simple broker 한계 대비 |
+
+현재 로컬 기준 목표 동시접속 500명 + HTTP 혼합 부하에서는 WebSocket 전달 자체보다 DB 커넥션 풀 대기가 다음 병목이다.
+운영 서버 테스트에서는 서버 스펙, DB 스펙, Hikari pool, MySQL max connection을 함께 기록해야 동일한 수치를 해석할 수 있다.
+
+## 22. Hikari pool 확대 후 재측정
+
+### 22.1 적용한 변경
+
+WebSocket executor 튜닝 후 남은 병목이 Hikari pending connection으로 관측되어, 일반 개발 설정과 분리된 `performance` profile을 추가했다.
+
+```yaml
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 10
+      connection-timeout: 3000
+  jpa:
+    show-sql: false
+```
+
+목적은 운영 기본값을 바꾸는 것이 아니라, 성능 테스트에서 DB 커넥션 풀 대기가 실제 병목인지 분리해 보기 위함이다.
+기존 local 설정은 Hikari 기본값을 사용하므로 최대 커넥션 수가 10이었다.
+
+### 22.2 재측정 조건
+
+```bash
+SPRING_PROFILES_ACTIVE=local,monitoring,performance
+READ_RATE=200
+WRITE_RATE=50
+STAGE_RATE=100
+WS_VUS=500
+MESSAGE_INTERVAL_SECONDS=5
+DURATION=30s
+k6 run performance/k6/target-scale-mixed-limit.js
+```
+
+### 22.3 결과 비교
+
+| 항목 | WebSocket 튜닝 후 | Hikari 20 적용 후 |
+| --- | ---: | ---: |
+| HTTP 요청 수 | 28,550 | 29,627 |
+| HTTP 처리량 | 801.45 req/s | 809.17 req/s |
+| HTTP 실패율 | 0% | 0% |
+| HTTP p95 | 2.27s | 3.24s |
+| HTTP p99 | 3.60s | 4.69s |
+| dropped iterations | 3,693 | 3,647 |
+| WebSocket 연결 수 | 500 | 500 |
+| WebSocket connect p95 | 547.04ms | 1.36s |
+| WebSocket 메시지 수신 | 10,252 | 8,549 |
+| WebSocket failure rate | 0% | 0% |
+
+Hikari maximum pool size를 10에서 20으로 늘렸지만 HTTP p95는 개선되지 않고 오히려 악화됐다.
+즉, 현재 로컬 환경에서는 단순히 DB 커넥션 수를 늘리는 것이 병목 해결책이 아니다.
+
+### 22.4 Prometheus 지표
+
+| 지표 | 결과 |
+| --- | ---: |
+| Hikari maximum connections | 20 |
+| Hikari active connections max | 20 |
+| Hikari pending connections max | 184 |
+| Hikari acquire max | 2.688s |
+| Hikari usage max | 2.346s |
+| MySQL threads running max | 5 |
+| MySQL threads connected max | 21 |
+| API process CPU max | 33.7% |
+| system CPU max | 99.4% |
+| GC pause max | 37ms |
+| WebSocket executor active max | 4 |
+| WebSocket executor queued tasks max | 84,493 |
+
+### 22.5 해석
+
+Hikari pool을 20으로 늘렸는데도 pending connection이 184까지 발생했다.
+동시에 MySQL `threads_running`은 5 수준이고 system CPU가 99%까지 올라갔다.
+
+따라서 현재 병목은 다음 중 하나로 좁혀진다.
+
+```text
+단순 커넥션 수 부족 X
+→ 로컬 머신 CPU/IO 한계
+→ DB 쿼리/트랜잭션 처리 비용
+→ WebSocket 브로드캐스트 처리와 HTTP 요청 처리 경쟁
+→ 대량 VU 생성에 따른 로컬 부하 발생
+```
+
+커넥션 풀을 더 키우면 DB에 더 많은 동시 작업을 밀어 넣게 되므로, 로컬 환경에서는 응답 시간이 더 나빠질 수 있다.
+따라서 다음 개선은 pool size 증가가 아니라 병목 API와 쿼리 비용을 줄이는 방향이 맞다.
+
+### 22.6 다음 개선 방향
+
+| 우선순위 | 작업 | 이유 |
+| ---: | --- | --- |
+| 1 | 읽기 API와 쓰기 API를 분리해 부하 재측정 | 혼합 부하에서는 원인 분리가 어렵다 |
+| 2 | `/speeches`, `/best-speech`, `/participants/count`, `/users/{userId}/trust` 쿼리 비용 확인 | 반복 조회되는 API가 DB 부하를 만든다 |
+| 3 | 신뢰도/베스트 의견/참여자 수 조회 캐시 또는 집계 테이블 검토 | 매 요청마다 집계하면 트래픽 증가 시 DB 병목 가능성이 높다 |
+| 4 | 채팅 저장과 브로드캐스트 처리 시간 메트릭 분리 | WebSocket과 DB 저장 병목을 분리해야 한다 |
+| 5 | 운영 서버에서 동일 시나리오 재측정 | 로컬 system CPU 99%라 로컬 한계 영향이 크다 |
+
+현재 로컬 기준 결론은 다음과 같다.
+
+```text
+WebSocket executor pool size 1 문제는 해결됨
+Hikari pool size 20 증가는 병목 해결에 실패
+다음 병목은 DB 쿼리/트랜잭션 비용과 로컬 자원 한계
+따라서 조회 API 최적화와 운영 환경 재측정이 필요
+```
+
+## 23. 반복 조회 API 1차 쿼리 수 감소
+
+### 23.1 적용한 변경
+
+혼합 부하에서 특정 API 하나만 느린 것이 아니라 대부분의 조회 API가 함께 느려졌다.
+따라서 DB pool을 더 키우기보다 반복 호출되는 조회 API의 쿼리 수를 먼저 줄였다.
+
+| API | 변경 전 | 변경 후 |
+| --- | --- | --- |
+| `GET /api/v1/rooms/{roomId}/participants/count` | 방 존재 확인 1쿼리 + 참여자 수 count 1쿼리 | 방 존재와 참여자 수를 projection 1쿼리로 조회 |
+| `GET /api/v1/rooms/{roomId}/best-speech` | 방 존재 확인 1쿼리 + 베스트 의견 집계 1쿼리 + 의견 상세 조회 1쿼리 | 방 존재 확인 1쿼리 + 베스트 의견 응답 projection 1쿼리 |
+
+### 23.2 선택 이유
+
+- `participants/count`는 프론트에서 실시간 수치 보정용으로 반복 호출될 가능성이 높다.
+- `best-speech`는 집계 결과를 다시 `speeches`에서 조회하는 구조라 불필요한 추가 조회가 있었다.
+- 두 변경 모두 API 응답 계약은 유지하면서 DB round trip만 줄인다.
+- 캐시나 비정규화 테이블을 도입하기 전 적용 가능한 저위험 최적화다.
+
+### 23.3 검증
+
+```bash
+./gradlew test \
+  --tests '*RoomParticipantServiceTest' \
+  --tests '*SpeechReactionServiceTest' \
+  --tests '*SpeechReactionRepositoryTest'
+```
+
+결과: 통과
+
+### 23.4 남은 과제
+
+다음 병목 분해 대상은 다음 API다.
+
+| API | 확인할 내용 |
+| --- | --- |
+| `GET /api/v1/rooms/{roomId}/speeches` | 의견 목록 조회 + 공감 요약 쿼리 비용 |
+| `GET /api/v1/users/{userId}/trust` | 사용자 신뢰도 계산 시 여러 count 쿼리 호출 비용 |
+| `GET /api/v1/rooms/open` | 토론방 목록 조회와 상태/통계 응답 비용 |
+| WebSocket chat send | 채팅 저장 시간과 브로드캐스트 시간 분리 측정 |
+
+## 24. 신뢰도 조회 1차 인덱스 보강
+
+### 24.1 확인한 구조
+
+`GET /api/v1/users/{userId}/trust`는 조회 시점에 원본 데이터를 기준으로 신뢰도와 활동 등급을 계산한다.
+현재 구조는 별도 스냅샷 테이블 없이 다음 데이터를 조회한다.
+
+| 데이터 | 사용 목적 |
+| --- | --- |
+| `users` | 사용자 존재 여부와 닉네임 조회 |
+| `speech_reactions` + `speeches` | 삭제되지 않은 의견이 받은 공감 수 계산 |
+| `speech_reports` | 최근 90일 RESOLVED 위반 심각도별 집계 |
+| `speeches` | 삭제되지 않은 작성 의견 수 계산 |
+| `room_participants` | 참여 토론방 수 계산 |
+
+이 구조는 정책을 원본 데이터 기준으로 계산한다는 장점이 있지만, 트래픽이 증가하면 count/집계 쿼리가 반복된다.
+
+### 24.2 적용한 변경
+
+조회 쿼리를 무리하게 한 쿼리로 합치지 않고, 현재 where 조건에 맞는 인덱스를 먼저 보강했다.
+
+| 테이블 | 추가 인덱스 | 대상 쿼리 |
+| --- | --- | --- |
+| `speeches` | `user_id, is_deleted` | 사용자별 삭제되지 않은 작성 의견 수 count |
+| `speech_reports` | `reported_user_id, status, reviewed_at, severity` | 사용자별 최근 90일 RESOLVED 위반 심각도 집계 |
+
+### 24.3 선택 이유
+
+- API 응답 계약과 도메인 계산 정책을 바꾸지 않는다.
+- 캐시나 스냅샷 테이블보다 적용 위험이 낮다.
+- 신뢰도 조회는 정확성이 중요하므로 현재는 원본 데이터 기준 계산을 유지한다.
+- 성능 테스트에서 병목이 계속 확인되면 그때 스냅샷 테이블이나 Redis 캐시를 검토한다.
+
+### 24.4 검증
+
+```bash
+./gradlew test \
+  --tests '*UserTrustServiceTest' \
+  --tests '*UserTrustControllerTest' \
+  --tests '*SpeechRepositoryTest' \
+  --tests '*SpeechReportRepositoryTest'
+```
+
+결과: 통과
+
+### 24.5 남은 판단
+
+신뢰도 조회는 단건 API로는 현재 구조가 유지 가능하다.
+다만 목록 화면에서 여러 사용자의 신뢰도를 한 번에 보여줘야 한다면 현재 단건 계산 API를 반복 호출하면 안 된다.
+그 경우에는 다음 중 하나가 필요하다.
+
+| 후보 | 설명 |
+| --- | --- |
+| Batch 조회 API | 여러 userId의 신뢰도를 한 번에 계산 |
+| 스냅샷 테이블 | 주기적으로 계산된 신뢰도 결과 저장 |
+| Redis 캐시 | 짧은 TTL로 계산 결과 캐싱 |
+
+현재 MVP 이후 단계에서는 단건 조회 + 인덱스 보강으로 충분하고, 목록 노출 요구가 생기면 별도 티켓으로 분리하는 것이 맞다.
+
+## 25. 채팅 저장·브로드캐스트 분리 계측
+
+### 25.1 배경
+
+혼합 부하 테스트에서 WebSocket 수신 실패는 executor 튜닝 이후 해소됐지만, HTTP p95와 Hikari pending connection은 여전히 증가했다.
+이 상태에서는 채팅 경로가 느릴 때 원인이 DB 저장인지 WebSocket 발행인지 구분하기 어렵다.
+
+채팅 전송 흐름은 다음과 같다.
+
+```text
+WebSocket SEND
+→ 채팅 유효성 검증
+→ chat_messages 저장
+→ 트랜잭션 커밋
+→ AFTER_COMMIT 이벤트
+→ Simple Broker 브로드캐스트
+```
+
+따라서 저장 시간과 브로드캐스트 발행 시간을 별도 메트릭으로 분리했다.
+
+### 25.2 추가한 메트릭
+
+| 메트릭 | 의미 |
+| --- | --- |
+| `sisibibi_chat_message_save_seconds` | `chat_messages` 저장 시간 |
+| `sisibibi_chat_websocket_publish_seconds` | AFTER_COMMIT 이후 WebSocket 이벤트 발행 시간 |
+
+Prometheus에서는 Micrometer Timer가 다음 형태로 노출된다.
+
+```promql
+sisibibi_chat_message_save_seconds_count
+sisibibi_chat_message_save_seconds_sum
+sisibibi_chat_message_save_seconds_max
+
+sisibibi_chat_websocket_publish_seconds_count
+sisibibi_chat_websocket_publish_seconds_sum
+sisibibi_chat_websocket_publish_seconds_max
+```
+
+p95 확인 예시는 다음과 같다.
+
+```promql
+histogram_quantile(
+  0.95,
+  rate(sisibibi_chat_message_save_seconds_bucket[5m])
+)
+```
+
+현재 registry 설정에 따라 bucket이 노출되지 않으면 `sum/count` 평균과 `max`를 먼저 확인한다.
+
+### 25.3 판단 기준
+
+| 관측 결과 | 해석 | 다음 조치 |
+| --- | --- | --- |
+| 저장 시간이 증가 | DB insert, 트랜잭션, 커넥션 대기 병목 가능성 | 인덱스, 커넥션 대기, 트랜잭션 범위 확인 |
+| 발행 시간이 증가 | Simple Broker 또는 outbound channel 병목 가능성 | executor, broker relay, fan-out 구조 확인 |
+| 둘 다 낮은데 수신 실패 | k6 수신 검증, 클라이언트 처리, 네트워크 병목 가능성 | WebSocket 테스트 스크립트와 client timeout 확인 |
+| 저장은 낮고 HTTP p95만 증가 | 채팅 외 REST API 또는 인증 필터 병목 가능성 | slow endpoint 분리 테스트 |
+
+### 25.4 검증
+
+```bash
+./gradlew test \
+  --tests '*ChatServiceTest' \
+  --tests '*ChatMessageChangedWebSocketEventListenerTest' \
+  --tests '*ChatPerformanceMetricsTest'
+```
+
+결과: 통과
+
+### 25.5 다음 측정
+
+다음 혼합 부하 테스트에서는 Grafana 또는 Prometheus에서 다음 지표를 같은 시간축으로 비교한다.
+
+- HTTP p95/p99
+- Hikari pending connection
+- WebSocket executor queued tasks
+- `sisibibi_chat_message_save_seconds_*`
+- `sisibibi_chat_websocket_publish_seconds_*`
+
+이 비교로 채팅 병목이 DB 저장인지 브로드캐스트 발행인지 분리한다.
+
+## 26. 채팅 계측 후 혼합 부하 재측정
+
+### 26.1 목적
+
+채팅 경로를 `chat_messages` 저장 시간과 WebSocket 발행 시간으로 나눈 뒤, 목표 규모 혼합 부하에서 실제 병목이 어디인지 다시 확인했다.
+
+혼합 부하는 다음 요청을 동시에 발생시킨다.
+
+```text
+REST 조회
+REST 쓰기
+발언권 신청
+WebSocket 채팅 연결·구독·전송·수신
+```
+
+### 26.2 RATE 해석
+
+`target-scale-mixed-limit.js`의 `READ_RATE`, `WRITE_RATE`, `STAGE_RATE`는 HTTP 요청 수가 아니라 시나리오 반복 수다.
+
+```text
+readApis 1회 = GET 9개
+writeApis 1회 = 공감 등록, 공감 취소, 신고 요청으로 최대 3개
+stageRequests 1회 = 발언권 신청 1개
+```
+
+따라서 예상 원시 HTTP RPS는 다음과 같이 계산한다.
+
+```text
+예상 HTTP RPS
+= READ_RATE * 9
++ WRITE_RATE * 2~3
++ STAGE_RATE
+```
+
+예시:
+
+| 목적 | READ_RATE | WRITE_RATE | STAGE_RATE | 예상 HTTP RPS |
+| --- | ---: | ---: | ---: | ---: |
+| 기준 부하 | 25 | 25 | 50 | 약 325~350 |
+| 한계 탐색 | 200 | 50 | 100 | 약 2,000 이상 |
+
+### 26.3 한계 탐색 결과
+
+조건:
+
+```bash
+READ_RATE=200
+WRITE_RATE=50
+STAGE_RATE=100
+WS_VUS=500
+DURATION=1m
+CONNECTION_DURATION_SECONDS=60
+MESSAGE_INTERVAL_SECONDS=5
+```
+
+결과:
+
+| 항목 | 결과 |
+| --- | ---: |
+| 실제 HTTP 처리량 | 약 613 req/s |
+| HTTP 실패율 | 0% |
+| HTTP p95 | 1.72s |
+| HTTP p99 | 2.17s |
+| dropped iterations | 8,875 |
+| WebSocket 연결 수 | 500 |
+| WebSocket 전송 메시지 | 5,655 |
+| WebSocket 수신 메시지 | 14,512 |
+| WebSocket failure rate | 0.79% |
+
+Prometheus 확인:
+
+| 지표 | 결과 |
+| --- | ---: |
+| `sisibibi_chat_message_save_seconds` 평균 | 약 1.7ms |
+| `sisibibi_chat_message_save_seconds_max` | 약 120ms |
+| `sisibibi_chat_websocket_publish_seconds` 평균 | 약 0.21ms |
+| `sisibibi_chat_websocket_publish_seconds_max` | 약 45ms |
+| Hikari active max | 10 |
+| Hikari pending max | 194 |
+| WebSocket executor queued max | 125,166 |
+
+해석:
+
+```text
+채팅 저장 평균과 WebSocket 발행 평균은 낮다.
+하지만 목표 부하가 로컬 처리량을 초과하면서 Hikari pending connection과 WebSocket executor queue가 크게 증가했다.
+현재 한계 탐색 조건에서는 특정 채팅 저장 로직보다 전체 애플리케이션 자원 경합이 먼저 나타난다.
+```
+
+### 26.4 기준 부하 결과
+
+조건:
+
+```bash
+READ_RATE=25
+WRITE_RATE=25
+STAGE_RATE=50
+WS_VUS=500
+DURATION=1m
+CONNECTION_DURATION_SECONDS=60
+MESSAGE_INTERVAL_SECONDS=5
+```
+
+결과:
+
+| 항목 | 결과 |
+| --- | ---: |
+| 실제 HTTP 처리량 | 약 323 req/s |
+| HTTP 실패율 | 0% |
+| HTTP p95 | 48.61ms |
+| HTTP p99 | 166.28ms |
+| WebSocket 연결 수 | 500 |
+| WebSocket connect p95 | 479.04ms |
+| WebSocket 전송 메시지 | 4,821 |
+| WebSocket 수신 메시지 | 202,258 |
+| WebSocket failure rate | 26.08% |
+
+Prometheus 확인:
+
+| 지표 | 결과 |
+| --- | ---: |
+| `sisibibi_chat_message_save_seconds` 평균 | 약 1.3ms |
+| `sisibibi_chat_websocket_publish_seconds` 평균 | 약 0.16ms |
+| 주요 REST API p95 | 약 36~135ms |
+| HTTP 5xx | 0 |
+
+해석:
+
+```text
+HTTP는 목표 기준 부하에서 안정적이다.
+채팅 저장과 WebSocket 발행도 평균 기준으로 병목으로 보이지 않는다.
+다만 k6 WebSocket 세션 실패율이 26.08%로 높게 나왔고, 동시에 메시지 수신량은 20만 건 이상이었다.
+따라서 이 수치는 서버가 메시지를 전혀 처리하지 못했다는 의미라기보다, 테스트 스크립트의 세션 판정 조건, ERROR frame, 구독 완료 전 송신, 수신 타임아웃 중 어느 지점인지 분리 확인이 필요하다.
+```
+
+### 26.5 추가 계측
+
+`target-scale-mixed-limit.js`에 WebSocket 실패 원인을 분리하는 지표를 추가했다.
+
+| 지표 | 의미 |
+| --- | --- |
+| `mixed_ws_handshake_failure_rate` | WebSocket 101 upgrade 실패 |
+| `mixed_ws_connect_frame_failure_rate` | STOMP CONNECTED frame 미수신 |
+| `mixed_ws_subscribe_failure_rate` | SUBSCRIBE frame 전송 전 실패 |
+| `mixed_ws_send_failure_rate` | SEND frame 전송 전 실패 |
+| `mixed_ws_receive_failure_rate` | MESSAGE frame 미수신 |
+| `mixed_ws_error_frame_rate` | STOMP ERROR frame 또는 socket error 발생 |
+
+다음 테스트에서는 `mixed_ws_failure_rate` 하나만 보지 않고 위 지표를 함께 확인한다.
+
+### 26.6 주의사항
+
+발언권 신청·종료 경로는 AI 반대 쟁점 생성과 스테이지 요약을 트리거할 수 있다.
+로컬에 AI 키 또는 AI 서버가 없으면 OpenAI 401 같은 실패 로그가 발생하고, 성능 테스트 결과 해석을 흐릴 수 있다.
+
+AI 기능 자체를 측정하는 목적이 아니라면 가능한 옵션은 끄고 실행한다.
+
+```bash
+STAGE_SUMMARY_ENABLED=false
+OFF_TOPIC_AI_REVIEW_ENABLED=false
+AI_REPORT_QUEUE_RETRY_ENABLED=false
+```
+
+현재 `ai-counter-issue`에는 별도 enabled 옵션이 없으므로, 발언권 종료 흐름을 포함한 테스트에서는 AI 반대 쟁점 생성 실패 로그가 남을 수 있다.
+이 부분은 성능 테스트 전용 설정 추가 후보로 분리한다.
+
+### 26.7 다음 판단
+
+| 항목 | 판단 |
+| --- | --- |
+| REST 조회·쓰기 | 기준 부하에서는 안정적 |
+| 채팅 저장 | 현재 계측 기준 병목 아님 |
+| WebSocket 발행 | 현재 계측 기준 병목 아님 |
+| WebSocket 세션 실패율 | 원인 분리 계측 후 재측정 필요 |
+| 발언권 부하 | AI 실패 경로를 제거하거나 분리한 뒤 재측정 필요 |
+| 운영 서버 테스트 | 로컬 한계와 별도로 운영 서버 스펙, DB 스펙, Hikari pool, WebSocket executor 설정을 함께 기록해야 함 |
+
+## 27. PR 리뷰 대응 및 목표 부하 재판단
+
+### 27.1 Room participant count 쿼리 검증
+
+PR AI 리뷰에서 `findParticipantCount`가 참여자 0명인 방을 `Optional.empty()`로 반환할 수 있다는 지적이 있었다.
+현재 쿼리는 `rooms` 기준 `left join` 후 `group by room.id`를 수행하므로, 방이 존재하면 참여자 0명이어도 row가 반환되어야 한다.
+
+이를 서비스 mock 테스트가 아니라 실제 JPA Repository 테스트로 검증했다.
+
+검증 케이스:
+
+| 케이스 | 기대 결과 |
+| --- | --- |
+| 방 존재, JOINED 참여자 0명 | `Optional.present`, `participantCount=0` |
+| 방 존재, JOINED 1명 + LEFT 1명 | `participantCount=1` |
+| 방 미존재 | `Optional.empty` |
+
+실행 명령:
+
+```bash
+./gradlew test \
+  --tests '*RoomParticipantRepositoryTest' \
+  --tests '*RoomParticipantServiceTest'
+```
+
+결과: 통과
+
+따라서 현재 구현은 방 미존재와 참여자 0명을 구분한다.
+다만 이 동작은 쿼리 구조에 의존하므로 Repository 테스트로 회귀 방지한다.
+
+### 27.2 목표 RPS/TPS 재판단
+
+현재 목표 규모는 다음을 기준으로 본다.
+
+```text
+토론방 10개
+방당 동시 접속자 50~100명
+총 동시 접속자 500~1,000명
+```
+
+우리 서비스는 모든 상태를 REST polling으로 가져오는 구조가 아니다.
+상태 변경은 WebSocket 이벤트로 전달하고, REST는 초기 진입·조회·명령 요청에 사용한다.
+따라서 목표 RPS는 동시접속자 수와 1:1로 증가하지 않는다.
+
+#### REST 조회 기준
+
+초기 진입 후 사용자가 자주 조회할 수 있는 API는 다음이다.
+
+| API | 예상 호출 주기 | 이유 |
+| --- | --- | --- |
+| 토론방 상세 | 입장 시 1회 | 초기 화면 구성 |
+| 의견 목록 | 입장 시 1회, 이후 필요 시 새로고침 | 의견 변경은 WebSocket 이벤트로 보완 가능 |
+| 현재 발언자 | 입장 시 1회, 이후 WebSocket 이벤트 | 발언권 상태 변경은 실시간 이벤트 대상 |
+| 참여자 수 | 입장 시 1회, 이후 WebSocket 이벤트 | 입퇴장 이벤트 payload로 갱신 가능 |
+| 베스트 의견 | 10~30초 또는 이벤트 기반 | 공감 변화에 따라 갱신 필요 |
+
+따라서 1,000명이 10초마다 모든 조회 API를 반복 호출하는 모델은 과대 추정이다.
+다만 새로고침, 재접속, 이벤트 유실 보정까지 고려하면 기준 부하는 여유 있게 잡는다.
+
+#### 기준 부하
+
+| 구분 | 목표 |
+| --- | ---: |
+| REST HTTP 처리량 | 300~500 RPS |
+| WebSocket 연결 | 500~1,000 connections |
+| WebSocket 채팅 전송 | 100~300 msg/s |
+| WebSocket fan-out 수신 | 방별 참여자 수에 따라 송신보다 훨씬 큼 |
+| 발언권 신청 | 정상 운영 20~50 TPS, 한계 탐색 100~300 TPS |
+
+발언권 신청의 운영 목표가 낮아 보일 수 있지만, 실제 서비스에서 모든 동시접속자가 같은 초에 발언권을 신청하지는 않는다.
+다만 Redis/RDB 정합성 구조의 한계와 동시성 안전성을 보기 위해 한계 탐색은 별도로 100~300 TPS 이상까지 올린다.
+
+#### k6 혼합 부하 환산
+
+`target-scale-mixed-limit.js` 기준:
+
+```text
+예상 HTTP RPS
+= READ_RATE * 9
++ WRITE_RATE * 2~3
++ STAGE_RATE
+```
+
+따라서 `READ_RATE=25`, `WRITE_RATE=25`, `STAGE_RATE=50`은 약 325~350 HTTP RPS다.
+이 값은 기준 부하 하한에 해당한다.
+
+`READ_RATE=200`, `WRITE_RATE=50`, `STAGE_RATE=100`은 약 2,000 RPS 이상을 목표로 하므로 운영 목표가 아니라 로컬 한계 탐색용이다.
+실제 결과에서 dropped iteration이 크게 발생했으므로 로컬 단일 인스턴스가 이 목표를 따라가지 못한 것으로 해석한다.
+
+### 27.3 가상 스레드 판단
+
+Java 21과 Spring Boot 3.5 환경이므로 가상 스레드를 성능 개선 후보로 검토할 수 있다.
+다만 현재 관측된 병목은 다음과 같다.
+
+```text
+Hikari pending connection 증가
+WebSocket executor queue 증가
+HTTP 5xx 없음
+채팅 저장·WebSocket 발행 평균은 낮음
+```
+
+가상 스레드는 blocking servlet 요청 처리에는 도움이 될 수 있지만, DB 커넥션 수를 늘려주지는 않는다.
+즉, DB 커넥션을 기다리는 요청이 많을 때 가상 스레드를 켜면 플랫폼 스레드 점유는 줄일 수 있지만, DB 병목 자체가 사라지는 것은 아니다.
+
+WebSocket STOMP inbound/outbound channel은 별도 executor 설정을 사용하므로 가상 스레드만으로 WebSocket executor queue 병목이 해결된다고 보면 안 된다.
+
+따라서 기본 적용이 아니라 performance profile에서 실험 옵션으로 둔다.
+
+```yaml
+spring:
+  threads:
+    virtual:
+      enabled: ${PERFORMANCE_VIRTUAL_THREADS_ENABLED:false}
+```
+
+측정 방법:
+
+```bash
+# 기존 기준
+PERFORMANCE_VIRTUAL_THREADS_ENABLED=false
+
+# 가상 스레드 실험
+PERFORMANCE_VIRTUAL_THREADS_ENABLED=true
+```
+
+비교 지표:
+
+| 지표 | 판단 |
+| --- | --- |
+| HTTP p95/p99 감소 | HTTP blocking 처리 개선 가능성 |
+| Hikari pending 동일 | DB 커넥션 병목은 그대로 |
+| executor queue 동일 | WebSocket executor 병목은 별도 튜닝 필요 |
+| CPU 증가 | 가상 스레드로 더 많은 요청이 DB 대기까지 밀려 들어갈 수 있음 |
+
+결론:
+
+```text
+가상 스레드는 성능 개선 후보지만 현재 병목의 1차 해결책은 아니다.
+먼저 목표 부하를 정확히 환산하고, DB 커넥션 대기·slow query·WebSocket executor queue를 분리해서 본 뒤 실험 옵션으로 비교한다.
+```
+
+### 27.4 발언권 신청 300 TPS 재측정
+
+기존 `20~50 TPS`는 운영 목표로 잡은 보수적 기준이었다.
+하지만 발언권 신청 단독 경로는 lock 경합과 순번 발급 정합성을 확인하는 것이 핵심이므로, 실제 수용 한계도 따로 확인해야 한다.
+
+기존 rate sweep 첫 실행에서는 300 TPS 구간에서 테스트 사용자 수가 부족해 일부 iteration이 사용자 풀 한계를 초과했다.
+이를 방지하기 위해 rate sweep 기본 데이터를 `15방 × 방당 400명 = 6,000명`으로 늘리고 다시 측정했다.
+
+조건:
+
+```bash
+RUN_SCENARIOS=rate-300 bash performance/k6/run-stage-request-rate-scenarios.sh
+```
+
+결과:
+
+| 항목 | 결과 |
+| --- | ---: |
+| created | 6,000 |
+| rejected | 0 |
+| 처리량 | 299.80 req/s |
+| avg | 35.61ms |
+| p95 | 130.05ms |
+| p99 | 278.69ms |
+| HTTP 실패율 | 0% |
+
+해석:
+
+```text
+발언권 신청 단독 경로는 로컬 기준 300 TPS까지 안정적으로 생성됐다.
+즉 20~50 TPS는 시스템 한계가 아니라 운영 목표를 보수적으로 잡은 값이다.
+```
+
+따라서 목표를 다음처럼 다시 구분한다.
+
+| 구분 | 기준 |
+| --- | --- |
+| 운영 목표 | 50~100 TPS |
+| 순간 집중(stress) | 200~300 TPS |
+| 추가 한계 탐색 | 400 TPS 이상은 별도 테스트 |
+
+
+## 28. DB 커넥션·WebSocket 병목 재정리
+
+### 28.1 이번 라운드에서 먼저 수정한 부분
+
+혼합 부하 스크립트 자체에 실제 서버 병목과 무관한 왜곡 요인이 있었다.
+
+- `readApis`가 방 참여자와 무관한 사용자 ID를 사용하고 있었다.
+  - 일부 조회가 `ROOM_PARTICIPATION_REQUIRED`로 실패할 수 있는 구조였다.
+  - 방별 참여 사용자 범위에 맞게 `roomId`와 `userId`를 같이 매핑하도록 수정했다.
+- WebSocket k6 스크립트가 브라우저 쿠키와 다르게 동작하고 있었다.
+  - WebSocket handshake에 cookie jar를 사용하도록 수정했다.
+- 로컬 DB에 성능용 seed 데이터가 없으면 `USER_NOT_FOUND`가 발생한다.
+  - `cleanup-performance-data.sql` 이후 `seed-performance-data.sql`을 다시 실행해 기준 데이터를 맞췄다.
+
+이 세 가지를 먼저 정리한 뒤 다시 측정해야 실제 병목을 볼 수 있다.
+
+### 28.2 성능 프로필 상향
+
+이번 라운드에서는 일반 local 기본값을 바꾸지 않고 `performance` profile만 상향했다.
+
+```yaml
+spring.datasource.hikari.maximum-pool-size = 40
+spring.datasource.hikari.minimum-idle = 20
+app.websocket.channel.inbound.core-pool-size = 8
+app.websocket.channel.inbound.max-pool-size = 32
+app.websocket.channel.outbound.core-pool-size = 8
+app.websocket.channel.outbound.max-pool-size = 32
+app.websocket.channel.inbound.queue-capacity = 5000
+app.websocket.channel.outbound.queue-capacity = 5000
+app.websocket.heartbeat.pool-size = 8
+```
+
+적용 확인:
+
+- `hikaricp_connections_max = 40`
+- `clientInboundChannelExecutor core = 8`
+- `clientOutboundChannelExecutor core = 8`
+
+### 28.3 기준 혼합 부하 재측정
+
+실행값:
+
+```bash
+READ_RATE=25
+WRITE_RATE=25
+STAGE_RATE=50
+WS_VUS=500
+DURATION=60s
+```
+
+의미:
+
+- HTTP 약 `323.88 req/s`
+- WebSocket 동시 연결 `500`
+- 채팅 수신 약 `4,556 msg/s`
+
+결과:
+
+| 항목 | 값 |
+| --- | ---: |
+| HTTP 실패율 | `0%` |
+| HTTP p95 | `38.67ms` |
+| HTTP p99 | `107.96ms` |
+| WebSocket 실패율 | `0%` |
+| WebSocket connect p95 | `286ms` |
+| Hikari pending max | `0` |
+| Hikari active max | `23` |
+| WS inbound queue max | `20,646` |
+| WS outbound queue max | `20,646` |
+
+판단:
+
+- 목표 규모 수준에서는 현재 로컬 환경도 안정적으로 처리한다.
+- 이전에 보였던 실패는 병목이 아니라 시나리오 오류 영향이 컸다.
+- 발언권 단독 경로는 이미 `300 TPS`까지 안정적으로 확인했으므로, 현재 우선 병목은 발언권이 아니다.
+
+### 28.4 스트레스 혼합 부하 한계 탐색
+
+실행값:
+
+```bash
+READ_RATE=50
+WRITE_RATE=50
+STAGE_RATE=100
+WS_VUS=1000
+DURATION=60s
+```
+
+의미:
+
+- HTTP 약 `617.16 req/s`
+- WebSocket 동시 연결 `1000`
+- 채팅 수신 약 `4,474 msg/s`
+
+결과:
+
+| 항목 | 값 |
+| --- | ---: |
+| HTTP 실패율 | `0%` |
+| HTTP p95 | `417.46ms` |
+| HTTP p99 | `1.02s` |
+| WebSocket 실패율 | `49.5%` |
+| WebSocket connect p95 | `664ms` |
+| dropped iterations | `27` |
+| Hikari pending max | `167` |
+| Hikari active max | `40` |
+| WS inbound queue max | `20,367` |
+| WS outbound queue max | `20,367` |
+
+세부 해석:
+
+- HTTP는 5xx 없이 버티지만 p95가 `417ms`까지 상승했다.
+- Hikari active가 `40`으로 꽉 차고 pending이 `167`까지 증가했다.
+  - 즉 DB 커넥션 대기가 확실히 발생했다.
+- WebSocket은 handshake와 subscribe 자체는 성공했지만, 약 절반 세션에서 send/receive가 완료되지 못했다.
+  - executor queue가 `20k` 이상 쌓여 메시지 처리 적체가 발생한 것으로 보는 편이 타당하다.
+
+### 28.5 이번 기준에서의 병목 판단
+
+현재 로컬 한계 탐색 기준에서 우선순위는 다음과 같다.
+
+1. **DB 커넥션 대기**
+   - 근거: `hikaricp_connections_pending max = 167`
+   - 의미: 단순 thread 부족이 아니라 DB에 들어가는 요청이 커넥션 풀에서 대기한다.
+
+2. **WebSocket 메시지 처리 적체**
+   - 근거: `executor_queued_tasks max ≈ 20k`, `mixed_ws_failure_rate = 49.5%`
+   - 의미: 연결은 열리지만 메시지 송수신 완료가 밀린다.
+
+3. **Simple Broker 기반 fan-out 한계 가능성**
+   - 근거: 1000 세션 / 4k+ msg/s 구간에서 send/receive 실패 증가
+   - 현재 단계에서는 executor 적체와 같이 나타나므로, 다음 실험에서는 broker relay 여부를 분리해서 봐야 한다.
+
+### 28.6 지금 결론
+
+- 발언권 신청 경로는 단독 `300 TPS`까지 확인되었으므로 현재 1차 병목으로 보지 않는다.
+- 현재 프로젝트의 실제 혼합 부하 병목은 **DB 커넥션 대기 + WebSocket 채널 적체**다.
+- 이번 라운드 상향으로 목표 규모(`HTTP 300+ RPS`, `WS 500`)는 통과했다.
+- 스트레스 구간(`HTTP 600+ RPS`, `WS 1000`)부터는 DB와 WebSocket이 동시에 한계에 진입한다.
+
+### 28.7 다음 개선 후보
+
+1. 조회/쓰기 API slow query 수집 후 query cost 먼저 절감
+2. Room/Stage/Speech 조회에서 불필요한 DB round-trip 제거
+3. WebSocket outbound fan-out 구조 점검
+4. 필요 시 broker relay(Redis pub/sub 또는 외부 broker) 검토
+5. 운영 서버에서는 DB max connection, CPU core, GC, broker 구조까지 함께 다시 측정
+
+## 29. DB 커넥션과 WebSocket 병목 분리 측정
+
+### 29.1 측정 목적
+
+혼합 부하에서 `DB 커넥션 대기`와 `WebSocket executor queue 적체`가 동시에 보였으므로, REST-only와 WebSocket-only를 분리해 어느 쪽이 독립 병목인지 확인했다.
+
+### 29.2 사전 확인
+
+현재 실행 중인 백엔드는 `local,monitoring` 프로필이었다.
+
+Actuator 메트릭:
+
+```text
+hikaricp_connections_max = 10
+clientInboundChannelExecutor active max = 4
+clientOutboundChannelExecutor active max = 4
+```
+
+따라서 이번 분리 측정은 “일반 로컬 실행 설정 기준” 결과다.
+성능 프로필 기준 재측정은 `local,monitoring,performance`로 재시작한 뒤 진행해야 한다.
+
+### 29.3 REST-only 스트레스
+
+실행값:
+
+```bash
+ENABLE_WEBSOCKET=false
+READ_RATE=50
+WRITE_RATE=50
+STAGE_RATE=100
+DURATION=60s
+```
+
+의미:
+
+- WebSocket 부하 제거
+- HTTP 약 `652 req/s`
+
+결과:
+
+| 항목 | 값 |
+| --- | ---: |
+| HTTP 실패율 | `0%` |
+| HTTP p95 | `192.35ms` |
+| HTTP p99 | `348.65ms` |
+| Hikari max | `10` |
+| Hikari pending max | `102` |
+| Hikari active max | `10` |
+| WS queue max | `1` |
+
+판단:
+
+- WebSocket 없이도 Hikari pending이 발생했다.
+- 현재 로컬 설정에서는 DB 커넥션 풀이 10개라 HTTP 600 RPS 구간에서 커넥션 대기가 발생한다.
+- 다만 실패율은 0%이고 p95는 200ms 이하라, 아직 API 자체가 즉시 무너지는 구간은 아니다.
+
+### 29.4 WebSocket-only 스트레스
+
+실행값:
+
+```bash
+VUS=1000
+CONNECTION_DURATION_SECONDS=60
+MESSAGE_INTERVAL_SECONDS=5
+```
+
+의미:
+
+- 10개 방 × 방당 100명
+- 총 1000 WebSocket 연결
+- 약 `186 SEND/s`, 약 `17k broadcast receive/s`
+
+결과:
+
+| 항목 | 값 |
+| --- | ---: |
+| WebSocket 실패율 | `0%` |
+| STOMP connect p95 | `649.04ms` |
+| sent | `11,325` |
+| received | `1,058,924` |
+| Hikari pending max | `0` |
+| Hikari active max | `4` |
+| WS inbound queue max | `82,184` |
+| WS outbound queue max | `82,184` |
+| WS inbound/outbound active max | `4` |
+
+판단:
+
+- WebSocket 단독 1000 연결은 실패 없이 처리했다.
+- 다만 executor queue가 크게 쌓였고 active thread가 4로 제한되어 있었다.
+- 즉 WebSocket 자체는 단독으로는 버티지만, 혼합 부하에서는 DB 대기와 executor queue 적체가 겹치며 실패율이 증가한다.
+
+### 29.5 다음 재측정 기준
+
+다음 테스트는 반드시 아래 프로필로 백엔드를 재시작한 뒤 진행한다.
+
+```bash
+SPRING_PROFILES_ACTIVE=local,monitoring,performance
+```
+
+기대 설정:
+
+```text
+hikaricp_connections_max = 40
+clientInboundChannelExecutor core = 8
+clientOutboundChannelExecutor core = 8
+```
+
+이 상태에서 동일한 REST-only, WebSocket-only, mixed stress를 다시 실행해 다음을 비교한다.
+
+1. Hikari pending이 0에 가까워지는지
+2. HTTP p95/p99가 안정화되는지
+3. WebSocket queue가 줄어드는지
+4. mixed stress에서 WebSocket 실패율이 사라지는지
+
+## 30. 성능 프로필 적용 후 재측정
+
+### 30.1 측정 목적
+
+29번 측정에서 로컬 기본 설정은 다음 한계가 확인되었다.
+
+```text
+Hikari max = 10
+WebSocket inbound/outbound core = 4
+```
+
+이번에는 성능 프로필을 적용해 DB 커넥션 풀과 WebSocket executor를 확대한 뒤 동일 조건을 재측정했다.
+
+실행 프로필:
+
+```bash
+SPRING_PROFILES_ACTIVE=local,monitoring,performance
+SERVER_PORT=18080
+```
+
+확인된 설정:
+
+```text
+hikaricp_connections_max = 40
+clientInboundChannelExecutor core = 8
+clientOutboundChannelExecutor core = 8
+webSocketHeartbeatTaskScheduler core = 8
+```
+
+로컬 IDE 서버가 8080에서 이미 실행 중이어서, 성능 프로필 서버는 18080 포트로 별도 실행했다.
+
+### 30.2 REST-only 재측정
+
+실행값:
+
+```bash
+ENABLE_WEBSOCKET=false
+READ_RATE=50
+WRITE_RATE=50
+STAGE_RATE=100
+DURATION=60s
+```
+
+결과:
+
+| 항목 | 값 |
+| --- | ---: |
+| HTTP 요청 수 | `39,152` |
+| HTTP 처리량 | `652.13 req/s` |
+| HTTP 실패율 | `0%` |
+| HTTP p95 | `29.83ms` |
+| HTTP p99 | `81.69ms` |
+
+기존 로컬 기본 설정과 비교:
+
+| 항목 | 기본 설정 | 성능 프로필 |
+| --- | ---: | ---: |
+| Hikari max | `10` | `40` |
+| HTTP p95 | `192.35ms` | `29.83ms` |
+| HTTP p99 | `348.65ms` | `81.69ms` |
+| HTTP 실패율 | `0%` | `0%` |
+
+판단:
+
+- REST-only 병목은 Hikari pool 10개 제한의 영향이 컸다.
+- 성능 프로필에서 Hikari max를 40으로 올리자 같은 650 RPS 구간의 p95가 크게 낮아졌다.
+- 현재 목표 부하 기준에서는 DB 커넥션 풀 40이 로컬 단일 인스턴스 테스트에 더 적합하다.
+
+### 30.3 WebSocket-only 재측정
+
+실행값:
+
+```bash
+VUS=1000
+CONNECTION_DURATION_SECONDS=60
+MESSAGE_INTERVAL_SECONDS=5
+```
+
+결과:
+
+| 항목 | 값 |
+| --- | ---: |
+| WebSocket 연결 수 | `1000` |
+| WebSocket 실패율 | `0%` |
+| STOMP connect p95 | `630ms` |
+| sent | `11,657` |
+| received | `1,102,260` |
+| receive throughput | `18,181 msg/s` |
+
+기존 로컬 기본 설정과 비교:
+
+| 항목 | 기본 설정 | 성능 프로필 |
+| --- | ---: | ---: |
+| WebSocket 실패율 | `0%` | `0%` |
+| STOMP connect p95 | `649.04ms` | `630ms` |
+| received | `1,058,924` | `1,102,260` |
+| receive throughput | 약 `17k msg/s` | 약 `18k msg/s` |
+
+판단:
+
+- WebSocket 단독 1000명은 기존 설정에서도 실패하지 않았고, 성능 프로필에서도 안정적이었다.
+- 이 구간의 핵심 문제는 연결 실패가 아니라 혼합 부하에서 REST와 WebSocket 처리가 동시에 몰릴 때의 처리 지연이다.
+
+### 30.4 목표 혼합 부하 재측정
+
+실행값:
+
+```bash
+ENABLE_WEBSOCKET=true
+READ_RATE=50
+WRITE_RATE=50
+STAGE_RATE=100
+WS_VUS=1000
+DURATION=60s
+CONNECTION_DURATION_SECONDS=60
+MESSAGE_INTERVAL_SECONDS=5
+```
+
+결과:
+
+| 항목 | 값 |
+| --- | ---: |
+| HTTP 요청 수 | `38,800` |
+| HTTP 처리량 | `631.13 req/s` |
+| HTTP 실패율 | `0%` |
+| HTTP p95 | `417.46ms` |
+| HTTP p99 | `774.55ms` |
+| WebSocket 실패율 | `0%` |
+| STOMP connect p95 | `1.28s` |
+| WebSocket sent | `11,445` |
+| WebSocket received | `401,242` |
+| dropped iterations | `39` |
+
+기존 혼합 스트레스와 비교:
+
+| 항목 | 기본 설정 | 성능 프로필 |
+| --- | ---: | ---: |
+| HTTP p95 | `417.46ms` | `417.46ms` |
+| HTTP p99 | `1.02s` | `774.55ms` |
+| HTTP 실패율 | `0%` | `0%` |
+| WebSocket 실패율 | `49.5%` | `0%` |
+| dropped iterations | `27` | `39` |
+
+판단:
+
+- 성능 프로필 적용 후 같은 목표 혼합 부하에서 WebSocket 실패율이 사라졌다.
+- HTTP p99도 낮아졌다.
+- 목표 규모인 `1000 WS + HTTP 600 RPS 내외`는 로컬 성능 프로필 기준 통과로 본다.
+
+### 30.5 2배 혼합 부하 한계 탐색
+
+실행값:
+
+```bash
+ENABLE_WEBSOCKET=true
+READ_RATE=100
+WRITE_RATE=100
+STAGE_RATE=200
+WS_VUS=1000
+DURATION=60s
+CONNECTION_DURATION_SECONDS=60
+MESSAGE_INTERVAL_SECONDS=5
+```
+
+결과:
+
+| 항목 | 값 |
+| --- | ---: |
+| HTTP 요청 수 | `58,049` |
+| HTTP 처리량 | `913.19 req/s` |
+| HTTP 실패율 | `0.01%` |
+| HTTP p95 | `3.81s` |
+| HTTP p99 | `4.48s` |
+| WebSocket 실패율 | `0%` |
+| STOMP connect p95 | `1.12s` |
+| WebSocket sent | `11,574` |
+| WebSocket received | `58,522` |
+| dropped iterations | `3,406` |
+
+판단:
+
+- 2배 혼합 부하는 한계 구간이다.
+- WebSocket 연결 자체는 실패하지 않았지만 HTTP p95가 3초를 초과했다.
+- k6도 VU를 계속 늘리다가 `Insufficient VUs` 경고와 dropped iteration이 발생했다.
+- 즉 이 구간은 정상 운영 목표라기보다 한계 탐색 결과로 보는 것이 맞다.
+
+### 30.6 병목 판단
+
+이번 재측정 기준 병목은 다음과 같이 정리한다.
+
+1. 목표 부하에서는 성능 프로필 적용으로 DB 커넥션 병목과 WebSocket 실패가 완화되었다.
+2. 2배 부하에서는 HTTP 지연이 먼저 커졌다.
+3. WebSocket은 연결 실패보다 메시지 broadcast 처리량이 혼합 부하에서 크게 흔들렸다.
+4. 채팅 Rate Limit 예외가 WebSocket handler에서 ERROR stack trace로 남아 로그 노이즈와 운영 혼선을 만들었다.
+
+### 30.7 코드 보완
+
+WebSocket 채팅 전송 중 발생하는 `CustomException`을 사용자 전용 에러 큐로 응답하도록 처리했다.
+
+```text
+기존:
+채팅 rate limit 초과
+→ @MessageMapping 예외 발생
+→ 서버 ERROR stack trace 기록
+
+변경:
+채팅 rate limit 초과
+→ @MessageExceptionHandler 처리
+→ /user/queue/errors 로 ApiResponse 에러 전송
+```
+
+효과:
+
+- 정책상 예상 가능한 거절을 서버 장애처럼 기록하지 않는다.
+- 운영 로그에서 실제 장애와 사용자 정책 위반을 구분하기 쉬워진다.
+- 프론트는 `/user/queue/errors`를 구독해 채팅 전송 실패 사유를 표시할 수 있다.
+
+### 30.8 다음 개선 후보
+
+1. 운영 서버에서도 `performance` 수준의 Hikari/WebSocket executor 설정을 환경 변수로 조정한다.
+2. 2배 부하 구간은 API별 slow query와 DB lock wait를 함께 수집해 원인을 좁힌다.
+3. 채팅 fan-out이 더 커질 경우 Simple Broker 한계를 재측정하고 외부 broker relay를 검토한다.
+4. 현재 k6 테스트는 로컬 클라이언트와 서버가 같은 장비에서 실행되므로, 운영 부하 테스트에서는 k6 실행 위치를 서버와 분리한다.
+
+## 31. Grafana 발표용 8080 목표 혼합 부하 재측정
+
+### 31.1 재측정 이유
+
+로컬 Prometheus 설정은 현재 백엔드 scrape target을 `host.docker.internal:8080`으로 바라본다.
+따라서 18080 포트에서 실행한 성능 프로필 테스트는 k6 결과는 남지만 Grafana 대시보드에는 백엔드 애플리케이션 지표가 표시되지 않는다.
+
+발표 자료용 그래프 확보를 위해 이번 테스트는 8080 포트에서 실행 중인 백엔드를 대상으로 다시 측정했다.
+
+확인한 수집 상태:
+
+```text
+Prometheus target: host.docker.internal:8080
+up: 1
+Hikari max connections: 10
+WebSocket inbound executor core size: 4
+WebSocket outbound executor core size: 4
+```
+
+주의할 점:
+
+- 이번 결과는 Grafana 캡처를 위한 8080 기본 로컬 설정 기준이다.
+- 18080에서 측정한 `performance` 프로필 결과와 직접 비교하면 안 된다.
+- 튜닝 후 개선 그래프가 필요하면 백엔드 자체를 8080 포트에서 `local,monitoring,performance` 프로필로 실행한 뒤 같은 시나리오를 다시 실행한다.
+
+### 31.2 실행 조건
+
+```bash
+ENABLE_WEBSOCKET=true
+READ_RATE=50
+WRITE_RATE=50
+STAGE_RATE=100
+WS_VUS=1000
+DURATION=60s
+CONNECTION_DURATION_SECONDS=60
+MESSAGE_INTERVAL_SECONDS=5
+BASE_URL=http://localhost:8080
+```
+
+의미:
+
+- REST 조회 계열 약 435 RPS
+- REST 쓰기 계열 약 100 RPS
+- 발언권 신청 약 100 TPS
+- WebSocket 동시 연결 1000명
+- WebSocket 메시지 전송 약 185 msg/s
+
+### 31.3 결과
+
+| 항목 | 값 |
+| --- | ---: |
+| HTTP 요청 수 | `38,883` |
+| HTTP 처리량 | `634.92 req/s` |
+| HTTP 실패율 | `0%` |
+| HTTP p95 | `370.67ms` |
+| HTTP p99 | `638.69ms` |
+| WebSocket 연결 수 | `1,000` |
+| WebSocket 실패율 | `0%` |
+| STOMP connect p95 | `1.17s` |
+| WebSocket sent | `11,308` |
+| WebSocket received | `300,342` |
+| dropped iterations | `31` |
+
+판단:
+
+- 8080 기본 로컬 설정에서도 목표 혼합 부하는 통과했다.
+- Grafana에서는 이 테스트 시간대의 HTTP latency, Hikari connection, JVM memory, WebSocket executor, Redis/MySQL exporter 지표를 발표 자료로 캡처할 수 있다.
+- 다만 기본 설정은 Hikari 10, WebSocket executor 4라서 운영 목표치 검증보다는 발표용 baseline 그래프 성격이 강하다.
+
+### 31.4 운영 서버 간단 테스트 시나리오
+
+운영 서버에서는 로컬과 달리 k6 실행 위치를 서버와 분리한다.
+동일 EC2 안에서 k6를 실행하면 애플리케이션 CPU, 네트워크, DB 자원을 함께 사용하므로 실제 병목 판단이 흐려진다.
+
+권장 순서:
+
+| 단계 | 목적 | 예시 부하 | 중단 기준 |
+| --- | --- | --- | --- |
+| Smoke | 배포 정상 확인 | `WS 50`, `REST 50 RPS`, `3분` | 5xx 발생 |
+| Baseline | 정상 운영 기준 | `WS 500`, `REST 300 RPS`, `5분` | p95 1s 초과 |
+| Target | 목표 규모 검증 | `WS 1000`, `REST 600 RPS`, `10분` | p95 3s 초과 또는 5xx 1% 초과 |
+| Stress | 한계 탐색 | Target의 `1.5x → 2x` 단계 상승 | p95 5s 초과, dropped iteration 증가, DB pending 증가 |
+
+운영 테스트 전제:
+
+- 테스트 전용 사용자, 토론방, 의견 데이터를 별도 prefix 또는 ID 범위로 생성한다.
+- 운영 사용자 데이터와 섞지 않는다.
+- 테스트 종료 후 cleanup SQL 또는 관리자 도구로 테스트 데이터를 제거한다.
+- 비용과 장애 영향을 줄이기 위해 사전 공지된 짧은 시간대에 수행한다.
+
+### 31.5 2배 부하 이후 병목 분리 방향
+
+2배 부하에서 HTTP p95가 먼저 커졌으므로 다음 분석은 WebSocket 전체가 아니라 HTTP API별 병목 분리가 우선이다.
+
+확인 순서:
+
+1. k6 `handleSummary` 또는 scenario tag 기준으로 느린 API를 분리한다.
+2. MySQL slow query log 또는 performance schema에서 같은 시간대 query latency를 확인한다.
+3. `SHOW ENGINE INNODB STATUS`, lock wait 지표, Hikari pending thread를 함께 본다.
+4. 느린 API가 조회라면 index, paging, N+1을 먼저 확인한다.
+5. 느린 API가 쓰기라면 unique constraint 충돌, 비관적 락 대기, 트랜잭션 범위를 확인한다.
+6. WebSocket은 연결 실패보다 broadcast 수신량 감소와 executor queue 증가 여부를 확인한다.
+
+현재 기준 다음 우선순위:
+
+1. 2배 부하에서 API별 p95/p99를 분리한다.
+2. 느린 API의 slow query와 lock wait를 같은 시간축으로 맞춘다.
+3. 병목이 DB라면 index/쿼리/락 범위를 줄인다.
+4. 병목이 WebSocket fan-out이면 Simple Broker 한계와 외부 broker relay 도입 여부를 판단한다.

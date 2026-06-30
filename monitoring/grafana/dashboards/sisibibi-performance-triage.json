@@ -1,0 +1,134 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "type": "text",
+      "title": "How to read",
+      "gridPos": {"h": 3, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "options": {
+        "mode": "markdown",
+        "content": "성능 테스트 중 병목 추적 순서: **HTTP RPS/Latency → 5xx → HikariCP pending → MySQL slow/thread → Redis → JVM/CPU/Memory → Logs**. 같은 시간대 그래프를 함께 확인합니다."
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP RPS",
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 7, "w": 8, "x": 0, "y": 3},
+      "id": 2,
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "targets": [
+        {"expr": "sum(rate(http_server_requests_seconds_count{job=\"sisibibi-api\"}[$__rate_interval]))", "legendFormat": "rps", "refId": "A"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP p95 / p99 by URI",
+      "description": "application.yaml의 http.server.requests histogram 활성화 후 표시됩니다.",
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 7, "w": 8, "x": 8, "y": 3},
+      "id": 3,
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "targets": [
+        {"expr": "topk(8, histogram_quantile(0.95, sum by (le, uri) (rate(http_server_requests_seconds_bucket{job=\"sisibibi-api\"}[$__rate_interval]))))", "legendFormat": "p95 {{uri}}", "refId": "A"},
+        {"expr": "topk(8, histogram_quantile(0.99, sum by (le, uri) (rate(http_server_requests_seconds_bucket{job=\"sisibibi-api\"}[$__rate_interval]))))", "legendFormat": "p99 {{uri}}", "refId": "B"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP 4xx / 5xx",
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 7, "w": 8, "x": 16, "y": 3},
+      "id": 4,
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "targets": [
+        {"expr": "sum(rate(http_server_requests_seconds_count{job=\"sisibibi-api\", outcome=\"CLIENT_ERROR\"}[$__rate_interval]))", "legendFormat": "4xx", "refId": "A"},
+        {"expr": "sum(rate(http_server_requests_seconds_count{job=\"sisibibi-api\", outcome=\"SERVER_ERROR\"}[$__rate_interval]))", "legendFormat": "5xx", "refId": "B"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "HikariCP Connections",
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 7, "w": 8, "x": 0, "y": 10},
+      "id": 5,
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "targets": [
+        {"expr": "max(hikaricp_connections_active{job=\"sisibibi-api\"})", "legendFormat": "active", "refId": "A"},
+        {"expr": "max(hikaricp_connections_idle{job=\"sisibibi-api\"})", "legendFormat": "idle", "refId": "B"},
+        {"expr": "max(hikaricp_connections_pending{job=\"sisibibi-api\"})", "legendFormat": "pending", "refId": "C"},
+        {"expr": "max(hikaricp_connections_max{job=\"sisibibi-api\"})", "legendFormat": "max", "refId": "D"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "MySQL Threads / Slow Queries",
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 7, "w": 8, "x": 8, "y": 10},
+      "id": 6,
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "targets": [
+        {"expr": "mysql_global_status_threads_connected{job=\"mysql\"}", "legendFormat": "connected", "refId": "A"},
+        {"expr": "mysql_global_status_threads_running{job=\"mysql\"}", "legendFormat": "running", "refId": "B"},
+        {"expr": "rate(mysql_global_status_slow_queries{job=\"mysql\"}[$__rate_interval])", "legendFormat": "slow/s", "refId": "C"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Redis Ops / Hit Ratio",
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 7, "w": 8, "x": 16, "y": 10},
+      "id": 7,
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "targets": [
+        {"expr": "rate(redis_commands_processed_total{job=\"redis\"}[$__rate_interval])", "legendFormat": "ops/s", "refId": "A"},
+        {"expr": "rate(redis_keyspace_hits_total{job=\"redis\"}[$__rate_interval]) / clamp_min(rate(redis_keyspace_hits_total{job=\"redis\"}[$__rate_interval]) + rate(redis_keyspace_misses_total{job=\"redis\"}[$__rate_interval]), 0.0001)", "legendFormat": "hit ratio", "refId": "B"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "JVM Heap / GC Pause",
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 7, "w": 12, "x": 0, "y": 17},
+      "id": 8,
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "targets": [
+        {"expr": "sum(jvm_memory_used_bytes{job=\"sisibibi-api\", area=\"heap\"})", "legendFormat": "heap used", "refId": "A"},
+        {"expr": "sum(rate(jvm_gc_pause_seconds_sum{job=\"sisibibi-api\"}[$__rate_interval]))", "legendFormat": "gc pause/s", "refId": "B"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Host CPU / Memory",
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"h": 7, "w": 12, "x": 12, "y": 17},
+      "id": 9,
+      "fieldConfig": {"defaults": {"unit": "percent"}, "overrides": []},
+      "targets": [
+        {"expr": "100 - (avg(rate(node_cpu_seconds_total{job=\"node\", mode=\"idle\"}[$__rate_interval])) * 100)", "legendFormat": "cpu", "refId": "A"},
+        {"expr": "(1 - (node_memory_MemAvailable_bytes{job=\"node\"} / node_memory_MemTotal_bytes{job=\"node\"})) * 100", "legendFormat": "memory", "refId": "B"}
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "Application Logs",
+      "datasource": {"type": "loki", "uid": "Loki"},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
+      "id": 10,
+      "targets": [{"expr": "{job=\"sisibibi-api\"}", "refId": "A"}],
+      "options": {"showTime": true, "wrapLogMessage": true, "sortOrder": "Descending"}
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": ["sisibibi", "performance", "local"],
+  "templating": {"list": []},
+  "time": {"from": "now-30m", "to": "now"},
+  "timezone": "browser",
+  "title": "Sisibibi Performance Triage",
+  "uid": "sisibibi-performance-triage",
+  "version": 1
+}
