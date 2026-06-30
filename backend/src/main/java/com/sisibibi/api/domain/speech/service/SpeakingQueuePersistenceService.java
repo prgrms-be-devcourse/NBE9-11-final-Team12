@@ -388,7 +388,8 @@ public class SpeakingQueuePersistenceService {
         return SpeakingQueueAssignmentResult.of(Optional.empty(), canceledRequests);
     }
 
-    private boolean hasAssignedSpeaker(Long roomId) {
+    @Transactional(readOnly = true)
+    public boolean hasAssignedSpeaker(Long roomId) {
         return speakingQueueRepository.existsByRoomIdAndStatus(
                 roomId,
                 SpeakingQueueStatus.ASSIGNED
