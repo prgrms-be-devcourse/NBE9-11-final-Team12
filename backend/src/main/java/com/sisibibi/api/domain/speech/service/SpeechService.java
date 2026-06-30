@@ -146,7 +146,7 @@ public class SpeechService {
                 .distinct()
                 .toList();
 
-        return userRepository.findAllById(userIds)
+        return userRepository.findNicknamesByIdIn(userIds)
                 .stream()
                 .collect(Collectors.toMap(
                         user -> user.getId(),
