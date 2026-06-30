@@ -1,0 +1,80 @@
+prometheus.scrape "backend" {
+  targets = [
+    {
+      __address__ = sys.env("BACKEND_TARGET"),
+      job         = "sisibibi-api",
+    },
+  ]
+
+  metrics_path = "/actuator/prometheus"
+  forward_to   = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+prometheus.scrape "node" {
+  targets = [
+    {
+      __address__ = sys.env("NODE_EXPORTER_TARGET"),
+      job         = "node",
+    },
+  ]
+
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+prometheus.scrape "redis" {
+  targets = [
+    {
+      __address__ = sys.env("REDIS_EXPORTER_TARGET"),
+      job         = "redis",
+    },
+  ]
+
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+prometheus.scrape "mysql" {
+  targets = [
+    {
+      __address__ = sys.env("MYSQLD_EXPORTER_TARGET"),
+      job         = "mysql",
+    },
+  ]
+
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+prometheus.remote_write "grafana_cloud" {
+  endpoint {
+    url = sys.env("GRAFANA_CLOUD_PROM_URL")
+
+    basic_auth {
+      username = sys.env("GRAFANA_CLOUD_PROM_USER")
+      password = sys.env("GRAFANA_CLOUD_API_KEY")
+    }
+  }
+}
+
+local.file_match "backend_logs" {
+  path_targets = [
+    {
+      __path__ = "/var/log/sisibibi/*.log",
+      job      = "sisibibi-api",
+    },
+  ]
+}
+
+loki.source.file "backend_logs" {
+  targets    = local.file_match.backend_logs.targets
+  forward_to = [loki.write.grafana_cloud.receiver]
+}
+
+loki.write "grafana_cloud" {
+  endpoint {
+    url = sys.env("GRAFANA_CLOUD_LOKI_URL")
+
+    basic_auth {
+      username = sys.env("GRAFANA_CLOUD_LOKI_USER")
+      password = sys.env("GRAFANA_CLOUD_API_KEY")
+    }
+  }
+}

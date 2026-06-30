@@ -14,13 +14,18 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
 import java.security.Principal;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
+import org.springframework.messaging.handler.annotation.MessageExceptionHandler;
+import org.springframework.messaging.simp.annotation.SendToUser;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
+import org.springframework.validation.FieldError;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -46,6 +51,39 @@ public class ChatMessageController {
     ) {
         AuthPrincipal authPrincipal = resolvePrincipal(principal);
         chatService.createMessage(roomId, authPrincipal.userId(), request.content());
+    }
+
+    @MessageExceptionHandler(CustomException.class)
+    @SendToUser("/queue/errors")
+    public ApiResponse<Void> handleCustomException(CustomException exception) {
+        ErrorCode errorCode = exception.getErrorCode();
+
+        return ApiResponse.error(
+                errorCode.getStatus(),
+                errorCode.name(),
+                errorCode.getMessage()
+        );
+    }
+
+    @MessageExceptionHandler(org.springframework.messaging.handler.annotation.support.MethodArgumentNotValidException.class)
+    @SendToUser("/queue/errors")
+    public ApiResponse<Map<String, String>> handleMessageValidationException(
+            org.springframework.messaging.handler.annotation.support.MethodArgumentNotValidException exception
+    ) {
+        Map<String, String> errors = new LinkedHashMap<>();
+
+        for (FieldError fieldError : exception.getBindingResult().getFieldErrors()) {
+            errors.putIfAbsent(fieldError.getField(), fieldError.getDefaultMessage());
+        }
+
+        ErrorCode errorCode = ErrorCode.INVALID_INPUT_VALUE;
+
+        return ApiResponse.error(
+                errorCode.getStatus(),
+                errorCode.name(),
+                errorCode.getMessage(),
+                errors
+        );
     }
 
     @Operation(

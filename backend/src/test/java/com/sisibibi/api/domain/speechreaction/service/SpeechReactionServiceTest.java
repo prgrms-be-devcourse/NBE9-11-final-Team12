@@ -284,30 +284,33 @@ class SpeechReactionServiceTest {
 
     @Test
     void getBestSpeech_returnsMostReactedSpeech() {
-        Speech speech = Speech.createMainOpinion(1L, 30L, "베스트 의견", SpeechStance.PRO);
-        ReflectionTestUtils.setField(speech, "id", 10L);
-        ReflectionTestUtils.setField(
-                speech,
-                "createdAt",
-                LocalDateTime.of(2026, 6, 19, 12, 0)
-        );
+        LocalDateTime createdAt = LocalDateTime.of(2026, 6, 19, 12, 0);
         BestSpeechReactionProjection projection = org.mockito.Mockito.mock(
                 BestSpeechReactionProjection.class
         );
         given(projection.getSpeechId()).willReturn(10L);
+        given(projection.getRoomId()).willReturn(1L);
+        given(projection.getUserId()).willReturn(30L);
+        given(projection.getContent()).willReturn("베스트 의견");
+        given(projection.getStance()).willReturn(SpeechStance.PRO);
+        given(projection.getStatus()).willReturn(com.sisibibi.api.domain.speech.entity.SpeechStatus.SPEAKING);
+        given(projection.getCreatedAt()).willReturn(createdAt);
         given(projection.getReactionCount()).willReturn(3L);
         given(roomRepository.existsById(1L)).willReturn(true);
         given(speechReactionRepository.findBestSpeechReactions(
                 1L,
                 org.springframework.data.domain.PageRequest.of(0, 1)
         )).willReturn(List.of(projection));
-        given(speechRepository.findByIdAndDeletedFalse(10L)).willReturn(Optional.of(speech));
 
         BestSpeechRes response = speechReactionService.getBestSpeech(1L);
 
         assertThat(response.speechId()).isEqualTo(10L);
+        assertThat(response.roomId()).isEqualTo(1L);
+        assertThat(response.userId()).isEqualTo(30L);
         assertThat(response.content()).isEqualTo("베스트 의견");
+        assertThat(response.createdAt()).isEqualTo(createdAt);
         assertThat(response.reactionCount()).isEqualTo(3L);
+        verify(speechRepository, never()).findByIdAndDeletedFalse(org.mockito.ArgumentMatchers.any());
     }
 
     @Test

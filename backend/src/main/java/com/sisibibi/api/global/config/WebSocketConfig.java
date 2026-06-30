@@ -25,6 +25,10 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public static final String[] BROKER_DESTINATION_PREFIXES = {"/topic", "/queue"};
     public static final String USER_DESTINATION_PREFIX = "/user";
     public static final long HEARTBEAT_MILLIS = 10_000L;
+    public static final int DEFAULT_CHANNEL_CORE_POOL_SIZE = 4;
+    public static final int DEFAULT_CHANNEL_MAX_POOL_SIZE = 16;
+    public static final int DEFAULT_CHANNEL_QUEUE_CAPACITY = 2_000;
+    public static final int DEFAULT_HEARTBEAT_POOL_SIZE = 4;
 
     private final WebSocketAuthHandshakeInterceptor handshakeInterceptor;
     private final WebSocketAuthChannelInterceptor authChannelInterceptor;
@@ -32,6 +36,27 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Value("${app.frontend.url}")
     private String frontendUrl;
+
+    @Value("${app.websocket.channel.inbound.core-pool-size:" + DEFAULT_CHANNEL_CORE_POOL_SIZE + "}")
+    private int inboundCorePoolSize;
+
+    @Value("${app.websocket.channel.inbound.max-pool-size:" + DEFAULT_CHANNEL_MAX_POOL_SIZE + "}")
+    private int inboundMaxPoolSize;
+
+    @Value("${app.websocket.channel.inbound.queue-capacity:" + DEFAULT_CHANNEL_QUEUE_CAPACITY + "}")
+    private int inboundQueueCapacity;
+
+    @Value("${app.websocket.channel.outbound.core-pool-size:" + DEFAULT_CHANNEL_CORE_POOL_SIZE + "}")
+    private int outboundCorePoolSize;
+
+    @Value("${app.websocket.channel.outbound.max-pool-size:" + DEFAULT_CHANNEL_MAX_POOL_SIZE + "}")
+    private int outboundMaxPoolSize;
+
+    @Value("${app.websocket.channel.outbound.queue-capacity:" + DEFAULT_CHANNEL_QUEUE_CAPACITY + "}")
+    private int outboundQueueCapacity;
+
+    @Value("${app.websocket.heartbeat.pool-size:" + DEFAULT_HEARTBEAT_POOL_SIZE + "}")
+    private int heartbeatPoolSize;
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
@@ -51,7 +76,19 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
+        registration.taskExecutor()
+                .corePoolSize(inboundCorePoolSize)
+                .maxPoolSize(inboundMaxPoolSize)
+                .queueCapacity(inboundQueueCapacity);
         registration.interceptors(authChannelInterceptor);
+    }
+
+    @Override
+    public void configureClientOutboundChannel(ChannelRegistration registration) {
+        registration.taskExecutor()
+                .corePoolSize(outboundCorePoolSize)
+                .maxPoolSize(outboundMaxPoolSize)
+                .queueCapacity(outboundQueueCapacity);
     }
 
     @Override
@@ -62,7 +99,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Bean
     public ThreadPoolTaskScheduler webSocketHeartbeatTaskScheduler() {
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
-        scheduler.setPoolSize(1);
+        scheduler.setPoolSize(heartbeatPoolSize);
         scheduler.setThreadNamePrefix("websocket-heartbeat-");
         return scheduler;
     }

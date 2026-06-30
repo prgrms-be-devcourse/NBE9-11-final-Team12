@@ -9,3 +9,7 @@ terraform.tfstate.backup
 
 terraform.tfvars
 *.tfvars
+
+# Grafana Cloud runtime env
+compose/.env.grafana-cloud
+compose/.env

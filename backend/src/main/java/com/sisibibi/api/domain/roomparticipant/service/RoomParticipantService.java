@@ -12,6 +12,7 @@ import com.sisibibi.api.domain.roomparticipant.dto.response.RoomParticipantRes;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipant;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
+import com.sisibibi.api.domain.roomparticipant.repository.projection.RoomParticipantCountProjection;
 import com.sisibibi.api.domain.speech.service.SpeakingQueueService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
@@ -126,16 +127,12 @@ public class RoomParticipantService {
   }
 
   public RoomParticipantCountRes getCurrentParticipantCount(Long roomId) {
-    if (!roomRepository.existsById(roomId)) {
-      throw new CustomException(ErrorCode.ROOM_NOT_FOUND);
-    }
-
-    int participantCount = roomParticipantRepository.countByRoomIdAndStatus(
+    RoomParticipantCountProjection projection = roomParticipantRepository.findParticipantCount(
         roomId,
         RoomParticipantStatus.JOINED
-    );
+    ).orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
 
-    return new RoomParticipantCountRes(roomId, participantCount);
+    return new RoomParticipantCountRes(projection.getRoomId(), projection.getParticipantCount());
   }
 
   private void publishRoomParticipantChangedEvent(

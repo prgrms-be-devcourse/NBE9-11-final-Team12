@@ -1,5 +1,6 @@
 import crypto from "k6/crypto";
 import encoding from "k6/encoding";
+import http from "k6/http";
 
 export const csrfToken = __ENV.CSRF_TOKEN || "perf-csrf-token";
 
@@ -18,6 +19,15 @@ export function authParams(userId, tags = {}) {
     };
 }
 
+
+export function authCookieJar(baseUrl, userId) {
+    const jar = http.cookieJar();
+    const match = String(baseUrl).match(/^(https?:\/\/[^/]+)/);
+    const cookieBaseUrl = match ? match[1] : baseUrl;
+    jar.set(cookieBaseUrl, "accessToken", accessToken(userId));
+    jar.set(cookieBaseUrl, "XSRF-TOKEN", csrfToken);
+    return jar;
+}
 export function accessToken(userId) {
     const now = Math.floor(Date.now() / 1000);
     const header = base64Url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
