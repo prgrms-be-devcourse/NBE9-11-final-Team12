@@ -188,4 +188,4 @@ serpapi:
   api-key: ${SERPAPI_API_KEY:}
 
 room-ranking:
-  rebuild-on-startup: false
+  rebuild-on-startup: true
