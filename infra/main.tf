@@ -253,9 +253,9 @@ resource "aws_s3_bucket_public_access_block" "speech_images" {
   bucket = aws_s3_bucket.speech_images.id
 
   block_public_acls       = true
-  block_public_policy     = true
+  block_public_policy     = false
   ignore_public_acls      = true
-  restrict_public_buckets = true
+  restrict_public_buckets = false
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "speech_images" {
@@ -280,6 +280,30 @@ resource "aws_s3_bucket_cors_configuration" "speech_images" {
   }
 }
 
+resource "aws_s3_bucket_policy" "speech_images_public_read" {
+  bucket = aws_s3_bucket.speech_images.id
+
+  depends_on = [
+    aws_s3_bucket_public_access_block.speech_images
+  ]
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "PublicReadSpeechImages"
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = "s3:GetObject"
+        Resource = [
+          "${aws_s3_bucket.speech_images.arn}/speeches/*",
+          "${aws_s3_bucket.speech_images.arn}/ai-reports/*"
+        ]
+      }
+    ]
+  })
+}
+
 resource "aws_iam_policy" "speech_image_s3_policy" {
   name = "${var.prefix}-speech-image-s3-policy"
 
@@ -294,7 +318,10 @@ resource "aws_iam_policy" "speech_image_s3_policy" {
           "s3:HeadObject",
           "s3:DeleteObject"
         ]
-        Resource = "${aws_s3_bucket.speech_images.arn}/speeches/*"
+        Resource = [
+          "${aws_s3_bucket.speech_images.arn}/speeches/*",
+          "${aws_s3_bucket.speech_images.arn}/ai-reports/*"
+        ]
       },
       {
         Effect = "Allow"
@@ -304,7 +331,10 @@ resource "aws_iam_policy" "speech_image_s3_policy" {
         Resource = aws_s3_bucket.speech_images.arn
         Condition = {
           StringLike = {
-            "s3:prefix" = ["speeches/*"]
+            "s3:prefix" = [
+              "speeches/*",
+              "ai-reports/*"
+            ]
           }
         }
       }
