@@ -7,8 +7,10 @@ import com.sisibibi.api.domain.report.client.dto.AiReportCustomReportPayload;
 import com.sisibibi.api.domain.report.entity.AiReportCustomReport;
 import com.sisibibi.api.domain.report.entity.AiReportCustomPrompt;
 import com.sisibibi.api.domain.report.entity.AiReport;
+import com.sisibibi.api.domain.report.entity.AiReportPdfExport;
 import com.sisibibi.api.domain.report.entity.AiReportStatus;
 import com.sisibibi.api.domain.report.prompt.CustomPromptCommand;
+import com.sisibibi.api.domain.report.repository.AiReportPdfExportRepository;
 import com.sisibibi.api.domain.report.repository.AiReportRepository;
 import com.sisibibi.api.domain.report.dto.response.AiReportRes;
 import com.sisibibi.api.domain.room.entity.Room;
@@ -55,6 +57,9 @@ class AiReportPersistenceServiceTest {
 
     @Mock
     private AiReportRepository aiReportRepository;
+
+    @Mock
+    private AiReportPdfExportRepository aiReportPdfExportRepository;
 
     @InjectMocks
     private AiReportPersistenceService aiReportPersistenceService;
@@ -379,6 +384,31 @@ class AiReportPersistenceServiceTest {
                 "user eight",
                 "only user eight"
         ));
+    }
+
+    @Test
+    void getReport_returnsViewerPdfStatus_whenExportExists() {
+        AiReport report = AiReport.pending(10L);
+        ReflectionTestUtils.setField(report, "id", 55L);
+        report.complete(new AiReportGenerateRes(
+                "core",
+                List.of("issue"),
+                "summary",
+                "common",
+                "opinion"
+        ));
+        AiReportPdfExport export = AiReportPdfExport.notStarted(55L, 10L, 7L);
+        ReflectionTestUtils.setField(export, "id", 99L);
+
+        given(aiReportRepository.findByRoomId(10L)).willReturn(Optional.of(report));
+        given(aiReportPdfExportRepository.findByAiReportIdAndRequestedByUserId(55L, 7L))
+                .willReturn(Optional.of(export));
+
+        AiReportRes result = aiReportPersistenceService.getReport(10L, 7L);
+
+        assertThat(result.pdf().pdfExportId()).isEqualTo(99L);
+        assertThat(result.pdf().pdfStatus()).isEqualTo("NOT_STARTED");
+        assertThat(result.pdf().downloadAvailable()).isFalse();
     }
 
     @Test

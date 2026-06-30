@@ -8,6 +8,7 @@ import com.sisibibi.api.domain.payment.repository.CustomAiReportRequestRepositor
 import com.sisibibi.api.domain.report.queue.AiReportQueueMessage;
 import com.sisibibi.api.domain.report.queue.AiReportQueuePublisher;
 import com.sisibibi.api.domain.report.service.AiReportGenerationType;
+import com.sisibibi.api.domain.report.service.AiReportPdfPersistenceService;
 import com.sisibibi.api.domain.report.service.AiReportPersistenceService;
 import com.sisibibi.api.domain.report.service.AiReportRequestResult;
 import com.sisibibi.api.global.exception.ErrorCode;
@@ -25,6 +26,7 @@ public class CustomAiReportGenerationOutboxPublisher implements OutboxEventPubli
   private final CustomAiReportRequestRepository customAiReportRequestRepository;
   private final AiReportPersistenceService aiReportPersistenceService;
   private final AiReportQueuePublisher aiReportQueuePublisher;
+  private final AiReportPdfPersistenceService aiReportPdfPersistenceService;
 
   @Override
   public boolean supports(OutboxEventType eventType) {
@@ -48,6 +50,7 @@ public class CustomAiReportGenerationOutboxPublisher implements OutboxEventPubli
     );
 
     Long reportId = result.response().reportId();
+    aiReportPdfPersistenceService.createIfMissing(reportId, request.getRoomId(), request.getUserId());
 
     try {
       aiReportQueuePublisher.publish(new AiReportQueueMessage(

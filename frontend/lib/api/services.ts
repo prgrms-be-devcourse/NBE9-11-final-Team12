@@ -6,6 +6,7 @@ import type {
   AdminUserStatus,
   AiCounterIssue,
   AiReport,
+  AiReportPdfDownloadUrl,
   AiReportGenerateRequest,
   AuthUser,
   BestSpeech,
@@ -241,6 +242,8 @@ export const aiReportApi = {
       `/api/v1/rooms/${roomId}/ai-report`,
       body,
     ),
+  downloadUrl: (roomId: number) =>
+    api.get<AiReportPdfDownloadUrl>(`/api/v1/rooms/${roomId}/ai-report/pdf-download-url`),
 }
 
 export const paymentApi = {

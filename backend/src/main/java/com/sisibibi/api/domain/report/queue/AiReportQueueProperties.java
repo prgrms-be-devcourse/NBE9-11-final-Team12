@@ -15,6 +15,9 @@ public class AiReportQueueProperties {
 
     private String queueUrl;
     private String region = "ap-northeast-2";
+    private String accessKeyId;
+    private String secretAccessKey;
+    private String sessionToken;
     private Retry retry = new Retry();
 
     @Getter

@@ -49,10 +49,10 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create # 개발 초기 환경용 (운영 환경에서는 반드시 none 또는 validate 사용)
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
-        format_sql: true
+        format_sql: false
         default_batch_fetch_size: 100 # 배치 사이즈 설정 조정 필요
   ai:
     model:
@@ -96,6 +96,19 @@ app:
     base-url: ${AI_REPORT_BASE_URL:http://localhost:8000}
     generate-path: ${AI_REPORT_GENERATE_PATH:/report}
     timeout: ${AI_REPORT_TIMEOUT:5m}
+    worker-token: ${AI_REPORT_WORKER_TOKEN:}
+    queue:
+      queue-url: ${AI_REPORT_QUEUE_URL:}
+      region: ${AI_REPORT_QUEUE_REGION:ap-northeast-2}
+      access-key-id: ${AWS_ACCESS_KEY_ID:}
+      secret-access-key: ${AWS_SECRET_ACCESS_KEY:}
+      session-token: ${AWS_SESSION_TOKEN:}
+      retry:
+        enabled: ${AI_REPORT_QUEUE_RETRY_ENABLED:true}
+        fixed-delay-ms: ${AI_REPORT_QUEUE_RETRY_FIXED_DELAY_MS:30000}
+        stale-threshold: ${AI_REPORT_QUEUE_RETRY_STALE_THRESHOLD:30s}
+        batch-size: ${AI_REPORT_QUEUE_RETRY_BATCH_SIZE:20}
+        max-retry-count: ${AI_REPORT_QUEUE_RETRY_MAX_RETRY_COUNT:5}
     pdf:
       enabled: ${AI_REPORT_PDF_ENABLED:true}
       presigned-url-expiration: ${AI_REPORT_PDF_PRESIGNED_URL_EXPIRATION:10m}
@@ -122,16 +135,6 @@ app:
     enabled: ${OFF_TOPIC_AI_REVIEW_ENABLED:true}
     min-report-threshold: ${OFF_TOPIC_AI_REVIEW_MIN_REPORT_THRESHOLD:5}
     generate-timeout: ${OFF_TOPIC_AI_REVIEW_GENERATE_TIMEOUT:10s}
-    worker-token: ${AI_REPORT_WORKER_TOKEN:}
-    queue:
-      queue-url: ${AI_REPORT_QUEUE_URL:}
-      region: ${AI_REPORT_QUEUE_REGION:ap-northeast-2}
-      retry:
-        enabled: ${AI_REPORT_QUEUE_RETRY_ENABLED:true}
-        fixed-delay-ms: ${AI_REPORT_QUEUE_RETRY_FIXED_DELAY_MS:30000}
-        stale-threshold: ${AI_REPORT_QUEUE_RETRY_STALE_THRESHOLD:30s}
-        batch-size: ${AI_REPORT_QUEUE_RETRY_BATCH_SIZE:20}
-        max-retry-count: ${AI_REPORT_QUEUE_RETRY_MAX_RETRY_COUNT:5}
   prompt-guard:
     base-url: ${PROMPT_GUARD_BASE_URL:}
     scan-path: ${PROMPT_GUARD_SCAN_PATH:/scan}
@@ -160,7 +163,7 @@ app:
       secret-access-key: ${AWS_SECRET_ACCESS_KEY:}
   outbox:
     relay:
-      enabled: false
+      enabled: true
       fixed-delay-ms: 30000
   payment:
     toss:

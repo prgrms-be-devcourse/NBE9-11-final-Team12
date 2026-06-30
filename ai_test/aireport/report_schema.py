@@ -7,7 +7,7 @@ class AiReportModel(BaseModel):
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
     core_line: str = Field(alias="핵심 한줄")
-    key_issues: list[str] = Field(alias="핵심 쟁점")
+    key_issues: list[str] = Field(alias="핵심 쟁점", min_length=1)
     ai_summary: str = Field(alias="AI 종합 정리")
     common_ground: str = Field(alias="공통 의견")
     ai_opinion: str = Field(alias="AI의 개인적 소견")
