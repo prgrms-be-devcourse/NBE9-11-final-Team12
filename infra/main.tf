@@ -295,7 +295,10 @@ resource "aws_s3_bucket_policy" "speech_images_public_read" {
         Effect    = "Allow"
         Principal = "*"
         Action    = "s3:GetObject"
-        Resource  = "${aws_s3_bucket.speech_images.arn}/speeches/*"
+        Resource = [
+          "${aws_s3_bucket.speech_images.arn}/speeches/*",
+          "${aws_s3_bucket.speech_images.arn}/ai-reports/*"
+        ]
       }
     ]
   })
@@ -315,7 +318,10 @@ resource "aws_iam_policy" "speech_image_s3_policy" {
           "s3:HeadObject",
           "s3:DeleteObject"
         ]
-        Resource = "${aws_s3_bucket.speech_images.arn}/speeches/*"
+        Resource = [
+          "${aws_s3_bucket.speech_images.arn}/speeches/*",
+          "${aws_s3_bucket.speech_images.arn}/ai-reports/*"
+        ]
       },
       {
         Effect = "Allow"
@@ -325,7 +331,10 @@ resource "aws_iam_policy" "speech_image_s3_policy" {
         Resource = aws_s3_bucket.speech_images.arn
         Condition = {
           StringLike = {
-            "s3:prefix" = ["speeches/*"]
+            "s3:prefix" = [
+              "speeches/*",
+              "ai-reports/*"
+            ]
           }
         }
       }

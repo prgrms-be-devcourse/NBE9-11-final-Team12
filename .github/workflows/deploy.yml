@@ -196,6 +196,24 @@ jobs:
 
             docker pull "$IMAGE"
           
+            PROMPT_GUARD_IMAGE="ghcr.io/prgrms-be-devcourse/prompt-guard:latest"
+            PROMPT_GUARD_CONTAINER="prompt-guard"
+            
+            echo "Ensuring prompt-guard container is running"
+            docker pull "$PROMPT_GUARD_IMAGE"
+            
+            if docker ps -a --format '{{.Names}}' | grep -qx "$PROMPT_GUARD_CONTAINER"; then
+            docker rm -f "$PROMPT_GUARD_CONTAINER" >/dev/null 2>&1 || true
+            fi
+            
+            docker run -d \
+            --name "$PROMPT_GUARD_CONTAINER" \
+            --restart unless-stopped \
+            --network "$NET" \
+            -p 18080:8080 \
+            "$PROMPT_GUARD_IMAGE"
+              
+          
             # GitHub Secret DOT_ENV를 EC2의 /tmp/.env로 생성
             printf '%s' "${{ env.DOT_ENV_B64 }}" | base64 -d > /tmp/.env
             chmod 600 /tmp/.env
