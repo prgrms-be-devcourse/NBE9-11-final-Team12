@@ -92,6 +92,7 @@ public class PaymentService {
     return paymentCompletionService.completePayment(userId, approval);
   }
 
+  //결제 트랜잭션 추가
   @Transactional(readOnly = true)
   public List<PaymentRes> getMyPayments(Long userId) {
     return paymentRepository.findByUserIdOrderByCreatedAtDesc(userId)
