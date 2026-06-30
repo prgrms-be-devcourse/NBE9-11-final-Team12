@@ -9,6 +9,8 @@ terraform {
 
 provider "aws" {
   region = var.region
+  access_key = var.personal_aws_access_key_id
+  secret_key = var.personal_aws_secret_access_key
 }
 
 resource "aws_vpc" "ai_vpc" {

@@ -27,4 +27,4 @@ WORKDIR /opt/prompt-guard
 
 EXPOSE 8080
 
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["sh", "-c", "echo 'Prompt Guard service starting on 0.0.0.0:8080' && exec uvicorn app:app --host 0.0.0.0 --port 8080"]

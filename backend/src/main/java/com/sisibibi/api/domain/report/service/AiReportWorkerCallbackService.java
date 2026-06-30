@@ -13,6 +13,9 @@ import com.sisibibi.api.domain.report.dto.response.AiReportRes;
 import com.sisibibi.api.domain.report.dto.response.AiReportWorkerProcessingRes;
 import com.sisibibi.api.domain.report.entity.AiReport;
 import com.sisibibi.api.domain.report.entity.AiReportCustomPrompt;
+import com.sisibibi.api.domain.report.entity.AiReportPdfExport;
+import com.sisibibi.api.domain.report.entity.AiReportPdfStatus;
+import com.sisibibi.api.domain.report.entity.AiReportPdfType;
 import com.sisibibi.api.domain.report.entity.AiReportStatus;
 import com.sisibibi.api.domain.report.prompt.CustomPromptCommand;
 import com.sisibibi.api.domain.report.outbox.AiReportPdfGenerationOutboxWriter;
@@ -61,6 +64,10 @@ public class AiReportWorkerCallbackService {
             throw new CustomException(ErrorCode.AI_REPORT_ROOM_NOT_CLOSED);
         }
         // 3. 토론 주제 및 발언 내역 조회
+        if (generationType == AiReportGenerationType.CUSTOM_ONLY
+                && !report.hasBaseReportContent()) {
+            throw new CustomException(ErrorCode.AI_REPORT_ALREADY_EXISTS);
+        }
         Topic topic = topicRepository.findById(room.getTopicId())
                 .orElseThrow(() -> new CustomException(ErrorCode.TOPIC_NOT_FOUND));
 
@@ -97,7 +104,8 @@ public class AiReportWorkerCallbackService {
         if (request.generationType() == AiReportGenerationType.CUSTOM_ONLY) {
             validateCustomReports(response, report.getCustomPrompts().size());
             report.completeCustomReports(response);
-            recordPdfGenerationEvents(report);
+            resetReadyPdfExports(report, AiReportPdfType.CUSTOM);
+            recordPdfGenerationEvents(report, AiReportPdfType.CUSTOM);
             return AiReportRes.from(report);
         }
 
@@ -108,7 +116,7 @@ public class AiReportWorkerCallbackService {
 
         report.complete(response);
 
-        recordPdfGenerationEvents(report);
+        recordPdfGenerationEvents(report, AiReportPdfType.BASE);
 
         return AiReportRes.from(report);
     }
@@ -144,9 +152,17 @@ public class AiReportWorkerCallbackService {
         }
     }
 
-    private void recordPdfGenerationEvents(AiReport report) {
+    private void resetReadyPdfExports(AiReport report, AiReportPdfType pdfType) {
+        aiReportPdfExportRepository.findByAiReportId(report.getId()).stream()
+                .filter(export -> export.getPdfType() == pdfType)
+                .filter(export -> export.getPdfStatus() == AiReportPdfStatus.READY)
+                .forEach(AiReportPdfExport::resetForRegeneration);
+    }
+
+    private void recordPdfGenerationEvents(AiReport report, AiReportPdfType pdfType) {
         LocalDateTime now = LocalDateTime.now();
         aiReportPdfExportRepository.findByAiReportId(report.getId()).stream()
+                .filter(export -> export.getPdfType() == pdfType)
                 .filter(export -> export.shouldStartGeneration())
                 .forEach(export -> outboxWriter.record(export.getId(), now));
     }

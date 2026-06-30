@@ -4,6 +4,7 @@ import com.sisibibi.api.domain.report.dto.event.AiReportGenerationRequestedEvent
 import com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq;
 import com.sisibibi.api.domain.report.dto.response.AiReportRes;
 import com.sisibibi.api.domain.report.entity.AiReportPdfExport;
+import com.sisibibi.api.domain.report.entity.AiReportPdfType;
 import com.sisibibi.api.domain.report.outbox.AiReportPdfGenerationOutboxWriter;
 import com.sisibibi.api.domain.report.prompt.CustomPromptCommand;
 import com.sisibibi.api.domain.report.prompt.CustomPromptValidator;
@@ -59,7 +60,7 @@ class AiReportServiceTest {
                 .thenReturn(List.of());
         AiReportPdfExport defaultExport = AiReportPdfExport.notStarted(55L, 10L, 7L);
         ReflectionTestUtils.setField(defaultExport, "id", 1L);
-        lenient().when(aiReportPdfPersistenceService.createIfMissing(anyLong(), anyLong(), anyLong()))
+        lenient().when(aiReportPdfPersistenceService.createIfMissing(anyLong(), anyLong(), anyLong(), any(AiReportPdfType.class)))
                 .thenReturn(defaultExport);
     }
 
@@ -153,7 +154,7 @@ class AiReportServiceTest {
 
         aiReportService.generateReport(10L, 7L, AiReportGenerateReq.empty());
 
-        verify(aiReportPdfPersistenceService).createIfMissing(55L, 10L, 7L);
+        verify(aiReportPdfPersistenceService).createIfMissing(55L, 10L, 7L, AiReportPdfType.BASE);
     }
 
     @Test
@@ -163,7 +164,7 @@ class AiReportServiceTest {
         ReflectionTestUtils.setField(export, "id", 77L);
         given(aiReportPersistenceService.requestGeneration(10L, 7L, List.of()))
                 .willReturn(AiReportRequestResult.skip(completed));
-        given(aiReportPdfPersistenceService.createIfMissing(55L, 10L, 7L)).willReturn(export);
+        given(aiReportPdfPersistenceService.createIfMissing(55L, 10L, 7L, AiReportPdfType.BASE)).willReturn(export);
 
         aiReportService.generateReport(10L, 7L, AiReportGenerateReq.empty());
 

@@ -1,5 +1,5 @@
 SUPPORTED_STANCE_VALUES = ("PRO", "CON", "NEUTRAL")
-MAX_CUSTOM_PROMPTS = 5
+MAX_CUSTOM_PROMPTS = 3
 MAX_CUSTOM_PROMPT_LENGTH = 1000
 BASE_REPORT_FIELD_MAP = {
     "coreLine": ("coreLine", "core_line", "핵심 한줄"),
@@ -60,7 +60,7 @@ def _normalize_base_report(base_report):
 
 def _normalize_custom_prompts(custom_prompts):
     if len(custom_prompts) > MAX_CUSTOM_PROMPTS:
-        raise ValueError("customPrompts accepts at most 5 prompts")
+        raise ValueError(f"customPrompts accepts at most {MAX_CUSTOM_PROMPTS} prompts")
 
     normalized = []
     for index, item in enumerate(custom_prompts, start=1):

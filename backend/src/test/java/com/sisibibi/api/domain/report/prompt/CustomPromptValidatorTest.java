@@ -3,8 +3,11 @@ package com.sisibibi.api.domain.report.prompt;
 import com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import java.util.List;
 
@@ -15,6 +18,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+@ExtendWith(OutputCaptureExtension.class)
 class CustomPromptValidatorTest {
 
     private PromptGuardService promptGuardService;
@@ -62,6 +66,39 @@ class CustomPromptValidatorTest {
         verify(promptGuardService).scan("첫 번째 요청");
         verify(promptGuardService).scan("위험한 요청");
         verify(promptGuardService, never()).scan("세 번째 요청");
+    }
+
+    @Test
+    void normalizeAndScan_blocksMediumSeverityPrompt() {
+        given(promptGuardService.scan("의심스러운 개인화 요청"))
+                .willReturn(PromptGuardResult.allowed(PromptSeverity.MEDIUM, "role_manipulation"));
+
+        AiReportGenerateReq request = new AiReportGenerateReq(List.of(
+                new AiReportGenerateReq.CustomPromptReq(null, "의심스러운 개인화 요청")
+        ));
+
+        assertThatThrownBy(() -> validator.normalizeAndScan(request))
+                .isInstanceOf(PromptGuardBlockedException.class)
+                .extracting("severity")
+                .isEqualTo(PromptSeverity.MEDIUM);
+    }
+
+    @Test
+    void normalizeAndScan_logsUnavailableWhenPromptGuardFailsClosed(CapturedOutput output) {
+        given(promptGuardService.scan("요약 관점 정리"))
+                .willThrow(new CustomException(ErrorCode.PROMPT_GUARD_UNAVAILABLE));
+
+        AiReportGenerateReq request = new AiReportGenerateReq(List.of(
+                new AiReportGenerateReq.CustomPromptReq("관점", "요약 관점 정리")
+        ));
+
+        assertThatThrownBy(() -> validator.normalizeAndScan(request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PROMPT_GUARD_UNAVAILABLE);
+
+        assertThat(output).contains("Prompt guard unavailable. failOpen=false");
+        assertThat(output).contains("promptHash=");
     }
 
     @Test

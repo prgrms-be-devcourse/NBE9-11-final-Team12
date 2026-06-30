@@ -10,6 +10,7 @@ import com.sisibibi.api.domain.report.client.dto.AiReportTopicPayload;
 import com.sisibibi.api.domain.report.dto.response.AiReportRes;
 import com.sisibibi.api.domain.report.entity.AiReport;
 import com.sisibibi.api.domain.report.entity.AiReportPdfExport;
+import com.sisibibi.api.domain.report.entity.AiReportPdfType;
 import com.sisibibi.api.domain.report.entity.AiReportCustomPrompt;
 import com.sisibibi.api.domain.report.prompt.CustomPromptCommand;
 import com.sisibibi.api.domain.report.repository.AiReportPdfExportRepository;
@@ -200,6 +201,14 @@ public class AiReportPersistenceService {
         AiReport report = aiReportRepository.findByRoomIdForUpdate(roomId)
             .orElseThrow(() -> new CustomException(ErrorCode.AI_REPORT_NOT_FOUND));
 
+        if (report.isGenerationInProgress()) {
+            report.rememberCustomPrompts(toSnapshots(userId, customPrompts));
+            return AiReportRequestResult.publish(
+                AiReportRes.from(report, userId),
+                AiReportGenerationType.CUSTOM_ONLY
+            );
+        }
+
         if (report.getStatus() != com.sisibibi.api.domain.report.entity.AiReportStatus.COMPLETED
             && report.getStatus() != com.sisibibi.api.domain.report.entity.AiReportStatus.PUBLISH_FAILED) {
             throw new CustomException(ErrorCode.AI_REPORT_ALREADY_EXISTS);
@@ -282,7 +291,7 @@ public class AiReportPersistenceService {
         }
 
         return aiReportPdfExportRepository
-                .findByAiReportIdAndRequestedByUserId(report.getId(), userId)
+                .findByAiReportIdAndRequestedByUserIdAndPdfType(report.getId(), userId, AiReportPdfType.BASE)
                 .orElse(null);
     }
 

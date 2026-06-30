@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.report.service;
 
 import com.sisibibi.api.domain.report.entity.AiReportPdfExport;
+import com.sisibibi.api.domain.report.entity.AiReportPdfType;
 import com.sisibibi.api.domain.report.repository.AiReportPdfExportRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
@@ -19,8 +20,14 @@ public class AiReportPdfPersistenceService {
 
     @Transactional(propagation = Propagation.REQUIRED)
     public AiReportPdfExport createIfMissing(Long aiReportId, Long roomId, Long userId) {
-        return exportRepository.findByAiReportIdAndRequestedByUserIdForUpdate(aiReportId, userId)
-                .orElseGet(() -> exportRepository.save(AiReportPdfExport.notStarted(aiReportId, roomId, userId)));
+        return createIfMissing(aiReportId, roomId, userId, AiReportPdfType.BASE);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRED)
+    public AiReportPdfExport createIfMissing(Long aiReportId, Long roomId, Long userId, AiReportPdfType pdfType) {
+        AiReportPdfType actualType = pdfType == null ? AiReportPdfType.BASE : pdfType;
+        return exportRepository.findByAiReportIdAndRequestedByUserIdAndPdfTypeForUpdate(aiReportId, userId, actualType)
+                .orElseGet(() -> exportRepository.save(AiReportPdfExport.notStarted(aiReportId, roomId, userId, actualType)));
     }
 
     @Transactional(propagation = Propagation.REQUIRED)

@@ -21,6 +21,10 @@ type GenerationKind = "base" | "custom"
 
 const CUSTOM_AI_REPORT_PRICE = 3000
 
+function pdfTypeOf(kind: GenerationKind) {
+  return kind === "custom" ? "CUSTOM" : "BASE"
+}
+
 function messageOf(error: unknown, fallback = "AI 리포트를 불러오지 못했습니다.") {
   if (!(error instanceof ApiError)) return fallback
   if (error.code === "AI_REPORT_ROOM_NOT_CLOSED") {
@@ -246,7 +250,7 @@ export function AiReportPanel({
   }
 
   const generateReport = async (body: AiReportGenerateRequest) => {
-    if (roomStatus !== "CLOSED" || report?.status !== "COMPLETED" || submitting) return
+    if (roomStatus !== "CLOSED" || submitting) return
 
     setSubmitting(true)
     setError("")
@@ -334,7 +338,7 @@ export function AiReportPanel({
 
   const requestExistingReportPdf = async (kind: GenerationKind) => {
     if (roomStatus !== "CLOSED" || submitting) return
-    if (report?.pdf?.downloadAvailable) {
+    if (kind === "base" && report?.pdf?.downloadAvailable) {
       setChoiceOpen(false)
       setCustomChoiceOpen(false)
       setDownloadConfirmOpen(true)
@@ -346,9 +350,11 @@ export function AiReportPanel({
 
     try {
       rememberGenerationKind(kind)
-      const response = await aiReportApi.generate(roomId, { customPrompts: [] })
+      const pdf = await aiReportApi.requestPdf(roomId, pdfTypeOf(kind))
       if (!mountedRef.current) return
-      setReport(response)
+      if (pdf.downloadAvailable) {
+        setDownloadConfirmOpen(true)
+      }
       void loadReport(false)
       setChoiceOpen(false)
       setCustomChoiceOpen(false)
@@ -366,14 +372,14 @@ export function AiReportPanel({
     setDownloadConfirmOpen(true)
   }
 
-  const downloadPdf = async () => {
-    if (!report?.pdf?.downloadAvailable || downloadingPdf) return
+  const downloadPdf = async (kind: GenerationKind) => {
+    if (downloadingPdf) return
 
     setDownloadingPdf(true)
     setError("")
 
     try {
-      const response = await aiReportApi.downloadUrl(roomId)
+      const response = await aiReportApi.downloadUrl(roomId, pdfTypeOf(kind))
       if (!mountedRef.current) return
 
       const link = document.createElement("a")
@@ -428,7 +434,7 @@ export function AiReportPanel({
 
           <button
             type="button"
-            disabled={submitting || !baseReportCompleted}
+            disabled={submitting}
             onClick={() => {
               setChoiceOpen(false)
               if (customReportCompleted) {
@@ -598,24 +604,41 @@ export function AiReportPanel({
     }}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>AI 요약 리포트 PDF 다운로드</DialogTitle>
+          <DialogTitle>PDF 다운로드</DialogTitle>
           <DialogDescription>
-            요약 리포트 PDF를 다운로드 받으시겠습니까?
+            다운로드할 리포트 종류를 선택하세요.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <div className="space-y-2">
+          <Button
+            type="button"
+            variant="secondary"
+            className="w-full justify-start gap-2"
+            disabled={downloadingPdf}
+            onClick={() => void downloadPdf("base")}
+          >
+            {downloadingPdf ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+            기본 리포트 다운로드
+          </Button>
           <Button
             type="button"
             variant="outline"
+            className="w-full justify-start gap-2"
+            disabled={downloadingPdf || !customReportCompleted}
+            onClick={() => void downloadPdf("custom")}
+          >
+            {downloadingPdf ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+            커스텀 리포트 다운로드
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
             disabled={downloadingPdf}
             onClick={() => setDownloadConfirmOpen(false)}
           >
-            아니오
-          </Button>
-          <Button type="button" disabled={downloadingPdf} onClick={() => void downloadPdf()}>
-            {downloadingPdf && <Loader2 className="mr-2 size-4 animate-spin" />}
-            네
+            닫기
           </Button>
         </div>
       </DialogContent>
