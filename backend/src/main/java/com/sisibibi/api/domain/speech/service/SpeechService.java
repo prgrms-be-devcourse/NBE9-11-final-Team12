@@ -17,6 +17,7 @@ import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speechreaction.repository.SpeechReactionRepository;
 import com.sisibibi.api.domain.speechreaction.repository.projection.SpeechReactionSummaryProjection;
+import com.sisibibi.api.domain.user.repository.UserRepository;
 import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
@@ -45,6 +46,7 @@ public class SpeechService {
     private final RoomParticipantRepository roomParticipantRepository;
     private final SpeechRepository speechRepository;
     private final SpeechReactionRepository speechReactionRepository;
+    private final UserRepository userRepository;
     private final SpeakingQueuePersistenceService speakingQueuePersistenceService;
     private final ProfanityDetector profanityDetector;
     private final UserSanctionPolicyService userSanctionPolicyService;
@@ -115,12 +117,14 @@ public class SpeechService {
                 .toList();
         Map<Long, SpeechReactionSummaryProjection> reactionSummaries =
                 getReactionSummaries(pageSpeeches, userId);
+        Map<Long, String> authorNicknames = getAuthorNicknames(pageSpeeches);
         List<SpeechListRes> items = pageSpeeches.stream()
                 .map(speech -> {
                     SpeechReactionSummaryProjection summary =
                             reactionSummaries.get(speech.getId());
                     return SpeechListRes.from(
                             speech,
+                            authorNicknames.get(speech.getUserId()),
                             summary == null ? 0 : summary.getReactionCount(),
                             summary != null && summary.getMyReactionCount() > 0
                     );
@@ -129,6 +133,25 @@ public class SpeechService {
         Long nextCursor = hasNext ? items.get(items.size() - 1).speechId() : null;
 
         return new SpeechCursorPageRes(items, nextCursor, hasNext);
+    }
+
+    private Map<Long, String> getAuthorNicknames(List<Speech> speeches) {
+        if (speeches.isEmpty()) {
+            return Map.of();
+        }
+
+        List<Long> userIds = speeches.stream()
+                .map(Speech::getUserId)
+                .distinct()
+                .toList();
+
+        return userRepository.findAllById(userIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        user -> user.getId(),
+                        user -> user.getNickname(),
+                        (first, second) -> first
+                ));
     }
 
     @Transactional(readOnly = true)

@@ -110,6 +110,16 @@ function stageRequestStatusLabel(status: string) {
   }
 }
 
+function speakerName(speech: SpeechSummary) {
+  return speech.nickname?.trim() || `사용자 #${speech.userId}`
+}
+
+function avatarLabel(speech: SpeechSummary) {
+  const label = speech.nickname?.trim()
+  if (!label) return `U${speech.userId}`
+  return label.slice(0, 2).toUpperCase()
+}
+
 export function MainStage({
   roomId,
   liveEnabled = true,
@@ -1098,10 +1108,10 @@ export function MainStage({
                     ) : (
                       <>
                         <div className="flex items-center gap-2">
-                          <Avatar className="size-7"><AvatarFallback className="text-[10px]">U{speech.userId}</AvatarFallback></Avatar>
+                          <Avatar className="size-7"><AvatarFallback className="text-[10px]">{avatarLabel(speech)}</AvatarFallback></Avatar>
                           <div>
                             <div className="flex flex-wrap items-center gap-1.5">
-                              <p className="text-xs font-semibold">사용자 #{speech.userId}</p>
+                              <p className="text-xs font-semibold">{speakerName(speech)}</p>
                               <Badge variant="outline" className="text-[10px]">stance: {stanceLabel(speech.speakingStance)}</Badge>
                             </div>
                             <p className="text-[10px] text-muted-foreground">{new Date(speech.createdAt).toLocaleString("ko-KR")}</p>

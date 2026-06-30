@@ -165,6 +165,7 @@ class SpeechControllerTest {
                     10L,
                     1L,
                     2L,
+                    "김민준",
                     "찬성 의견",
                     SpeechStance.PRO,
                     SpeechStatus.SPEAKING,
@@ -178,6 +179,7 @@ class SpeechControllerTest {
                         .with(authPrincipal(2L)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[0].speechId").value(10))
+                .andExpect(jsonPath("$.data.items[0].nickname").value("김민준"))
                 .andExpect(jsonPath("$.data.items[0].stance").value("PRO"))
                 .andExpect(jsonPath("$.data.items[0].reactionCount").value(3))
                 .andExpect(jsonPath("$.data.items[0].reactedByMe").value(true))

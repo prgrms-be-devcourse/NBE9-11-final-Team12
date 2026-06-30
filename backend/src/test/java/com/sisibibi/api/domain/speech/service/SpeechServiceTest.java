@@ -20,6 +20,8 @@ import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speechreaction.repository.SpeechReactionRepository;
 import com.sisibibi.api.domain.speechreaction.repository.projection.SpeechReactionSummaryProjection;
+import com.sisibibi.api.domain.user.entity.User;
+import com.sisibibi.api.domain.user.repository.UserRepository;
 import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
@@ -59,6 +61,9 @@ class SpeechServiceTest {
 
     @Mock
     private SpeechReactionRepository speechReactionRepository;
+
+    @Mock
+    private UserRepository userRepository;
 
     @Mock
     private SpeakingQueuePersistenceService speakingQueuePersistenceService;
@@ -516,10 +521,17 @@ class SpeechServiceTest {
                 List.of(2L, 1L),
                 userId
         )).willReturn(List.of(firstSummary));
+        given(userRepository.findAllById(List.of(10L, 20L)))
+                .willReturn(List.of(
+                        user(10L, "김민준"),
+                        user(20L, "이서연")
+                ));
 
         SpeechCursorPageRes response = speechService.getSpeeches(roomId, userId, null, 2);
 
         assertThat(response.items()).extracting(SpeechListRes::speechId).containsExactly(2L, 1L);
+        assertThat(response.items()).extracting(SpeechListRes::nickname)
+                .containsExactly("김민준", "이서연");
         assertThat(response.items()).extracting(SpeechListRes::content)
                 .containsExactly("최신 의견", "이전 의견");
         assertThat(response.items()).extracting(SpeechListRes::reactionCount)
@@ -544,6 +556,8 @@ class SpeechServiceTest {
         )).willReturn(List.of(speech));
         given(speechReactionRepository.findReactionSummaries(List.of(3L), userId))
                 .willReturn(List.of());
+        given(userRepository.findAllById(List.of(20L)))
+                .willReturn(List.of(user(20L, "이서연")));
 
         SpeechCursorPageRes response = speechService.getSpeeches(roomId, userId, null, 1);
 
@@ -882,6 +896,12 @@ class SpeechServiceTest {
         Speech speech = Speech.createMainOpinion(roomId, userId, content, stance);
         ReflectionTestUtils.setField(speech, "id", speechId);
         return speech;
+    }
+
+    private User user(Long userId, String nickname) {
+        User user = User.signup("user-" + userId + "@sisibibi.test", "password", nickname);
+        ReflectionTestUtils.setField(user, "id", userId);
+        return user;
     }
 
     private void verifySpeechEventPublished(
