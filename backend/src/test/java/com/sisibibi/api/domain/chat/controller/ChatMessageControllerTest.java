@@ -1,6 +1,7 @@
 package com.sisibibi.api.domain.chat.controller;
 
 import com.sisibibi.api.ApiApplication;
+import com.sisibibi.api.domain.chat.dto.request.ChatMessageReq;
 import com.sisibibi.api.domain.chat.dto.response.ChatMessageCursorPageRes;
 import com.sisibibi.api.domain.chat.dto.response.ChatMessageRes;
 import com.sisibibi.api.domain.chat.service.ChatService;
@@ -16,15 +17,18 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.messaging.handler.annotation.support.MethodArgumentNotValidException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import org.springframework.validation.BeanPropertyBindingResult;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -149,6 +153,27 @@ class ChatMessageControllerTest {
         assertThat(response.getCode()).isEqualTo("CHAT_RATE_LIMIT_EXCEEDED");
         assertThat(response.getMessage()).isEqualTo(ErrorCode.CHAT_RATE_LIMIT_EXCEEDED.getMessage());
         assertThat(response.getData()).isNull();
+    }
+
+    @Test
+    void handleMessageValidationException_returnsWebSocketErrorResponse() {
+        ChatMessageController controller = new ChatMessageController(chatService);
+        BeanPropertyBindingResult bindingResult = new BeanPropertyBindingResult(
+                new ChatMessageReq(""),
+                "chatMessageReq"
+        );
+        bindingResult.rejectValue("content", "NotBlank", "메시지를 입력해주세요.");
+        MethodArgumentNotValidException exception = mock(MethodArgumentNotValidException.class);
+        given(exception.getBindingResult()).willReturn(bindingResult);
+
+        ApiResponse<java.util.Map<String, String>> response =
+                controller.handleMessageValidationException(exception);
+
+        assertThat(response.getStatus()).isEqualTo(ErrorCode.INVALID_INPUT_VALUE.getStatus().value());
+        assertThat(response.getCode()).isEqualTo("INVALID_INPUT_VALUE");
+        assertThat(response.getMessage()).isEqualTo(ErrorCode.INVALID_INPUT_VALUE.getMessage());
+        assertThat(response.getData())
+                .containsEntry("content", "메시지를 입력해주세요.");
     }
 
     private UsernamePasswordAuthenticationToken authToken(Long userId) {
