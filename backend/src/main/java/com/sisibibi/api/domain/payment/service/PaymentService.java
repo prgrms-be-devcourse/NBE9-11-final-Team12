@@ -66,6 +66,7 @@ public class PaymentService {
     return PaymentRes.from(payment);
   }
 
+  @Transactional
   public PaymentRes confirmPayment(Long userId, ConfirmPaymentReq request) {
     validatePaymentKeyNotUsedByAnotherOrder(userId, request);
 
