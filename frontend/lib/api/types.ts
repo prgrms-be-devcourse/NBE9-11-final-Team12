@@ -91,6 +91,27 @@ export type AiReportStatus =
   | "PENDING"
   | "FAILED"
 
+export type AiReportPdfStatus =
+  | "NOT_STARTED"
+  | "GENERATING"
+  | "READY"
+  | "FAILED"
+
+export type AiReportPdf = {
+  pdfExportId: number | null
+  pdfStatus: AiReportPdfStatus
+  notificationStatus: "NOT_SENT" | "SENT" | "FAILED"
+  downloadAvailable: boolean
+  lastErrorMessage: string | null
+  pdfGeneratedAt: string | null
+  notificationSentAt: string | null
+}
+
+export type AiReportPdfDownloadUrl = {
+  downloadUrl: string
+  expiresAt: string
+}
+
 export type AiReportCustomPrompt = {
   label?: string
   prompt: string
@@ -145,6 +166,7 @@ export type AiReport = {
   errorMessage: string | null
   requestedAt: string | null
   completedAt: string | null
+  pdf: AiReportPdf
 }
 
 export type RoomParticipantStatus = "JOINED" | "LEFT"

@@ -2,7 +2,8 @@ import json
 import logging
 import unittest
 
-from aireport.sqs_worker import AiReportSqsWorker, AiReportWorkerMessage
+from aireport.report_schema import AiReportModel
+from aireport.sqs_worker import AiReportSqsWorker, AiReportWorkerMessage, to_complete_payload
 
 
 def setUpModule():
@@ -41,11 +42,11 @@ class AiReportSqsWorkerTest(unittest.TestCase):
             queue_url="queue-url",
             backend_client=backend,
             generate_report=lambda payload: {
-                "핵심 주제": "core",
-                "핵심 쟁점": ["issue"],
-                "AI 종합 정리": "summary",
-                "공통 의견": "common",
-                "AI의 개인적 의견": "opinion",
+                _base_alias("core_line"): "core",
+                _base_alias("key_issues"): ["issue"],
+                _base_alias("ai_summary"): "summary",
+                _base_alias("common_ground"): "common",
+                _base_alias("ai_opinion"): "opinion",
                 "customReports": [],
             },
         )
@@ -58,6 +59,23 @@ class AiReportSqsWorkerTest(unittest.TestCase):
         self.assertEqual(backend.completed[0][1]["coreLine"], "core")
         self.assertEqual(sqs.deleted_receipts, ["receipt-1"])
         self.assertEqual(sqs.receive_args["AttributeNames"], ["ApproximateReceiveCount"])
+
+    def test_complete_payload_maps_validated_report_schema_aliases_to_backend_fields(self):
+        payload = to_complete_payload("BASE_ONLY", {
+            _base_alias("core_line"): "core",
+            _base_alias("key_issues"): ["issue"],
+            _base_alias("ai_summary"): "summary",
+            _base_alias("common_ground"): "common",
+            _base_alias("ai_opinion"): "opinion",
+            "customReports": [],
+        })
+
+        self.assertEqual(payload["generationType"], "BASE_ONLY")
+        self.assertEqual(payload["coreLine"], "core")
+        self.assertEqual(payload["keyIssues"], ["issue"])
+        self.assertEqual(payload["aiSummary"], "summary")
+        self.assertEqual(payload["commonGround"], "common")
+        self.assertEqual(payload["aiOpinion"], "opinion")
 
     def test_poll_once_keeps_message_when_generation_fails_first_time(self):
         sqs = _FakeSqsClient([
@@ -128,11 +146,11 @@ class AiReportSqsWorkerTest(unittest.TestCase):
             queue_url="queue-url",
             backend_client=backend,
             generate_report=lambda _payload: {
-                "핵심 주제": "core",
-                "핵심 쟁점": ["issue"],
-                "AI 종합 정리": "summary",
-                "공통 의견": "common",
-                "AI의 개인적 의견": "opinion",
+                _base_alias("core_line"): "core",
+                _base_alias("key_issues"): ["issue"],
+                _base_alias("ai_summary"): "summary",
+                _base_alias("common_ground"): "common",
+                _base_alias("ai_opinion"): "opinion",
             },
         )
 
@@ -263,6 +281,10 @@ def _sqs_message(body, receive_count=1):
             "ApproximateReceiveCount": str(receive_count),
         },
     }
+
+
+def _base_alias(field_name):
+    return AiReportModel.model_fields[field_name].alias
 
 
 if __name__ == "__main__":

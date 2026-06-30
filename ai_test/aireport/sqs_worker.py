@@ -6,17 +6,24 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
+from aireport.report_schema import AiReportModel
+
 
 logger = logging.getLogger(__name__)
 
 MAX_GENERATION_ATTEMPTS = 2
 
+BASE_REPORT_FIELDS = {
+    "core_line": "coreLine",
+    "key_issues": "keyIssues",
+    "ai_summary": "aiSummary",
+    "common_ground": "commonGround",
+    "ai_opinion": "aiOpinion",
+}
+
 BASE_REPORT_ALIASES = {
-    "핵심 주제": "coreLine",
-    "핵심 쟁점": "keyIssues",
-    "AI 종합 정리": "aiSummary",
-    "공통 의견": "commonGround",
-    "AI의 개인적 의견": "aiOpinion"
+    AiReportModel.model_fields[source_field].alias: target_field
+    for source_field, target_field in BASE_REPORT_FIELDS.items()
 }
 
 
@@ -152,7 +159,18 @@ class AiReportSqsWorker:
 
         try:
             # 4단계: 백엔드에 결과 전송 (/complete) 및 SQS 메시지 삭제
-            self.backend_client.complete(message.report_id, to_complete_payload(message.generation_type, report))
+            complete_payload = to_complete_payload(message.generation_type, report)
+            logger.info(
+                "AI report complete payload prepared. reportId=%s roomId=%s generationType=%s "
+                "baseFields=%s customReports=%s reportKeys=%s",
+                message.report_id,
+                message.room_id,
+                complete_payload.get("generationType"),
+                _base_field_presence(complete_payload),
+                len(complete_payload.get("customReports") or []),
+                list(report.keys()) if isinstance(report, dict) else type(report).__name__,
+            )
+            self.backend_client.complete(message.report_id, complete_payload)
             self._delete_message(receipt_handle)
             return True
         except Exception:
@@ -221,7 +239,17 @@ def to_complete_payload(generation_type, report):
     for source_key, target_key in BASE_REPORT_ALIASES.items():
         if source_key in report:
             payload[target_key] = report[source_key]
+    for target_key in BASE_REPORT_FIELDS.values():
+        if target_key in report:
+            payload[target_key] = report[target_key]
     return payload
+
+
+def _base_field_presence(payload):
+    return {
+        field: bool(payload.get(field))
+        for field in BASE_REPORT_FIELDS.values()
+    }
 
 
 def create_boto3_sqs_client(region_name):

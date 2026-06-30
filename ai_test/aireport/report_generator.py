@@ -64,23 +64,26 @@ class ReportGenerator:
             .replace("{{FEW_SHOT_EXAMPLES}}", self.few_shot_examples)
             .replace("{{DEBATE_JSON}}", prompt_input)
         )
-        self.prompt_security.check_final_prompt(prompt)
         return prompt
 
     def generate(self, debate):
         # 모델 응답은 사람이 읽는 설명이 아니라 백엔드가 저장하기 쉬운 JSON 객체여야 합니다.
         # 그래서 JSON 추출과 필수 필드 검증을 여기서 한 번에 수행합니다.
         prompt = self.build_prompt(debate)
+        logger.debug("AI report prompt (mode=%s):\n%s", self.last_prompt_mode, prompt)
         response = self.model_client.generate(prompt)
+        logger.info("AI report raw response (mode=%s):\n%s", self.last_prompt_mode, response)
         safe_response = None
         try:
-            safe_response = self.prompt_security.guard_output(response)
-            report = json.loads(_extract_json_object(safe_response))
-            return validate_report(
+            safe_response = response
+            report = json.loads(_extract_json_object(response))
+            validated = validate_report(
                 report,
                 require_base_report=_requires_base_report(self.last_normalized_request),
                 expected_custom_report_count=_expected_custom_report_count(self.last_normalized_request),
             )
+            logger.info("AI report validated output:\n%s", json.dumps(validated, ensure_ascii=False, indent=2))
+            return validated
         except PromptSecurityError as exc:
             self._write_debug_output(prompt, response, safe_response, exc)
             raise

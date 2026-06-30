@@ -146,7 +146,7 @@ class AiReportWorkerCallbackServiceTest {
     }
 
     @Test
-    void completeCustomOnly_doesNotPublishPdfEvent() {
+    void completeCustomOnly_publishesPdfEventForRequesterExport_afterCustomReportCompletes() {
         AiReport report = reportWithId(AiReport.requested(10L), 55L);
         report.complete(new com.sisibibi.api.domain.report.client.dto.AiReportGenerateRes(
                 "base core", List.of("base issue"), "base summary", "base common", "base opinion"
@@ -154,14 +154,17 @@ class AiReportWorkerCallbackServiceTest {
         report.requestCustomReports(List.of(new AiReportCustomPrompt(7L, "custom 1", "minority view")));
         report.markQueued();
         report.markProcessing(LocalDateTime.of(2026, 6, 25, 12, 0), Duration.ofMinutes(5));
+        AiReportPdfExport export = AiReportPdfExport.notStarted(55L, 10L, 7L);
+        ReflectionTestUtils.setField(export, "id", 99L);
         given(aiReportRepository.findByIdForUpdate(55L)).willReturn(Optional.of(report));
+        given(aiReportPdfExportRepository.findByAiReportId(55L)).willReturn(List.of(export));
 
         callbackService.complete(55L, new AiReportWorkerCompleteReq(
                 AiReportGenerationType.CUSTOM_ONLY, null, List.of(), null, null, null,
                 List.of(new com.sisibibi.api.domain.report.client.dto.AiReportCustomReportPayload("custom result", "custom content"))
         ));
 
-        verify(outboxWriter, never()).record(anyLong(), any(LocalDateTime.class));
+        verify(outboxWriter).record(eq(99L), any(LocalDateTime.class));
     }
 
     @Test
