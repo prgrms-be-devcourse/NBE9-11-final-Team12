@@ -69,7 +69,7 @@ class AiReportPdfCommandServiceTest {
 
     @Test
     void requestPdf_createsSeparateExportForRequestedPdfType() {
-        AiReport report = completedReport(10L, 1L);
+        AiReport report = completedReportWithCustom(10L, 1L, 7L);
         AiReportPdfExport export = AiReportPdfExport.notStarted(10L, 1L, 7L, AiReportPdfType.CUSTOM);
         ReflectionTestUtils.setField(export, "id", 99L);
         given(aiReportRepository.findByRoomId(1L)).willReturn(Optional.of(report));

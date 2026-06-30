@@ -181,7 +181,12 @@ class AiReportWorkerCallbackServiceTest {
         AiReport report = reportWithId(AiReport.requested(10L), 55L);
         report.markQueued();
         report.markProcessing(LocalDateTime.of(2026, 6, 25, 12, 0), Duration.ofMinutes(5));
-        AiReportPdfExport export = AiReportPdfExport.notStarted(55L, 10L, 7L);
+        AiReportPdfExport export = AiReportPdfExport.notStarted(
+                55L,
+                10L,
+                7L,
+                com.sisibibi.api.domain.report.entity.AiReportPdfType.BASE
+        );
         ReflectionTestUtils.setField(export, "id", 99L);
         given(aiReportRepository.findByIdForUpdate(55L)).willReturn(Optional.of(report));
         given(aiReportPdfExportRepository.findByAiReportId(55L)).willReturn(List.of(export));
@@ -202,7 +207,12 @@ class AiReportWorkerCallbackServiceTest {
         report.requestCustomReports(List.of(new AiReportCustomPrompt(7L, "custom 1", "minority view")));
         report.markQueued();
         report.markProcessing(LocalDateTime.of(2026, 6, 25, 12, 0), Duration.ofMinutes(5));
-        AiReportPdfExport export = AiReportPdfExport.notStarted(55L, 10L, 7L);
+        AiReportPdfExport export = AiReportPdfExport.notStarted(
+                55L,
+                10L,
+                7L,
+                com.sisibibi.api.domain.report.entity.AiReportPdfType.CUSTOM
+        );
         ReflectionTestUtils.setField(export, "id", 99L);
         given(aiReportRepository.findByIdForUpdate(55L)).willReturn(Optional.of(report));
         given(aiReportPdfExportRepository.findByAiReportId(55L)).willReturn(List.of(export));
