@@ -110,6 +110,7 @@ class SpeechServiceTest {
                 SpeechStance.PRO,
                 assignedAt.minusMinutes(1)
         );
+        ReflectionTestUtils.setField(currentSpeaker, "id", 30L);
         currentSpeaker.assign(assignedAt, assignedAt.plusMinutes(3));
         Room room = org.mockito.Mockito.mock(Room.class);
         given(room.isActiveAt(org.mockito.ArgumentMatchers.any(LocalDateTime.class)))
@@ -144,8 +145,10 @@ class SpeechServiceTest {
         assertThat(savedSpeech.getContent()).isEqualTo("근거가 있는 찬성 의견입니다.");
         assertThat(savedSpeech.getStance()).isEqualTo(SpeechStance.PRO);
         assertThat(savedSpeech.getSpeakingStance()).isEqualTo(SpeechStance.PRO);
+        assertThat(savedSpeech.getSpeakingQueueId()).isEqualTo(30L);
         assertThat(savedSpeech.getStatus()).isEqualTo(SpeechStatus.SPEAKING);
         assertThat(savedSpeech.getStartedAt()).isEqualTo(assignedAt);
+        assertThat(response.speakingQueueId()).isEqualTo(30L);
         assertThat(response.speakingStance()).isEqualTo(SpeechStance.PRO);
         assertThat(response.status()).isEqualTo(SpeechStatus.SPEAKING);
         verify(speakingQueuePersistenceService).validateCurrentSpeaker(roomId, userId);

@@ -137,12 +137,17 @@ type SpeechGroupTimelineItem = {
   type: "speech-group"
   key: string
   occurredAt: string
-  userId: number
+  turnKey: string
   speeches: SpeechSummary[]
 }
 
 type TimelineSourceItem = SpeechTimelineItem | SummaryTimelineItem
 type TimelineItem = SpeechGroupTimelineItem | SummaryTimelineItem
+
+function speechTurnKey(speech: SpeechSummary) {
+  if (speech.speakingQueueId == null) return `speech-${speech.speechId}`
+  return `speaking-queue-${speech.speakingQueueId}`
+}
 
 function groupTimelineItems(items: TimelineSourceItem[]): TimelineItem[] {
   return items.reduce<TimelineItem[]>((groups, item) => {
@@ -152,12 +157,10 @@ function groupTimelineItems(items: TimelineSourceItem[]): TimelineItem[] {
     }
 
     const previous = groups[groups.length - 1]
-    const previousFirstSpeech = previous?.type === "speech-group" ? previous.speeches[0] : null
+    const turnKey = speechTurnKey(item.speech)
     const canJoinPrevious =
       previous?.type === "speech-group" &&
-      previous.userId === item.speech.userId &&
-      !previousFirstSpeech?.deleted &&
-      !item.speech.deleted
+      previous.turnKey === turnKey
 
     if (canJoinPrevious) {
       previous.speeches.push(item.speech)
@@ -166,9 +169,9 @@ function groupTimelineItems(items: TimelineSourceItem[]): TimelineItem[] {
 
     groups.push({
       type: "speech-group",
-      key: `speech-group-${item.speech.userId}-${item.speech.speechId}`,
+      key: `speech-group-${turnKey}`,
       occurredAt: item.occurredAt,
-      userId: item.speech.userId,
+      turnKey,
       speeches: [item.speech],
     })
     return groups

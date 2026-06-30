@@ -87,7 +87,8 @@ public class SpeechService {
                 command.content(),
                 command.stance(),
                 currentSpeaker.getStance(),
-                currentSpeaker.getAssignedAt()
+                currentSpeaker.getAssignedAt(),
+                currentSpeaker.getId()
         );
 
         Speech savedSpeech = speechRepository.save(speech);

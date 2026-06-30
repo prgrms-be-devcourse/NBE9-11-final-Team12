@@ -217,6 +217,7 @@ export type SpeechSummary = {
   speechId: number
   roomId: number
   userId: number
+  speakingQueueId: number | null
   nickname: string | null
   content: string
   stance: SpeechStance | null
