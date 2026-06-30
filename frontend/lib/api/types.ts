@@ -217,6 +217,8 @@ export type SpeechSummary = {
   speechId: number
   roomId: number
   userId: number
+  speakingQueueId: number | null
+  nickname: string | null
   content: string
   stance: SpeechStance | null
   speakingStance: SpeechStance | null
@@ -240,7 +242,7 @@ export type SpeechDetail = SpeechSummary & {
 
 export type SpeechCreateResponse = Omit<
   SpeechSummary,
-  "createdAt" | "imageUrl" | "deleted" | "deleteReason" | "deletedAt" | "reactionCount" | "reactedByMe"
+  "nickname" | "createdAt" | "imageUrl" | "deleted" | "deleteReason" | "deletedAt" | "reactionCount" | "reactedByMe"
 >
 
 export type SpeechImageUploadUrl = {
