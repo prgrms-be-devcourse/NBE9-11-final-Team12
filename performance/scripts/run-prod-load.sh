@@ -4,6 +4,18 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 K6_SCRIPT="$ROOT_DIR/performance/k6/target-scale-mixed-limit.js"
 
+calculate_estimated_http_rps() {
+  local read_rate="$1"
+  local write_rate="$2"
+  local stage_rate="$3"
+
+  # target-scale-mixed-limit.js 기준:
+  # read iteration 1회 = HTTP GET 9개
+  # write iteration 1회 = HTTP 약 2~3개
+  # stage iteration 1회 = HTTP POST 1개
+  echo $((read_rate * 9 + write_rate * 3 + stage_rate))
+}
+
 if [[ -z "${BASE_URL:-}" ]]; then
   cat <<'MSG' >&2
 BASE_URL이 필요합니다.
@@ -78,7 +90,7 @@ WS_MAX_DURATION="${WS_MAX_DURATION:-12m}"
 CONNECTION_DURATION_SECONDS="${CONNECTION_DURATION_SECONDS:-60}"
 MESSAGE_INTERVAL_SECONDS="${MESSAGE_INTERVAL_SECONDS:-5}"
 
-ESTIMATED_HTTP_RPS=$((READ_RATE * 9 + WRITE_RATE * 3 + STAGE_RATE))
+ESTIMATED_HTTP_RPS="$(calculate_estimated_http_rps "$READ_RATE" "$WRITE_RATE" "$STAGE_RATE")"
 
 cat <<MSG
 [performance] 운영 부하 테스트 실행

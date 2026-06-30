@@ -23,7 +23,6 @@ DB_NAME="${DB_NAME:-sisibibi}"
 DB_USERNAME="${DB_USERNAME:-root}"
 DB_PASSWORD="${DB_PASSWORD:-root}"
 MYSQL_BIN="${MYSQL_BIN:-mysql}"
-export MYSQL_PWD="$DB_PASSWORD"
 
 if ! command -v "$MYSQL_BIN" >/dev/null 2>&1; then
   cat <<MSG >&2
@@ -33,6 +32,17 @@ mysql client를 찾을 수 없습니다.
 MSG
   exit 1
 fi
+
+MYSQL_DEFAULTS_FILE="$(mktemp)"
+cleanup_mysql_defaults_file() {
+  rm -f "$MYSQL_DEFAULTS_FILE"
+}
+trap cleanup_mysql_defaults_file EXIT
+chmod 600 "$MYSQL_DEFAULTS_FILE"
+cat > "$MYSQL_DEFAULTS_FILE" <<MYSQL_DEFAULTS
+[client]
+password=$DB_PASSWORD
+MYSQL_DEFAULTS
 
 cat <<MSG
 [performance] 테스트 데이터 준비 시작
@@ -44,6 +54,7 @@ cat <<MSG
 MSG
 
 "$MYSQL_BIN" \
+  --defaults-extra-file="$MYSQL_DEFAULTS_FILE" \
   --host="$DB_HOST" \
   --port="$DB_PORT" \
   --user="$DB_USERNAME" \
@@ -52,6 +63,7 @@ MSG
   || { echo "[performance] cleanup failed" >&2; exit 1; }
 
 "$MYSQL_BIN" \
+  --defaults-extra-file="$MYSQL_DEFAULTS_FILE" \
   --host="$DB_HOST" \
   --port="$DB_PORT" \
   --user="$DB_USERNAME" \
