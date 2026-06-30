@@ -97,6 +97,7 @@ public class AiReportWorkerCallbackService {
         if (request.generationType() == AiReportGenerationType.CUSTOM_ONLY) {
             validateCustomReports(response, report.getCustomPrompts().size());
             report.completeCustomReports(response);
+            recordPdfGenerationEvents(report);
             return AiReportRes.from(report);
         }
 
@@ -107,10 +108,7 @@ public class AiReportWorkerCallbackService {
 
         report.complete(response);
 
-        LocalDateTime now = LocalDateTime.now();
-        aiReportPdfExportRepository.findByAiReportId(report.getId()).stream()
-                .filter(export -> export.shouldStartGeneration())
-                .forEach(export -> outboxWriter.record(export.getId(), now));
+        recordPdfGenerationEvents(report);
 
         return AiReportRes.from(report);
     }
@@ -144,6 +142,13 @@ public class AiReportWorkerCallbackService {
         if (!response.hasCustomReports(expectedCount)) {
             throw new CustomException(ErrorCode.AI_REPORT_INVALID_RESPONSE);
         }
+    }
+
+    private void recordPdfGenerationEvents(AiReport report) {
+        LocalDateTime now = LocalDateTime.now();
+        aiReportPdfExportRepository.findByAiReportId(report.getId()).stream()
+                .filter(export -> export.shouldStartGeneration())
+                .forEach(export -> outboxWriter.record(export.getId(), now));
     }
 
     private AiReportGenerateReq buildRequest(

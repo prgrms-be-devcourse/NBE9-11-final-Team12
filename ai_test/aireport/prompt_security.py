@@ -1,5 +1,7 @@
 import json
+import logging
 import os
+import time
 from dataclasses import dataclass, field
 from typing import Any
 from urllib import request as urllib_request
@@ -7,6 +9,9 @@ from urllib import request as urllib_request
 
 BLOCKING_SEVERITIES = {"HIGH", "CRITICAL"}
 SEVERITY_ORDER = {"SAFE": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
+DEFAULT_HTTP_TIMEOUT_SECONDS = 30
+
+logger = logging.getLogger(__name__)
 
 
 class PromptSecurityError(ValueError):
@@ -61,7 +66,7 @@ class LocalPromptGuard:
 
 
 class HttpPromptGuard:
-    def __init__(self, base_url, timeout=5, urlopen=None):
+    def __init__(self, base_url, timeout=DEFAULT_HTTP_TIMEOUT_SECONDS, urlopen=None):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.urlopen = urlopen or urllib_request.urlopen
@@ -81,10 +86,16 @@ class HttpPromptGuard:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
+        started_at = time.perf_counter()
         try:
             with self.urlopen(request, timeout=self.timeout) as response:
-                return json.loads(response.read().decode("utf-8"))
+                payload = json.loads(response.read().decode("utf-8"))
+                elapsed = time.perf_counter() - started_at
+                logger.info("Prompt Guard HTTP %s completed in %.2fs", scan_type, elapsed)
+                return payload
         except Exception as exc:
+            elapsed = time.perf_counter() - started_at
+            logger.warning("Prompt Guard HTTP %s failed after %.2fs", scan_type, elapsed)
             raise PromptSecurityError(f"Prompt Guard HTTP {scan_type} failed") from exc
 
 
@@ -124,11 +135,21 @@ class PromptSecurityService:
 def _default_guard():
     base_url = os.getenv("PROMPT_GUARD_BASE_URL") or os.getenv("AI_REPORT_PROMPT_GUARD_BASE_URL")
     if base_url:
-        return HttpPromptGuard(base_url)
+        return HttpPromptGuard(base_url, timeout=_prompt_guard_timeout_seconds())
     try:
         return LocalPromptGuard()
     except RuntimeError:
         return NoOpPromptGuard()
+
+
+def _prompt_guard_timeout_seconds():
+    raw_value = os.getenv("PROMPT_GUARD_TIMEOUT_SECONDS") or os.getenv("AI_REPORT_PROMPT_GUARD_TIMEOUT_SECONDS")
+    if not raw_value:
+        return DEFAULT_HTTP_TIMEOUT_SECONDS
+    try:
+        return float(raw_value)
+    except ValueError as exc:
+        raise RuntimeError("Prompt Guard timeout must be a number of seconds.") from exc
 
 
 def _scan_response_to_result(payload):

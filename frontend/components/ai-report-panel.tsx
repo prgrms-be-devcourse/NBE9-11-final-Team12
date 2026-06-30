@@ -1,9 +1,10 @@
 "use client"
 
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
-import { BarChart3, Loader2, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react"
+import { BarChart3, Download, FileText, Loader2, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react"
 import { ApiError } from "@/lib/api/client"
 import { aiReportApi, paymentApi } from "@/lib/api/services"
+import { getAiReportProgressActionState } from "@/lib/ai-report-progress"
 import { requestTossCardPayment } from "@/lib/toss-payments"
 import type { AiReport, AiReportGenerateRequest } from "@/lib/api/types"
 import { Badge } from "@/components/ui/badge"
@@ -16,6 +17,7 @@ type CustomPromptDraft = {
   id: number
   prompt: string
 }
+type GenerationKind = "base" | "custom"
 
 const CUSTOM_AI_REPORT_PRICE = 3000
 
@@ -80,6 +82,53 @@ function ReportSection({
   )
 }
 
+function AiReportProgressAction({
+  report,
+  generationKind,
+  downloading,
+  onDownloadClick,
+}: {
+  report: AiReport | null
+  generationKind: GenerationKind | null
+  downloading: boolean
+  onDownloadClick: () => void
+}) {
+  const state = getAiReportProgressActionState(report, generationKind)
+  if (!state) return null
+
+  const icon = state.clickable
+    ? <Download className="size-3.5" />
+    : state.busy
+      ? <Loader2 className="size-3.5 animate-spin" />
+      : <FileText className="size-3.5" />
+
+  if (state.clickable) {
+    return (
+      <Button
+        type="button"
+        size="sm"
+        variant="secondary"
+        className="w-full gap-1.5 text-xs"
+        disabled={downloading}
+        onClick={onDownloadClick}
+      >
+        {downloading ? <Loader2 className="size-3.5 animate-spin" /> : icon}
+        {state.label}
+      </Button>
+    )
+  }
+
+  return (
+    <div
+      className="flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-border bg-muted/50 px-3 text-xs font-medium text-muted-foreground"
+      aria-live="polite"
+    >
+      {icon}
+      {state.label}
+    </div>
+  )
+}
+
 export function AiReportPanel({
   roomId,
   roomStatus,
@@ -93,13 +142,25 @@ export function AiReportPanel({
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
-  const [generateOpen, setGenerateOpen] = useState(false)
+  const [choiceOpen, setChoiceOpen] = useState(false)
+  const [baseConfirmOpen, setBaseConfirmOpen] = useState(false)
+  const [customOpen, setCustomOpen] = useState(false)
+  const [customChoiceOpen, setCustomChoiceOpen] = useState(false)
+  const [downloadConfirmOpen, setDownloadConfirmOpen] = useState(false)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
+  const [generationKind, setGenerationKind] = useState<GenerationKind | null>(null)
   const [customPrompts, setCustomPrompts] = useState<CustomPromptDraft[]>([
     { id: 1, prompt: "" },
   ])
   const requestSeqRef = useRef(0)
   const mountedRef = useRef(false)
   const nextPromptIdRef = useRef(2)
+  const generationStorageKey = `ai-report-generation-kind:${roomId}`
+
+  const rememberGenerationKind = useCallback((kind: GenerationKind) => {
+    setGenerationKind(kind)
+    window.localStorage.setItem(generationStorageKey, kind)
+  }, [generationStorageKey])
 
   const loadReport = useCallback(async (showLoading = true) => {
     if (roomStatus !== "CLOSED") {
@@ -133,16 +194,23 @@ export function AiReportPanel({
 
   useEffect(() => {
     mountedRef.current = true
+    const storedKind = window.localStorage.getItem(generationStorageKey)
+    if (storedKind === "base" || storedKind === "custom") {
+      setGenerationKind(storedKind)
+    }
     void loadReport()
 
     return () => {
       mountedRef.current = false
       requestSeqRef.current += 1
     }
-  }, [loadReport])
+  }, [generationStorageKey, loadReport])
 
   useEffect(() => {
-    if (roomStatus !== "CLOSED" || (report && !isReportInProgress(report.status))) return
+    const pdfInProgress = report?.pdf?.pdfExportId
+      && !report.pdf.downloadAvailable
+      && report.pdf.pdfStatus !== "FAILED"
+    if (roomStatus !== "CLOSED" || (report && !isReportInProgress(report.status) && !pdfInProgress)) return
 
     const intervalId = window.setInterval(() => {
       void loadReport(false)
@@ -158,15 +226,23 @@ export function AiReportPanel({
 
   const closeGenerateDialog = () => {
     if (submitting) return
-    setGenerateOpen(false)
+    setCustomOpen(false)
     resetGenerateDialog()
   }
 
-  const openGenerateDialog = () => {
-    if (roomStatus !== "CLOSED" || report?.status !== "COMPLETED" || submitting) return
+  const openChoiceDialog = () => {
+    if (roomStatus !== "CLOSED" || submitting) return
+    setError("")
+    setChoiceOpen(true)
+  }
+
+  const openCustomPromptDialog = () => {
+    if (submitting) return
     setError("")
     resetGenerateDialog()
-    setGenerateOpen(true)
+    setCustomChoiceOpen(false)
+    setChoiceOpen(false)
+    setCustomOpen(true)
   }
 
   const generateReport = async (body: AiReportGenerateRequest) => {
@@ -176,6 +252,7 @@ export function AiReportPanel({
     setError("")
 
     try {
+      rememberGenerationKind("custom")
       const payment = await paymentApi.createCustomAiReportPayment({
         roomId,
         amount: CUSTOM_AI_REPORT_PRICE,
@@ -233,17 +310,221 @@ export function AiReportPanel({
     void generateReport({ customPrompts: customPromptBody })
   }
 
+  const requestBaseReport = async () => {
+    if (roomStatus !== "CLOSED" || submitting) return
+
+    setSubmitting(true)
+    setError("")
+
+    try {
+      rememberGenerationKind("base")
+      const response = await aiReportApi.generate(roomId, { customPrompts: [] })
+      if (!mountedRef.current) return
+      setReport(response)
+      void loadReport(false)
+      setChoiceOpen(false)
+      setBaseConfirmOpen(false)
+    } catch (requestError) {
+      if (!mountedRef.current) return
+      setError(messageOf(requestError, "기본 AI 요약 리포트 생성 요청에 실패했습니다."))
+    } finally {
+      if (mountedRef.current) setSubmitting(false)
+    }
+  }
+
+  const requestExistingReportPdf = async (kind: GenerationKind) => {
+    if (roomStatus !== "CLOSED" || submitting) return
+    if (report?.pdf?.downloadAvailable) {
+      setChoiceOpen(false)
+      setCustomChoiceOpen(false)
+      setDownloadConfirmOpen(true)
+      return
+    }
+
+    setSubmitting(true)
+    setError("")
+
+    try {
+      rememberGenerationKind(kind)
+      const response = await aiReportApi.generate(roomId, { customPrompts: [] })
+      if (!mountedRef.current) return
+      setReport(response)
+      void loadReport(false)
+      setChoiceOpen(false)
+      setCustomChoiceOpen(false)
+    } catch (requestError) {
+      if (!mountedRef.current) return
+      setError(messageOf(requestError, "AI 요약 리포트 PDF 준비 요청에 실패했습니다."))
+    } finally {
+      if (mountedRef.current) setSubmitting(false)
+    }
+  }
+
+  const openDownloadConfirm = () => {
+    if (!report?.pdf?.downloadAvailable || downloadingPdf) return
+    setError("")
+    setDownloadConfirmOpen(true)
+  }
+
+  const downloadPdf = async () => {
+    if (!report?.pdf?.downloadAvailable || downloadingPdf) return
+
+    setDownloadingPdf(true)
+    setError("")
+
+    try {
+      const response = await aiReportApi.downloadUrl(roomId)
+      if (!mountedRef.current) return
+
+      const link = document.createElement("a")
+      link.href = response.downloadUrl
+      link.rel = "noreferrer"
+      link.click()
+      setDownloadConfirmOpen(false)
+    } catch (requestError) {
+      if (!mountedRef.current) return
+      setError(messageOf(requestError, "AI 요약 리포트 PDF 다운로드 URL을 발급하지 못했습니다."))
+    } finally {
+      if (mountedRef.current) setDownloadingPdf(false)
+    }
+  }
+
+  const baseReportCompleted = report?.status === "COMPLETED"
+  const customReportCompleted = baseReportCompleted && report.customReports.length > 0
+  const progressState = getAiReportProgressActionState(report, generationKind)
+
+  const choiceDialog = (
+    <Dialog open={choiceOpen} onOpenChange={setChoiceOpen}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>AI 요약 리포트 생성</DialogTitle>
+          <DialogDescription>
+            생성할 리포트 종류를 선택하세요.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => {
+              if (baseReportCompleted) {
+                void requestExistingReportPdf("base")
+                return
+              }
+              setChoiceOpen(false)
+              setBaseConfirmOpen(true)
+            }}
+            className="rounded-lg border border-border bg-background p-4 text-left transition-colors hover:border-primary disabled:opacity-60"
+          >
+            <span className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
+              <FileText className="size-4 text-primary" />
+              {baseReportCompleted ? "기본 리포트 다운로드" : "기본 리포트 생성"}
+            </span>
+            <span className="block text-xs leading-relaxed text-muted-foreground">
+              토론방에서 나눈 의견을 요약하여 핵심적인 정보를 추출한 리포트를 생성합니다. 생성에는 시간이 소요되며 생성 완료 시 이메일로 알림이 발송됩니다.
+            </span>
+          </button>
+
+          <button
+            type="button"
+            disabled={submitting || !baseReportCompleted}
+            onClick={() => {
+              setChoiceOpen(false)
+              if (customReportCompleted) {
+                setCustomChoiceOpen(true)
+                return
+              }
+              openCustomPromptDialog()
+            }}
+            className="rounded-lg border border-border bg-background p-4 text-left transition-colors hover:border-primary disabled:opacity-60"
+          >
+            <span className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
+              <Sparkles className="size-4 text-primary" />
+              {customReportCompleted ? "커스텀 리포트 다운로드" : "커스텀 리포트 생성"}
+            </span>
+            <span className="block text-xs leading-relaxed text-muted-foreground">
+              기본 리포트와 더불어 원하시는 내용으로 정리된 커스텀 리포트가 생성됩니다. 프롬프트를 입력하여 나만의 요약 리포트를 만들어보세요
+            </span>
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+
+  const baseConfirmDialog = (
+    <Dialog open={baseConfirmOpen} onOpenChange={(open) => {
+      if (submitting) return
+      setBaseConfirmOpen(open)
+    }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>기본 리포트 생성</DialogTitle>
+          <DialogDescription>
+            기본 리포트 생성 하시겠습니까?
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="outline" disabled={submitting} onClick={() => setBaseConfirmOpen(false)}>
+            닫기
+          </Button>
+          <Button type="button" disabled={submitting} onClick={() => void requestBaseReport()}>
+            {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
+            확인
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+
+  const customChoiceDialog = (
+    <Dialog open={customChoiceOpen} onOpenChange={setCustomChoiceOpen}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>커스텀 리포트</DialogTitle>
+          <DialogDescription>
+            기존 리포트를 다운로드하거나 새 커스텀 리포트를 생성할 수 있습니다.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-2">
+          <Button
+            type="button"
+            variant="secondary"
+            className="w-full justify-start gap-2"
+            disabled={submitting}
+            onClick={() => void requestExistingReportPdf("custom")}
+          >
+            <Download className="size-4" />
+            기존 커스텀 다운로드
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full justify-start gap-2"
+            disabled={submitting}
+            onClick={openCustomPromptDialog}
+          >
+            <Plus className="size-4" />
+            새 커스텀 리포트 생성하기
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+
   const generateDialog = (
-    <Dialog open={generateOpen} onOpenChange={(open) => {
+    <Dialog open={customOpen} onOpenChange={(open) => {
       if (open) {
-        setGenerateOpen(true)
+        setCustomOpen(true)
         return
       }
       closeGenerateDialog()
     }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>커스텀 AI 리포트 생성</DialogTitle>
+          <DialogTitle>커스텀 리포트 생성</DialogTitle>
           <DialogDescription>
             기본 AI 요약본을 바탕으로 추가로 궁금한 내용을 요청합니다.
           </DialogDescription>
@@ -302,7 +583,7 @@ export function AiReportPanel({
               onClick={submitCustomReport}
             >
               {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
-              생성 요청
+              확인
             </Button>
           </div>
         </div>
@@ -310,23 +591,58 @@ export function AiReportPanel({
     </Dialog>
   )
 
+  const downloadDialog = (
+    <Dialog open={downloadConfirmOpen} onOpenChange={(open) => {
+      if (downloadingPdf) return
+      setDownloadConfirmOpen(open)
+    }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>AI 요약 리포트 PDF 다운로드</DialogTitle>
+          <DialogDescription>
+            요약 리포트 PDF를 다운로드 받으시겠습니까?
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={downloadingPdf}
+            onClick={() => setDownloadConfirmOpen(false)}
+          >
+            아니오
+          </Button>
+          <Button type="button" disabled={downloadingPdf} onClick={() => void downloadPdf()}>
+            {downloadingPdf && <Loader2 className="mr-2 size-4 animate-spin" />}
+            네
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+
   if (roomStatus !== "CLOSED") {
     return (
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <BarChart3 className="size-4 text-muted-foreground" />
-            AI 요약 리포트
-          </CardTitle>
-          <CardDescription className="text-xs">
-            토론 종료 후 AI 요약 리포트가 자동으로 생성됩니다.
-          </CardDescription>
-        </CardHeader>
-      </Card>
+      <>
+        <Card size="sm">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <BarChart3 className="size-4 text-muted-foreground" />
+              AI 요약 리포트
+            </CardTitle>
+            <CardDescription className="text-xs">
+              토론 종료 후 AI 요약 리포트를 생성할 수 있습니다.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+        {downloadDialog}
+      </>
     )
   }
 
-  const statusBadge = report?.status ? (
+  const showStatusBadge = report?.status && (!isReportInProgress(report.status) || Boolean(progressState))
+  const statusBadge = showStatusBadge ? (
     <Badge variant={report.status === "COMPLETED" ? "secondary" : "outline"} className="text-[10px]">
       {statusLabel(report.status)}
     </Badge>
@@ -334,21 +650,39 @@ export function AiReportPanel({
 
   const waitingMessage = (
     <div className="space-y-2">
-      <p className="flex items-center gap-2 text-xs leading-relaxed text-muted-foreground">
-        <Loader2 className="size-3.5 animate-spin text-primary" />
-        기본 AI 요약 리포트가 자동 생성 중입니다.
-      </p>
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        className="w-full gap-1.5 text-xs"
-        disabled={loading}
-        onClick={() => loadReport()}
-      >
-        {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
-        상태 새로고침
-      </Button>
+      {progressState ? (
+        <>
+          <AiReportProgressAction
+            report={report}
+            generationKind={generationKind}
+            downloading={downloadingPdf}
+            onDownloadClick={openDownloadConfirm}
+          />
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="w-full gap-1.5 text-xs"
+            disabled={loading}
+            onClick={() => loadReport()}
+          >
+            {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+            상태 새로고침
+          </Button>
+        </>
+      ) : (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="w-full gap-1.5 text-xs"
+          disabled={submitting}
+          onClick={openChoiceDialog}
+        >
+          {submitting ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+          AI 요약 리포트 생성
+        </Button>
+      )}
     </div>
   )
 
@@ -368,6 +702,12 @@ export function AiReportPanel({
         {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
         상태 새로고침
       </Button>
+      <AiReportProgressAction
+        report={report}
+        generationKind={generationKind}
+        downloading={downloadingPdf}
+        onDownloadClick={openDownloadConfirm}
+      />
     </div>
   ) : null
 
@@ -402,14 +742,28 @@ export function AiReportPanel({
                 리포트 생성 완료
                 {report.completedAt ? ` · ${new Date(report.completedAt).toLocaleString("ko-KR")}` : ""}
               </p>
-              <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs" disabled={submitting} onClick={openGenerateDialog}>
-                {submitting ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
-                커스텀 리포트 추가
-              </Button>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs" disabled={submitting} onClick={openChoiceDialog}>
+                  {submitting ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+                  AI 요약 리포트 생성
+                </Button>
+                {progressState && (
+                  <AiReportProgressAction
+                    report={report}
+                    generationKind={generationKind}
+                    downloading={downloadingPdf}
+                    onDownloadClick={openDownloadConfirm}
+                  />
+                )}
+              </div>
             </div>
           )}
         </div>
+        {choiceDialog}
+        {baseConfirmDialog}
+        {customChoiceDialog}
         {generateDialog}
+        {downloadDialog}
       </>
     )
   }
@@ -424,9 +778,9 @@ export function AiReportPanel({
                 <BarChart3 className="size-4 text-primary" />
                 AI 요약 리포트
               </CardTitle>
-              <CardDescription className="text-xs">
-                종료된 토론 내용을 바탕으로 기본 요약 리포트를 자동 생성합니다.
-              </CardDescription>
+            <CardDescription className="text-xs">
+              종료된 토론 내용을 바탕으로 AI 요약 리포트를 생성합니다.
+            </CardDescription>
             </div>
             {statusBadge}
           </div>
@@ -509,10 +863,20 @@ export function AiReportPanel({
                 </ReportSection>
               )}
 
-              <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs" disabled={submitting} onClick={openGenerateDialog}>
-                {submitting ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
-                커스텀 리포트 추가
-              </Button>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs" disabled={submitting} onClick={openChoiceDialog}>
+                  {submitting ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+                  AI 요약 리포트 생성
+                </Button>
+                {progressState && (
+                  <AiReportProgressAction
+                    report={report}
+                    generationKind={generationKind}
+                    downloading={downloadingPdf}
+                    onDownloadClick={openDownloadConfirm}
+                  />
+                )}
+              </div>
 
               {report.completedAt && (
                 <p className="text-[11px] text-muted-foreground">
@@ -523,7 +887,11 @@ export function AiReportPanel({
           )}
         </CardContent>
       </Card>
+      {choiceDialog}
+      {baseConfirmDialog}
+      {customChoiceDialog}
       {generateDialog}
+      {downloadDialog}
     </>
   )
 }

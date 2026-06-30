@@ -96,12 +96,12 @@ public class LocalDataInitializer implements ApplicationRunner {
 
         List<User> allUsers = List.of(u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11, u12, u13, u14);
 
-        // ── 진행중: AI와 일자리 (활발한 토론, 30분 남음) ──
+        // ── 진행중: AI와 일자리 (활발한 토론, 1분 남음) ──
         Room roomAiJobs = findOrCreateRoom(
                 findOrCreateTopic(TOPIC_AI_JOBS,
                         "자동화·딥러닝이 고용 시장에 미치는 영향과 정책 대응을 토론합니다.",
                         "AI·기술", "https://example.com/ai-jobs"),
-                now.minusMinutes(30), now.plusMinutes(30));
+                now.minusMinutes(30), now.plusSeconds(30));
 
         join(roomAiJobs, u1); join(roomAiJobs, u2); join(roomAiJobs, u3);
         join(roomAiJobs, u4); join(roomAiJobs, u5); join(roomAiJobs, u6);
@@ -145,6 +145,8 @@ public class LocalDataInitializer implements ApplicationRunner {
 
         seedSpeakingQueue(roomAiJobs, u5, List.of(u6), now);
         seedReport(roomAiJobs, s2, u4, SpeechReportReason.MISINFORMATION, "인용된 통계 출처가 불명확합니다.");
+        completeSpeechesForRoom(roomAiJobs, List.of(u1, u2, u3, u4), now.minusMinutes(5));
+
         seedReactions(s1, List.of(u2, u3, u4, u6, u7));
         seedReactions(s2, List.of(u1, u5, u7));
         seedReactions(s3, List.of(u2, u4, u5));
@@ -185,6 +187,8 @@ public class LocalDataInitializer implements ApplicationRunner {
                 msg(u10, "저는 중간 입장인데 오늘 논의로 생각이 정리됐어요. 좋은 토론이었습니다."),
                 msg(u5, "마무리 발언 준비해야겠네요.")
         ));
+
+        completeSpeechesForRoom(roomCarbonTax, List.of(u5, u6, u8), now.minusMinutes(2));
 
         seedSpeakingQueue(roomCarbonTax, u9, List.of(), now);
         seedReactions(s5, List.of(u6, u8, u9, u10));

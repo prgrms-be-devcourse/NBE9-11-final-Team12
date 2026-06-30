@@ -9,8 +9,10 @@ import com.sisibibi.api.domain.report.client.dto.AiReportSpeechPayload;
 import com.sisibibi.api.domain.report.client.dto.AiReportTopicPayload;
 import com.sisibibi.api.domain.report.dto.response.AiReportRes;
 import com.sisibibi.api.domain.report.entity.AiReport;
+import com.sisibibi.api.domain.report.entity.AiReportPdfExport;
 import com.sisibibi.api.domain.report.entity.AiReportCustomPrompt;
 import com.sisibibi.api.domain.report.prompt.CustomPromptCommand;
+import com.sisibibi.api.domain.report.repository.AiReportPdfExportRepository;
 import com.sisibibi.api.domain.report.repository.AiReportRepository;
 import com.sisibibi.api.domain.room.entity.Room;
 import com.sisibibi.api.domain.room.entity.RoomStatus;
@@ -39,6 +41,7 @@ public class AiReportPersistenceService {
     private final TopicRepository topicRepository;
     private final SpeechRepository speechRepository;
     private final AiReportRepository aiReportRepository;
+    private final AiReportPdfExportRepository aiReportPdfExportRepository;
 
     @Transactional
     public AiReportRequestResult requestGeneration(Long roomId, Long userId, List<CustomPromptCommand> customPrompts) {
@@ -204,8 +207,6 @@ public class AiReportPersistenceService {
 
         report.requestCustomReports(toSnapshots(userId, customPrompts));
 
-        report.requestCustomReports(toSnapshots(userId, customPrompts));
-
         return AiReportRequestResult.publish(
             AiReportRes.from(report, userId),
             AiReportGenerationType.CUSTOM_ONLY
@@ -271,8 +272,18 @@ public class AiReportPersistenceService {
 
     public AiReportRes getReport(Long roomId, Long userId) {
         return aiReportRepository.findByRoomId(roomId)
-                .map(report -> AiReportRes.from(report, userId))
+                .map(report -> AiReportRes.from(report, userId, findPdfExport(report, userId)))
                 .orElseThrow(() -> new CustomException(ErrorCode.AI_REPORT_NOT_FOUND));
+    }
+
+    private AiReportPdfExport findPdfExport(AiReport report, Long userId) {
+        if (userId == null || report.getId() == null) {
+            return null;
+        }
+
+        return aiReportPdfExportRepository
+                .findByAiReportIdAndRequestedByUserId(report.getId(), userId)
+                .orElse(null);
     }
 
     private AiReportGenerateReq buildRequest(

@@ -89,19 +89,22 @@ class AiReportServiceTest {
     }
 
     @Test
-    void generateReport_rejectsEmptyCustomPrompt_withoutPublishingEvent() {
+    void generateReport_publishesBaseOnlyEvent_whenRequestHasNoCustomPrompt() {
         AiReportGenerateReq request = AiReportGenerateReq.empty();
+        AiReportRes requested = requestedResponse();
 
         given(customPromptValidator.normalizeAndScan(request)).willReturn(List.of());
-        given(aiReportPersistenceService.requestCustomGeneration(10L, 7L, List.of()))
-            .willThrow(new CustomException(ErrorCode.AI_REPORT_CUSTOM_PROMPT_REQUIRED));
+        given(aiReportPersistenceService.requestGeneration(10L, 7L, List.of()))
+                .willReturn(AiReportRequestResult.publish(requested, AiReportGenerationType.BASE_ONLY));
 
-        assertThatThrownBy(() -> aiReportService.generateReport(10L, 7L, request))
-            .isInstanceOf(CustomException.class)
-            .extracting("errorCode")
-            .isEqualTo(ErrorCode.AI_REPORT_CUSTOM_PROMPT_REQUIRED);
+        AiReportRes result = aiReportService.generateReport(10L, 7L, request);
 
-        verify(eventPublisher, never()).publishEvent(any(AiReportGenerationRequestedEvent.class));
+        ArgumentCaptor<AiReportGenerationRequestedEvent> eventCaptor =
+                ArgumentCaptor.forClass(AiReportGenerationRequestedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+
+        assertThat(result.status()).isEqualTo("REQUESTED");
+        assertThat(eventCaptor.getValue().generationType()).isEqualTo(AiReportGenerationType.BASE_ONLY);
     }
 
     @Test
@@ -145,7 +148,7 @@ class AiReportServiceTest {
     @Test
     void generateReport_createsRequesterPdfExport() {
         AiReportRes requested = requestedResponse();
-        given(aiReportPersistenceService.requestCustomGeneration(10L, 7L, List.of()))
+        given(aiReportPersistenceService.requestGeneration(10L, 7L, List.of()))
                 .willReturn(AiReportRequestResult.publish(requested, AiReportGenerationType.BASE_ONLY));
 
         aiReportService.generateReport(10L, 7L, AiReportGenerateReq.empty());
@@ -158,7 +161,7 @@ class AiReportServiceTest {
         AiReportRes completed = new AiReportRes(55L, 10L, "COMPLETED", null, List.of(), null, null, null, null, null, null);
         AiReportPdfExport export = AiReportPdfExport.notStarted(55L, 10L, 7L);
         ReflectionTestUtils.setField(export, "id", 77L);
-        given(aiReportPersistenceService.requestCustomGeneration(10L, 7L, List.of()))
+        given(aiReportPersistenceService.requestGeneration(10L, 7L, List.of()))
                 .willReturn(AiReportRequestResult.skip(completed));
         given(aiReportPdfPersistenceService.createIfMissing(55L, 10L, 7L)).willReturn(export);
 
