@@ -63,7 +63,18 @@ public class SpeakingQueueService {
         );
         synchronizeWaitingRedisProjection(saved);
         publishStageChanged(StageEventType.SPEAKING_REQUESTED, saved);
-        return StageRequestRes.from(saved);
+        return assignImmediatelyIfStageEmpty(saved);
+    }
+
+    private StageRequestRes assignImmediatelyIfStageEmpty(SpeakingQueue saved) {
+        if (speakingQueuePersistenceService.hasAssignedSpeaker(saved.getRoomId())) {
+            return StageRequestRes.from(saved);
+        }
+
+        return tryAssignNextSpeaker(saved.getRoomId())
+                .filter(assigned -> assigned.getUserId().equals(saved.getUserId()))
+                .map(StageRequestRes::from)
+                .orElseGet(() -> StageRequestRes.from(saved));
     }
 
     public Optional<SpeakingQueue> assignNextSpeaker(Long roomId) {
