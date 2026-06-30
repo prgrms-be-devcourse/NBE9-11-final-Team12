@@ -15,4 +15,11 @@ class PromptGuardPropertiesTest {
         assertThat(properties.getConnectTimeout()).isEqualTo(Duration.ofMillis(500));
         assertThat(properties.getReadTimeout()).isEqualTo(Duration.ofMillis(1000));
     }
+
+    @Test
+    void defaultCustomPromptMaxCountMatchesProductPolicy() {
+        PromptGuardProperties properties = new PromptGuardProperties();
+
+        assertThat(properties.getCustomPromptMaxCount()).isEqualTo(3);
+    }
 }

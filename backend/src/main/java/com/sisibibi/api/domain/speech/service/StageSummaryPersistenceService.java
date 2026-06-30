@@ -36,6 +36,23 @@ public class StageSummaryPersistenceService {
             int minCompletedSpeakerCount,
             int maxAttempts
     ) {
+        return prepareGeneration(
+                roomId,
+                now,
+                minCompletedSpeakerCount,
+                maxAttempts,
+                null
+        );
+    }
+
+    @Transactional
+    public StageSummaryGenerationContext prepareGeneration(
+            Long roomId,
+            LocalDateTime now,
+            int minCompletedSpeakerCount,
+            int maxAttempts,
+            Duration pendingAttemptTimeout
+    ) {
         Room room = roomRepository.findByIdForUpdate(roomId)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROOM_NOT_FOUND));
 
@@ -52,11 +69,9 @@ public class StageSummaryPersistenceService {
         StageSummary summary = stageSummaryRepository.findByRoomIdForUpdate(roomId)
                 .orElse(null);
         if (summary != null) {
-            if (summary.shouldSkipGeneration() || !summary.canRetry(maxAttempts)) {
+            if (!prepareExistingSummaryForGeneration(summary, now, maxAttempts, pendingAttemptTimeout)) {
                 return StageSummaryGenerationContext.skip();
             }
-
-            summary.markPendingForRetry();
         } else {
             summary = StageSummary.pending(
                     roomId,
@@ -73,6 +88,27 @@ public class StageSummaryPersistenceService {
                 speechRepository.findStageSummarySourceSpeeches(roomId, summary.getTriggeredAt());
 
         return StageSummaryGenerationContext.callAi(summary.getId(), room, speeches);
+    }
+
+    private boolean prepareExistingSummaryForGeneration(
+            StageSummary summary,
+            LocalDateTime now,
+            int maxAttempts,
+            Duration pendingAttemptTimeout
+    ) {
+        if (summary.shouldSkipGeneration()) {
+            if (!summary.isPendingAttemptStale(now, pendingAttemptTimeout)) {
+                return false;
+            }
+            summary.fail("Stage summary generation attempt became stale.");
+        }
+
+        if (!summary.canRetry(maxAttempts)) {
+            return false;
+        }
+
+        summary.markPendingForRetry();
+        return true;
     }
 
     @Transactional

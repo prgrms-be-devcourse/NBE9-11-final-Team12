@@ -121,12 +121,14 @@ public class CustomPromptValidator {
                 return;
             }
 
+            log.warn("Prompt guard unavailable. failOpen=false, promptHash={}", hashPrompt(prompt), e);
             throw e instanceof CustomException
                     ? e
                     : new CustomException(ErrorCode.PROMPT_GUARD_UNAVAILABLE);
         }
 
         if (result == null) {
+            log.warn("Prompt guard unavailable. failOpen=false, reason=null-result, promptHash={}", hashPrompt(prompt));
             throw new CustomException(ErrorCode.PROMPT_GUARD_UNAVAILABLE);
         }
 

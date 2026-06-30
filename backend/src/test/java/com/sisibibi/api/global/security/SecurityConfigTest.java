@@ -1,6 +1,9 @@
 package com.sisibibi.api.global.security;
 
 import com.sisibibi.api.ApiApplication;
+import com.sisibibi.api.domain.report.prompt.PromptGuardResult;
+import com.sisibibi.api.domain.report.prompt.PromptGuardService;
+import com.sisibibi.api.domain.report.prompt.PromptSeverity;
 import com.sisibibi.api.global.response.ApiResponse;
 import com.sisibibi.api.global.security.cookie.AuthCookieProvider;
 import com.sisibibi.api.global.security.jwt.JwtTokenProvider;
@@ -23,6 +26,7 @@ import jakarta.servlet.http.Cookie;
 
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.containsString;
+import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -50,6 +54,9 @@ class SecurityConfigTest {
 
     @MockitoBean
     private TokenSessionValidator tokenSessionValidator;
+
+    @MockitoBean
+    private PromptGuardService promptGuardService;
 
     @Test
     void protectedApi_returnsApiResponse401WithoutAuthentication() throws Exception {
@@ -137,6 +144,9 @@ class SecurityConfigTest {
 
     @Test
     void actuatorHealth_isPublic() throws Exception {
+        given(promptGuardService.scan("prompt guard health check"))
+                .willReturn(PromptGuardResult.allowed(PromptSeverity.SAFE, "test health"));
+
         mockMvc.perform(get("/actuator/health"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status", is("UP")));

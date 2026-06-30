@@ -8,6 +8,7 @@ import com.sisibibi.api.domain.report.entity.AiReportCustomReport;
 import com.sisibibi.api.domain.report.entity.AiReportCustomPrompt;
 import com.sisibibi.api.domain.report.entity.AiReport;
 import com.sisibibi.api.domain.report.entity.AiReportPdfExport;
+import com.sisibibi.api.domain.report.entity.AiReportPdfType;
 import com.sisibibi.api.domain.report.entity.AiReportStatus;
 import com.sisibibi.api.domain.report.prompt.CustomPromptCommand;
 import com.sisibibi.api.domain.report.repository.AiReportPdfExportRepository;
@@ -401,7 +402,7 @@ class AiReportPersistenceServiceTest {
         ReflectionTestUtils.setField(export, "id", 99L);
 
         given(aiReportRepository.findByRoomId(10L)).willReturn(Optional.of(report));
-        given(aiReportPdfExportRepository.findByAiReportIdAndRequestedByUserId(55L, 7L))
+        given(aiReportPdfExportRepository.findByAiReportIdAndRequestedByUserIdAndPdfType(55L, 7L, AiReportPdfType.BASE))
                 .willReturn(Optional.of(export));
 
         AiReportRes result = aiReportPersistenceService.getReport(10L, 7L);

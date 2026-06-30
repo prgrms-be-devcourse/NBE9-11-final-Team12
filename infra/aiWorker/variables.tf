@@ -10,6 +10,16 @@ variable "region" {
   default     = "ap-northeast-2"
 }
 
+variable "personal_aws_access_key_id" {
+  type      = string
+  sensitive = true
+}
+
+variable "personal_aws_secret_access_key" {
+  type      = string
+  sensitive = true
+}
+
 variable "vpc_cidr" {
   description = "CIDR block for AI Worker VPC"
   type        = string

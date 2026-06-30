@@ -3,6 +3,7 @@ package com.sisibibi.api.domain.report.controller;
 import com.sisibibi.api.domain.report.dto.response.AiReportPdfDownloadUrlRes;
 import com.sisibibi.api.domain.report.dto.response.AiReportPdfStatusRes;
 import com.sisibibi.api.domain.report.dto.response.AiReportStatusRes;
+import com.sisibibi.api.domain.report.entity.AiReportPdfType;
 import com.sisibibi.api.domain.report.service.AiReportPdfCommandService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
@@ -52,9 +53,9 @@ class AiReportPdfControllerTest {
     void requestPdf_returnsPdfStatus_whenAuthenticated() {
         AuthPrincipal principal = new AuthPrincipal(7L, "user7@example.com", "USER");
         AiReportPdfStatusRes pdfStatus = AiReportPdfStatusRes.notStarted();
-        given(commandService.requestPdf(1L, 7L)).willReturn(pdfStatus);
+        given(commandService.requestPdf(1L, 7L, AiReportPdfType.BASE)).willReturn(pdfStatus);
 
-        ResponseEntity<ApiResponse<AiReportPdfStatusRes>> response = controller.requestPdf(1L, principal);
+        ResponseEntity<ApiResponse<AiReportPdfStatusRes>> response = controller.requestPdf(1L, AiReportPdfType.BASE, principal);
 
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getData().pdfStatus()).isEqualTo("NOT_STARTED");
@@ -62,7 +63,7 @@ class AiReportPdfControllerTest {
 
     @Test
     void requestPdf_throwsUnauthorized_whenPrincipalIsMissing() {
-        assertThatThrownBy(() -> controller.requestPdf(1L, null))
+        assertThatThrownBy(() -> controller.requestPdf(1L, AiReportPdfType.BASE, null))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.UNAUTHORIZED);
@@ -74,9 +75,9 @@ class AiReportPdfControllerTest {
         AiReportPdfDownloadUrlRes urlRes = new AiReportPdfDownloadUrlRes(
                 "https://s3.example.com/presigned", Instant.parse("2026-06-28T12:11:10Z")
         );
-        given(commandService.createDownloadUrl(1L, 7L)).willReturn(urlRes);
+        given(commandService.createDownloadUrl(1L, 7L, AiReportPdfType.BASE)).willReturn(urlRes);
 
-        ResponseEntity<ApiResponse<AiReportPdfDownloadUrlRes>> response = controller.getDownloadUrl(1L, principal);
+        ResponseEntity<ApiResponse<AiReportPdfDownloadUrlRes>> response = controller.getDownloadUrl(1L, AiReportPdfType.BASE, principal);
 
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getData().downloadUrl()).isEqualTo("https://s3.example.com/presigned");
@@ -84,7 +85,7 @@ class AiReportPdfControllerTest {
 
     @Test
     void getDownloadUrl_throwsUnauthorized_whenPrincipalIsMissing() {
-        assertThatThrownBy(() -> controller.getDownloadUrl(1L, null))
+        assertThatThrownBy(() -> controller.getDownloadUrl(1L, AiReportPdfType.BASE, null))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.UNAUTHORIZED);

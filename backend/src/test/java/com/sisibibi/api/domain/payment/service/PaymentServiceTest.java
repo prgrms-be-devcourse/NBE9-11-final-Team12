@@ -11,13 +11,10 @@ import com.sisibibi.api.domain.payment.entity.PaymentStatus;
 import com.sisibibi.api.domain.payment.entity.PaymentTargetType;
 import com.sisibibi.api.domain.payment.repository.CustomAiReportRequestRepository;
 import com.sisibibi.api.domain.payment.repository.PaymentRepository;
-import com.sisibibi.api.domain.report.client.dto.AiReportGenerateRes;
 import com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq;
-import com.sisibibi.api.domain.report.entity.AiReport;
 import com.sisibibi.api.domain.report.entity.AiReportCustomPrompt;
 import com.sisibibi.api.domain.report.prompt.CustomPromptCommand;
 import com.sisibibi.api.domain.report.prompt.CustomPromptValidator;
-import com.sisibibi.api.domain.report.repository.AiReportRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,9 +45,6 @@ class PaymentServiceTest {
   private CustomAiReportRequestRepository customAiReportRequestRepository;
 
   @Mock
-  private AiReportRepository aiReportRepository;
-
-  @Mock
   private CustomPromptValidator customPromptValidator;
 
   @Mock
@@ -66,7 +60,6 @@ class PaymentServiceTest {
     paymentService = new PaymentService(
         paymentRepository,
         customAiReportRequestRepository,
-        aiReportRepository,
         customPromptValidator,
         paymentClient,
         paymentCompletionService
@@ -74,10 +67,9 @@ class PaymentServiceTest {
   }
 
   @Test
-  void createCustomAiReportPayment_createsPendingPayment_whenBaseReportCompletedAndAmountValid() {
+  void createCustomAiReportPayment_createsPendingPayment_whenAmountValid() {
     Long userId = 7L;
     Long roomId = 10L;
-    AiReport report = completedAiReport(roomId);
 
     CreateCustomAiReportPaymentReq request = new CreateCustomAiReportPaymentReq(
         roomId,
@@ -85,7 +77,6 @@ class PaymentServiceTest {
         List.of(new AiReportGenerateReq.CustomPromptReq("custom 1", "summarize my view"))
     );
 
-    given(aiReportRepository.findByRoomId(roomId)).willReturn(Optional.of(report));
     given(customPromptValidator.normalizeAndScan(any(AiReportGenerateReq.class)))
         .willReturn(List.of(new CustomPromptCommand("custom 1", "summarize my view")));
     given(customAiReportRequestRepository.save(any(CustomAiReportRequest.class)))
@@ -134,8 +125,6 @@ class PaymentServiceTest {
         1L,
         List.of(new AiReportGenerateReq.CustomPromptReq("custom 1", "cheap request"))
     );
-
-    given(aiReportRepository.findByRoomId(10L)).willReturn(Optional.of(completedAiReport(10L)));
 
     assertThatThrownBy(() -> paymentService.createCustomAiReportPayment(7L, request))
         .isInstanceOf(CustomException.class)
@@ -209,19 +198,6 @@ class PaymentServiceTest {
 
     verify(paymentClient, never()).confirm(any(), any(), any(Long.class));
     verify(paymentCompletionService, never()).completePayment(any(), any());
-  }
-
-  private AiReport completedAiReport(Long roomId) {
-    AiReport report = AiReport.requested(roomId);
-    ReflectionTestUtils.setField(report, "id", 55L);
-    report.complete(new AiReportGenerateRes(
-        "core",
-        List.of("issue"),
-        "summary",
-        "common",
-        "opinion"
-    ));
-    return report;
   }
 
   private Payment pendingPayment(Long id, Long userId, String orderId, long amount, Long targetId) {
