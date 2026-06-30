@@ -30,6 +30,18 @@ performance/
         └── auth.js
 ```
 
+
+## 운영 서버 부하 테스트
+
+운영 서버 기준 부하 테스트는 별도 가이드를 따른다.
+
+- 실행 가이드: [production-load-test-guide.md](./production-load-test-guide.md)
+- 데이터 준비: `performance/scripts/prepare-load-data.sh`
+- 단계별 실행: `performance/scripts/run-prod-load.sh`
+- 데이터 삭제: `performance/scripts/cleanup-load-data.sh`
+
+운영 서버에서는 `smoke → baseline → half → target → spike` 순서로만 진행하고, 중단 기준을 넘으면 즉시 종료한다.
+
 ## 로컬 실행 전 준비
 
 로컬 성능 테스트는 운영 서버 부하 테스트 전에 수행한다.

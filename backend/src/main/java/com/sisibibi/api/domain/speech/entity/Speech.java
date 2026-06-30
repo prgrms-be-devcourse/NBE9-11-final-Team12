@@ -32,6 +32,10 @@ import java.time.LocalDateTime;
                 @Index(
                         name = "idx_speeches_user_deleted",
                         columnList = "user_id, is_deleted"
+                ),
+                @Index(
+                        name = "idx_speeches_speaking_queue",
+                        columnList = "speaking_queue_id"
                 )
         }
 )
@@ -47,6 +51,9 @@ public class Speech {
 
     @Column(name = "user_id", nullable = false)
     private Long userId;
+
+    @Column(name = "speaking_queue_id")
+    private Long speakingQueueId;
 
     @Column(nullable = false, columnDefinition = "TEXT")
     private String content;
@@ -97,10 +104,12 @@ public class Speech {
             Long userId,
             String content,
             SpeechStance stance,
-            SpeechStance speakingStance
+            SpeechStance speakingStance,
+            Long speakingQueueId
     ) {
         this.roomId = roomId;
         this.userId = userId;
+        this.speakingQueueId = speakingQueueId;
         this.content = content;
         this.stance = stance;
         this.speakingStance = speakingStance;
@@ -114,7 +123,7 @@ public class Speech {
             String content,
             SpeechStance stance
     ) {
-        return new Speech(roomId, userId, content, stance, stance);
+        return new Speech(roomId, userId, content, stance, stance, null);
     }
 
     public static Speech createMainOpinion(
@@ -123,9 +132,17 @@ public class Speech {
             String content,
             SpeechStance stance,
             SpeechStance speakingStance,
-            LocalDateTime startedAt
+            LocalDateTime startedAt,
+            Long speakingQueueId
     ) {
-        Speech speech = new Speech(roomId, userId, content, stance, speakingStance);
+        Speech speech = new Speech(
+                roomId,
+                userId,
+                content,
+                stance,
+                speakingStance,
+                speakingQueueId
+        );
         speech.startedAt = startedAt;
         return speech;
     }

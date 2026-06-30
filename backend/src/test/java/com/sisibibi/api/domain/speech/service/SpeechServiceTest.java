@@ -20,6 +20,7 @@ import com.sisibibi.api.domain.speech.entity.SpeechStatus;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speechreaction.repository.SpeechReactionRepository;
 import com.sisibibi.api.domain.speechreaction.repository.projection.SpeechReactionSummaryProjection;
+import com.sisibibi.api.domain.user.repository.UserRepository;
 import com.sisibibi.api.domain.usersanction.service.UserSanctionPolicyService;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
@@ -59,6 +60,9 @@ class SpeechServiceTest {
 
     @Mock
     private SpeechReactionRepository speechReactionRepository;
+
+    @Mock
+    private UserRepository userRepository;
 
     @Mock
     private SpeakingQueuePersistenceService speakingQueuePersistenceService;
@@ -105,6 +109,7 @@ class SpeechServiceTest {
                 SpeechStance.PRO,
                 assignedAt.minusMinutes(1)
         );
+        ReflectionTestUtils.setField(currentSpeaker, "id", 30L);
         currentSpeaker.assign(assignedAt, assignedAt.plusMinutes(3));
         Room room = org.mockito.Mockito.mock(Room.class);
         given(room.isActiveAt(org.mockito.ArgumentMatchers.any(LocalDateTime.class)))
@@ -139,8 +144,10 @@ class SpeechServiceTest {
         assertThat(savedSpeech.getContent()).isEqualTo("근거가 있는 찬성 의견입니다.");
         assertThat(savedSpeech.getStance()).isEqualTo(SpeechStance.PRO);
         assertThat(savedSpeech.getSpeakingStance()).isEqualTo(SpeechStance.PRO);
+        assertThat(savedSpeech.getSpeakingQueueId()).isEqualTo(30L);
         assertThat(savedSpeech.getStatus()).isEqualTo(SpeechStatus.SPEAKING);
         assertThat(savedSpeech.getStartedAt()).isEqualTo(assignedAt);
+        assertThat(response.speakingQueueId()).isEqualTo(30L);
         assertThat(response.speakingStance()).isEqualTo(SpeechStance.PRO);
         assertThat(response.status()).isEqualTo(SpeechStatus.SPEAKING);
         verify(speakingQueuePersistenceService).validateCurrentSpeaker(roomId, userId);
@@ -516,10 +523,17 @@ class SpeechServiceTest {
                 List.of(2L, 1L),
                 userId
         )).willReturn(List.of(firstSummary));
+        given(userRepository.findNicknamesByIdIn(List.of(10L, 20L)))
+                .willReturn(List.of(
+                        userNickname(10L, "김민준"),
+                        userNickname(20L, "이서연")
+                ));
 
         SpeechCursorPageRes response = speechService.getSpeeches(roomId, userId, null, 2);
 
         assertThat(response.items()).extracting(SpeechListRes::speechId).containsExactly(2L, 1L);
+        assertThat(response.items()).extracting(SpeechListRes::nickname)
+                .containsExactly("김민준", "이서연");
         assertThat(response.items()).extracting(SpeechListRes::content)
                 .containsExactly("최신 의견", "이전 의견");
         assertThat(response.items()).extracting(SpeechListRes::reactionCount)
@@ -544,6 +558,8 @@ class SpeechServiceTest {
         )).willReturn(List.of(speech));
         given(speechReactionRepository.findReactionSummaries(List.of(3L), userId))
                 .willReturn(List.of());
+        given(userRepository.findNicknamesByIdIn(List.of(20L)))
+                .willReturn(List.of(userNickname(20L, "이서연")));
 
         SpeechCursorPageRes response = speechService.getSpeeches(roomId, userId, null, 1);
 
@@ -882,6 +898,20 @@ class SpeechServiceTest {
         Speech speech = Speech.createMainOpinion(roomId, userId, content, stance);
         ReflectionTestUtils.setField(speech, "id", speechId);
         return speech;
+    }
+
+    private UserRepository.UserNicknameProjection userNickname(Long userId, String nickname) {
+        return new UserRepository.UserNicknameProjection() {
+            @Override
+            public Long getId() {
+                return userId;
+            }
+
+            @Override
+            public String getNickname() {
+                return nickname;
+            }
+        };
     }
 
     private void verifySpeechEventPublished(

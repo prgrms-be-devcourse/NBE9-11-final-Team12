@@ -11,6 +11,8 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 public interface UserRepository extends JpaRepository<User, Long> {
@@ -24,6 +26,14 @@ public interface UserRepository extends JpaRepository<User, Long> {
             where user.id = :userId
             """)
     Optional<UserSessionProjection> findSessionById(@Param("userId") Long userId);
+
+    @Query("""
+            select user.id as id,
+                   user.nickname as nickname
+            from User user
+            where user.id in :userIds
+            """)
+    List<UserNicknameProjection> findNicknamesByIdIn(@Param("userIds") Collection<Long> userIds);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select user from User user where user.id = :userId")
@@ -50,5 +60,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
         UserStatus getStatus();
 
         Long getTokenVersion();
+    }
+
+    interface UserNicknameProjection {
+
+        Long getId();
+
+        String getNickname();
     }
 }

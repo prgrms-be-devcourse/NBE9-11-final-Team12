@@ -66,6 +66,7 @@ class SpeechControllerTest {
                         10L,
                         1L,
                         2L,
+                        30L,
                         "근거가 있는 찬성 의견입니다.",
                         SpeechStance.PRO,
                         SpeechStance.PRO,
@@ -165,6 +166,8 @@ class SpeechControllerTest {
                     10L,
                     1L,
                     2L,
+                    30L,
+                    "김민준",
                     "찬성 의견",
                     SpeechStance.PRO,
                     SpeechStatus.SPEAKING,
@@ -178,6 +181,8 @@ class SpeechControllerTest {
                         .with(authPrincipal(2L)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[0].speechId").value(10))
+                .andExpect(jsonPath("$.data.items[0].speakingQueueId").value(30))
+                .andExpect(jsonPath("$.data.items[0].nickname").value("김민준"))
                 .andExpect(jsonPath("$.data.items[0].stance").value("PRO"))
                 .andExpect(jsonPath("$.data.items[0].reactionCount").value(3))
                 .andExpect(jsonPath("$.data.items[0].reactedByMe").value(true))
@@ -199,6 +204,7 @@ class SpeechControllerTest {
                 10L,
                 1L,
                 2L,
+                30L,
                 "상세 의견",
                 SpeechStance.CON,
                 "https://example.com/evidence",
@@ -236,6 +242,7 @@ class SpeechControllerTest {
                 10L,
                 1L,
                 2L,
+                null,
                 "수정된 의견",
                 SpeechStance.PRO,
                 null,
@@ -327,6 +334,7 @@ class SpeechControllerTest {
                         10L,
                         1L,
                         2L,
+                        null,
                         "의견",
                         SpeechStance.PRO,
                         "https://example.com/evidence",

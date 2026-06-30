@@ -110,6 +110,74 @@ function stageRequestStatusLabel(status: string) {
   }
 }
 
+function speakerName(speech: SpeechSummary) {
+  return speech.nickname?.trim() || `사용자 #${speech.userId}`
+}
+
+function avatarLabel(speech: SpeechSummary) {
+  const label = speech.nickname?.trim()
+  if (!label) return `U${speech.userId}`
+  return label.slice(0, 2).toUpperCase()
+}
+
+type SpeechTimelineItem = {
+  type: "speech"
+  key: string
+  occurredAt: string
+  speech: SpeechSummary
+}
+
+type SummaryTimelineItem = {
+  type: "summary"
+  key: string
+  occurredAt: string
+}
+
+type SpeechGroupTimelineItem = {
+  type: "speech-group"
+  key: string
+  occurredAt: string
+  turnKey: string
+  speeches: SpeechSummary[]
+}
+
+type TimelineSourceItem = SpeechTimelineItem | SummaryTimelineItem
+type TimelineItem = SpeechGroupTimelineItem | SummaryTimelineItem
+
+function speechTurnKey(speech: SpeechSummary) {
+  if (speech.speakingQueueId == null) return `speech-${speech.speechId}`
+  return `speaking-queue-${speech.speakingQueueId}`
+}
+
+function groupTimelineItems(items: TimelineSourceItem[]): TimelineItem[] {
+  return items.reduce<TimelineItem[]>((groups, item) => {
+    if (item.type === "summary") {
+      groups.push(item)
+      return groups
+    }
+
+    const previous = groups[groups.length - 1]
+    const turnKey = speechTurnKey(item.speech)
+    const canJoinPrevious =
+      previous?.type === "speech-group" &&
+      previous.turnKey === turnKey
+
+    if (canJoinPrevious) {
+      previous.speeches.push(item.speech)
+      return groups
+    }
+
+    groups.push({
+      type: "speech-group",
+      key: `speech-group-${turnKey}`,
+      occurredAt: item.occurredAt,
+      turnKey,
+      speeches: [item.speech],
+    })
+    return groups
+  }, [])
+}
+
 export function MainStage({
   roomId,
   liveEnabled = true,
@@ -775,7 +843,7 @@ export function MainStage({
     stageSummary?.status === "COMPLETED" && (stageSummary.moderatorSummary?.trim() || summaryKeyPoints.length > 0),
   )
   const summaryOccurredAt = stageSummary?.completedAt ?? stageSummary?.triggeredAt ?? ""
-  const timelineItems = [
+  const timelineItems = groupTimelineItems([
     ...speeches.map((speech) => ({
       type: "speech" as const,
       key: `speech-${speech.speechId}`,
@@ -789,7 +857,7 @@ export function MainStage({
           occurredAt: summaryOccurredAt,
         }]
       : []),
-  ].sort((left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime())
+  ].sort((left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime()))
   const latestCounterIssue = counterIssues[0] ?? null
   const waitingPreviewItems = queueSummary?.items ?? []
   const waitingFullItems = fullQueue?.items ?? waitingPreviewItems
@@ -1072,79 +1140,122 @@ export function MainStage({
                 )
               }
 
-              const speech = item.speech
-              const isDeleted = speech.deleted
-              const isOffTopicDeleted = speech.deleteReason === "OFF_TOPIC"
+              const firstSpeech = item.speeches[0]
+              if (!firstSpeech) return null
+
+              const hasDeletedSpeech = item.speeches.some((speech) => speech.deleted)
+              const isSingleDeletedSpeech = item.speeches.length === 1 && firstSpeech.deleted
 
               return (
                 <article
-                  key={speech.speechId}
+                  key={item.key}
                   className={
-                    isDeleted
+                    isSingleDeletedSpeech
                       ? "rounded-xl border border-dashed border-border/70 bg-muted/30 p-4 text-muted-foreground"
                       : "rounded-xl border border-border/50 bg-card p-4"
                   }
                 >
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    {isDeleted ? (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="secondary" className="text-[10px]">
-                          {isOffTopicDeleted ? "논점 이탈 삭제" : "삭제됨"}
-                        </Badge>
-                        <span className="text-[10px] text-muted-foreground">
-                          {new Date(speech.createdAt).toLocaleString("ko-KR")}
-                        </span>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex items-center gap-2">
-                          <Avatar className="size-7"><AvatarFallback className="text-[10px]">U{speech.userId}</AvatarFallback></Avatar>
-                          <div>
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <p className="text-xs font-semibold">사용자 #{speech.userId}</p>
-                              <Badge variant="outline" className="text-[10px]">stance: {stanceLabel(speech.speakingStance)}</Badge>
-                            </div>
-                            <p className="text-[10px] text-muted-foreground">{new Date(speech.createdAt).toLocaleString("ko-KR")}</p>
+                  {!isSingleDeletedSpeech && (
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Avatar className="size-7">
+                          <AvatarFallback className="text-[10px]">{avatarLabel(firstSpeech)}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <p className="text-xs font-semibold">{speakerName(firstSpeech)}</p>
+                            <Badge variant="outline" className="text-[10px]">stance: {stanceLabel(firstSpeech.speakingStance)}</Badge>
                           </div>
+                          <p className="text-[10px] text-muted-foreground">
+                            {item.speeches.length > 1
+                              ? `${item.speeches.length}개 의견`
+                              : new Date(firstSpeech.createdAt).toLocaleString("ko-KR")}
+                          </p>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-[10px]">{opinionStanceLabel(speech.stance)}</Badge>
-                          <Badge variant="secondary" className="text-[10px]">{speechStatusLabel(speech.status)}</Badge>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                  <p className={isDeleted ? "whitespace-pre-wrap text-sm leading-relaxed italic" : "whitespace-pre-wrap text-sm leading-relaxed"}>
-                    {speech.content}
-                  </p>
-                  {!isDeleted && speech.imageUrl && (
-                    <a
-                      href={speech.imageUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-3 block overflow-hidden rounded-lg border border-border/60"
-                    >
-                      <img src={speech.imageUrl} alt="첨부 이미지" className="max-h-80 w-full object-cover" />
-                    </a>
-                  )}
-                  {!isDeleted && (
-                    <div className="mt-3 flex items-center justify-between gap-2">
-                      <Button
-                        variant={speech.reactedByMe ? "default" : "outline"}
-                        size="sm"
-                        className="gap-1.5 text-xs"
-                        disabled={submitting || speech.userId === user?.userId}
-                        onClick={() => toggleReaction(speech)}
-                      >
-                        <ThumbsUp className="size-3.5" />
-                        {speech.reactionCount.toLocaleString()}
-                        <span className="hidden sm:inline">{speech.reactedByMe ? "공감 취소" : "공감"}</span>
-                      </Button>
-                      <Button variant="ghost" size="sm" className="gap-1 text-xs text-muted-foreground hover:text-destructive" onClick={() => openReport(speech)}>
-                        <Flag className="size-3" /> 신고
-                      </Button>
+                      </div>
+                      {hasDeletedSpeech && (
+                        <Badge variant="secondary" className="text-[10px]">
+                          일부 삭제됨
+                        </Badge>
+                      )}
                     </div>
                   )}
+                  <div className="flex flex-col gap-3">
+                    {item.speeches.map((speech, speechIndex) => {
+                      const isDeleted = speech.deleted
+                      const isOffTopicDeleted = speech.deleteReason === "OFF_TOPIC"
+                      return (
+                        <div
+                          key={speech.speechId}
+                          className={speechIndex === 0 ? "" : "border-t border-border/60 pt-3"}
+                        >
+                          {isSingleDeletedSpeech ? (
+                            <div className="mb-3 flex flex-wrap items-center gap-2">
+                              <Badge variant="secondary" className="text-[10px]">
+                                {isOffTopicDeleted ? "논점 이탈 삭제" : "삭제됨"}
+                              </Badge>
+                              <span className="text-[10px] text-muted-foreground">
+                                {new Date(speech.createdAt).toLocaleString("ko-KR")}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="mb-2 flex items-center justify-between gap-2">
+                              <span className="text-[10px] text-muted-foreground">
+                                {new Date(speech.createdAt).toLocaleString("ko-KR")}
+                              </span>
+                              <div className="flex items-center gap-2">
+                                {isDeleted ? (
+                                  <Badge variant="secondary" className="text-[10px]">
+                                    {isOffTopicDeleted ? "논점 이탈 삭제" : "삭제됨"}
+                                  </Badge>
+                                ) : (
+                                  <>
+                                    <Badge variant="outline" className="text-[10px]">
+                                      {opinionStanceLabel(speech.stance)}
+                                    </Badge>
+                                    <Badge variant="secondary" className="text-[10px]">
+                                      {speechStatusLabel(speech.status)}
+                                    </Badge>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          <p className={isDeleted ? "whitespace-pre-wrap text-sm leading-relaxed italic" : "whitespace-pre-wrap text-sm leading-relaxed"}>
+                            {speech.content}
+                          </p>
+                          {!isDeleted && speech.imageUrl && (
+                            <a
+                              href={speech.imageUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="mt-3 block overflow-hidden rounded-lg border border-border/60"
+                            >
+                              <img src={speech.imageUrl} alt="첨부 이미지" className="max-h-80 w-full object-cover" />
+                            </a>
+                          )}
+                          {!isDeleted && (
+                            <div className="mt-3 flex items-center justify-between gap-2">
+                              <Button
+                                variant={speech.reactedByMe ? "default" : "outline"}
+                                size="sm"
+                                className="gap-1.5 text-xs"
+                                disabled={submitting || speech.userId === user?.userId}
+                                onClick={() => toggleReaction(speech)}
+                              >
+                                <ThumbsUp className="size-3.5" />
+                                {speech.reactionCount.toLocaleString()}
+                                <span className="hidden sm:inline">{speech.reactedByMe ? "공감 취소" : "공감"}</span>
+                              </Button>
+                              <Button variant="ghost" size="sm" className="gap-1 text-xs text-muted-foreground hover:text-destructive" onClick={() => openReport(speech)}>
+                                <Flag className="size-3" /> 신고
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
                 </article>
               )
             })}
