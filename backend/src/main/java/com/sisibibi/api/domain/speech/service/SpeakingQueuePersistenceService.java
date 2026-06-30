@@ -33,6 +33,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -346,7 +347,10 @@ public class SpeakingQueuePersistenceService {
         return SpeakingQueueRoomCloseResult.of(canceledRequests, completedRequests);
     }
 
-    @Transactional(isolation = Isolation.READ_COMMITTED)
+    @Transactional(
+            propagation = Propagation.REQUIRES_NEW,
+            isolation = Isolation.READ_COMMITTED
+    )
     public SpeakingQueueAssignmentResult assignNextSpeaker(
             Long roomId,
             LocalDateTime assignedAt,
