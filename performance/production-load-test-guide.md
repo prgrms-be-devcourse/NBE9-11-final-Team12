@@ -82,6 +82,9 @@ export DB_PASSWORD=<password>
 운영 DB에 실제 사용자 데이터가 있는 경우 반드시 팀 합의 후 실행한다.
 스크립트는 `[PERF]` prefix와 고정 ID 범위만 사용하지만, DB 쓰기/삭제 작업이므로 주의한다.
 
+스크립트는 MySQL 비밀번호를 명령행 인자로 넘기지 않고 `MYSQL_PWD` 환경 변수로 전달한다.
+따라서 `ps` 같은 프로세스 목록에 `--password=...` 형태로 노출되지 않는다.
+
 ---
 
 ## 4. 테스트 데이터 준비
@@ -320,3 +323,22 @@ performance/scripts/cleanup-load-data.sh
 - Redis timeout 여부
 - 개선 필요 사항
 
+---
+
+## 11. 병목 확인 기록
+
+목표 부하에서 문제가 발생하면 다음 순서로 기록한다.
+
+| 구분 | 확인 내용 |
+| --- | --- |
+| 느린 URI | Grafana `HTTP p95/p99 by URI`에서 p95가 높은 API |
+| 5xx | 서버 오류 발생 시각, URI, 로그 메시지 |
+| 4xx | 정책상 정상 거절인지 데이터 문제인지 구분 |
+| Hikari | `active`, `idle`, `pending` 추이 |
+| MySQL | threads, slow query, lock wait 여부 |
+| Redis | ops/s, timeout, connection 오류 |
+| JVM | heap 사용량, GC pause |
+| Host | CPU, memory, disk 사용량 |
+
+병목 원인은 API 코드만으로 단정하지 않는다.
+같은 시각의 애플리케이션 로그, DB 지표, Redis 지표, JVM 지표를 함께 보고 판단한다.

@@ -23,6 +23,7 @@ DB_NAME="${DB_NAME:-sisibibi}"
 DB_USERNAME="${DB_USERNAME:-root}"
 DB_PASSWORD="${DB_PASSWORD:-root}"
 MYSQL_BIN="${MYSQL_BIN:-mysql}"
+export MYSQL_PWD="$DB_PASSWORD"
 
 if ! command -v "$MYSQL_BIN" >/dev/null 2>&1; then
   cat <<MSG >&2
@@ -46,17 +47,17 @@ MSG
   --host="$DB_HOST" \
   --port="$DB_PORT" \
   --user="$DB_USERNAME" \
-  --password="$DB_PASSWORD" \
   --database="$DB_NAME" \
-  < "$CLEANUP_SQL"
+  < "$CLEANUP_SQL" \
+  || { echo "[performance] cleanup failed" >&2; exit 1; }
 
 "$MYSQL_BIN" \
   --host="$DB_HOST" \
   --port="$DB_PORT" \
   --user="$DB_USERNAME" \
-  --password="$DB_PASSWORD" \
   --database="$DB_NAME" \
-  < "$SEED_SQL"
+  < "$SEED_SQL" \
+  || { echo "[performance] seed failed" >&2; exit 1; }
 
 cat <<'MSG'
 [performance] 테스트 데이터 준비 완료
