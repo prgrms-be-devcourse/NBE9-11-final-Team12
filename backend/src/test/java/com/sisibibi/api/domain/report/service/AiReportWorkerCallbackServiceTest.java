@@ -105,6 +105,54 @@ class AiReportWorkerCallbackServiceTest {
     }
 
     @Test
+    void startProcessing_rejectsCustomOnlyUntilBaseReportIsCompleted() {
+        AiReport report = reportWithId(AiReport.requested(
+                10L,
+                List.of(new AiReportCustomPrompt(7L, "custom 1", "minority view"))
+        ), 55L);
+        report.markQueued();
+        Room room = closedRoom(10L, 1L, "room title");
+
+        given(aiReportRepository.findByIdForUpdate(55L)).willReturn(Optional.of(report));
+        given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
+
+        assertThatThrownBy(() -> callbackService.startProcessing(55L, AiReportGenerationType.CUSTOM_ONLY))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.AI_REPORT_ALREADY_EXISTS);
+
+        verify(topicRepository, never()).findById(anyLong());
+        assertThat(report.getStatus()).isEqualTo(AiReportStatus.QUEUED);
+    }
+
+    @Test
+    void startProcessing_allowsCustomOnlyAfterBaseReportContentIsSaved() {
+        AiReport report = reportWithId(AiReport.requested(10L), 55L);
+        report.complete(new com.sisibibi.api.domain.report.client.dto.AiReportGenerateRes(
+                "base core", List.of("base issue"), "base summary", "base common", "base opinion"
+        ));
+        report.requestCustomReports(List.of(new AiReportCustomPrompt(7L, "custom 1", "minority view")));
+        report.markQueued();
+        Room room = closedRoom(10L, 1L, "room title");
+        Topic topic = Topic.approved("topic title", "topic description", "IT", "https://example.com");
+        ReflectionTestUtils.setField(topic, "id", 1L);
+
+        given(aiReportRepository.findByIdForUpdate(55L)).willReturn(Optional.of(report));
+        given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
+        given(topicRepository.findById(1L)).willReturn(Optional.of(topic));
+        given(speechRepository.findAiReportSourceSpeeches(10L)).willReturn(List.of());
+        given(aiReportProperties.getTimeout()).willReturn(Duration.ofMinutes(5));
+
+        AiReportWorkerProcessingRes result =
+                callbackService.startProcessing(55L, AiReportGenerationType.CUSTOM_ONLY);
+
+        assertThat(report.getStatus()).isEqualTo(AiReportStatus.PROCESSING);
+        assertThat(result.request().baseReport()).isNotNull();
+        assertThat(result.request().baseReport().coreLine()).isEqualTo("base core");
+        assertThat(result.request().customPrompts()).hasSize(1);
+    }
+
+    @Test
     void complete_savesBaseReportResult() {
         AiReport report = reportWithId(AiReport.requested(10L), 55L);
         report.markQueued();

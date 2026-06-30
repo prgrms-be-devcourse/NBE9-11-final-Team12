@@ -17,9 +17,14 @@ export function getAiReportProgressActionState(report, generationKind) {
       return null
     }
 
+    const isCustomGeneration = generationKind === "custom"
+    const customLabel = isBaseReportCompleted(report)
+      ? "커스텀 리포트가 생성 중입니다."
+      : "기본 리포트 완료 후 커스텀 리포트가 생성됩니다."
+
     return {
-      label: generationKind === "custom"
-        ? "커스텀 리포트가 생성 중입니다."
+      label: isCustomGeneration
+        ? customLabel
         : "기본 AI 요약 리포트가 생성 중입니다.",
       busy: true,
       clickable: false,
@@ -74,4 +79,8 @@ function isReportFailed(status) {
     || status === "GENERATION_FAILED"
     || status === "BLOCKED"
     || status === "FAILED"
+}
+
+function isBaseReportCompleted(report) {
+  return Boolean(report.completedAt || report.coreLine || report.aiSummary)
 }

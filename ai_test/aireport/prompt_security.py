@@ -7,7 +7,7 @@ from typing import Any
 from urllib import request as urllib_request
 
 
-BLOCKING_SEVERITIES = {"HIGH", "CRITICAL"}
+BLOCKING_SEVERITIES = {"MEDIUM", "HIGH", "CRITICAL"}
 SEVERITY_ORDER = {"SAFE": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
 DEFAULT_HTTP_TIMEOUT_SECONDS = 30
 
@@ -111,16 +111,13 @@ class PromptSecurityService:
         self._check_content(content, "final prompt")
 
     def guard_output(self, content):
+        # Only sanitize (strip injection patterns from output).
+        # Full analyze is skipped for model output because legitimate Korean summaries
+        # can trigger false positives (repetition_detected, text_defragmented).
         sanitized = _normalize_sanitize_result(self.guard.sanitize_output(content), content)
         if sanitized["blocked"]:
             raise PromptSecurityError("model output was blocked by Prompt Guard")
-
-        safe_text = sanitized["sanitized_text"]
-        result = PromptGuardResult.from_raw(self.guard.analyze(safe_text))
-        if self._is_blocked(result):
-            reasons = ", ".join(result.reasons) if result.reasons else "no reason provided"
-            raise PromptSecurityError(f"model output was blocked by Prompt Guard: {result.severity} ({reasons})")
-        return safe_text
+        return sanitized["sanitized_text"]
 
     def _check_content(self, content, label):
         result = PromptGuardResult.from_raw(self.guard.analyze(content))
@@ -135,10 +132,13 @@ class PromptSecurityService:
 def _default_guard():
     base_url = os.getenv("PROMPT_GUARD_BASE_URL") or os.getenv("AI_REPORT_PROMPT_GUARD_BASE_URL")
     if base_url:
+        logger.info("Prompt Guard HTTP client enabled. base_url=%s", base_url)
         return HttpPromptGuard(base_url, timeout=_prompt_guard_timeout_seconds())
     try:
+        logger.info("Prompt Guard local package enabled.")
         return LocalPromptGuard()
     except RuntimeError:
+        logger.warning("Prompt Guard is unavailable. Falling back to NoOpPromptGuard.")
         return NoOpPromptGuard()
 
 

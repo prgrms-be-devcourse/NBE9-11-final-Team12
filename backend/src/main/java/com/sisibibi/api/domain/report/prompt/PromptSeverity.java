@@ -9,11 +9,11 @@ public enum PromptSeverity {
     UNKNOWN;
 
     public boolean blocksRequest() {
-        return this == HIGH || this == CRITICAL;
+        return this == MEDIUM || this == HIGH || this == CRITICAL;
     }
 
     public boolean requiresAuditLog() {
-        return this == MEDIUM;
+        return false;
     }
 
     public int rank() {

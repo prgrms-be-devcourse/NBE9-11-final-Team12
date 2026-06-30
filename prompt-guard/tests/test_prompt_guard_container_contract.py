@@ -16,13 +16,20 @@ class PromptGuardContainerContractTest(unittest.TestCase):
         self.assertIn("app:app", dockerfile)
         self.assertNotIn("prompt_guard_app.app:app", dockerfile)
 
-    def test_config_blocks_high_and_critical_without_external_reporting(self):
+    def test_config_blocks_medium_high_and_critical_without_external_reporting(self):
         config = (ROOT / "config.yaml").read_text(encoding="utf-8")
 
+        self.assertIn("MEDIUM: block", config)
         self.assertIn("HIGH: block", config)
         self.assertIn("CRITICAL: block", config)
         self.assertIn("enabled: false", config)
         self.assertIn("reporting: false", config)
+
+    def test_dockerfile_logs_prompt_guard_startup_before_uvicorn(self):
+        dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+
+        self.assertIn("Prompt Guard service starting", dockerfile)
+        self.assertIn("exec uvicorn app:app", dockerfile)
 
     def test_dockerfile_applies_korean_instruction_override_patch(self):
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")

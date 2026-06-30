@@ -2,8 +2,10 @@ package com.sisibibi.api.domain.report.service;
 
 import com.sisibibi.api.domain.report.dto.event.AiReportGenerationRequestedEvent;
 import com.sisibibi.api.domain.report.dto.request.AiReportGenerateReq;
+import com.sisibibi.api.domain.report.dto.response.AiReportPdfStatusRes;
 import com.sisibibi.api.domain.report.dto.response.AiReportRes;
 import com.sisibibi.api.domain.report.entity.AiReportPdfExport;
+import com.sisibibi.api.domain.report.entity.AiReportPdfType;
 import com.sisibibi.api.domain.report.outbox.AiReportPdfGenerationOutboxWriter;
 import com.sisibibi.api.domain.report.prompt.CustomPromptCommand;
 import com.sisibibi.api.domain.report.prompt.CustomPromptValidator;
@@ -33,6 +35,7 @@ public class AiReportService {
         AiReportRequestResult result = customPrompts.isEmpty()
                 ? aiReportPersistenceService.requestGeneration(roomId, userId, customPrompts)
                 : aiReportPersistenceService.requestCustomGeneration(roomId, userId, customPrompts);
+        AiReportPdfType pdfType = customPrompts.isEmpty() ? AiReportPdfType.BASE : AiReportPdfType.CUSTOM;
 
         if (result.shouldPublish()) {
             eventPublisher.publishEvent(new AiReportGenerationRequestedEvent(
@@ -45,13 +48,14 @@ public class AiReportService {
         AiReportPdfExport export = aiReportPdfPersistenceService.createIfMissing(
                 result.response().reportId(),
                 result.response().roomId(),
-                userId
+                userId,
+                pdfType
         );
         if ("COMPLETED".equals(result.response().status()) && export.shouldStartGeneration()) {
             outboxWriter.record(export.getId(), LocalDateTime.now());
         }
 
-        return result.response();
+        return result.response().withPdf(AiReportPdfStatusRes.from(export));
     }
 
     public AiReportRes getReport(Long roomId, Long userId) {

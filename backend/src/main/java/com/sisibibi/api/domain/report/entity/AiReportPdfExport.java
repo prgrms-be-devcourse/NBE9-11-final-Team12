@@ -27,11 +27,11 @@ import java.time.LocalDateTime;
 @Table(
         name = "ai_report_pdf_exports",
         uniqueConstraints = @UniqueConstraint(
-                name = "uk_ai_report_pdf_exports_report_user",
-                columnNames = {"ai_report_id", "requested_by_user_id"}
+                name = "uk_ai_report_pdf_exports_report_user_type",
+                columnNames = {"ai_report_id", "requested_by_user_id", "pdf_type"}
         ),
         indexes = {
-                @Index(name = "idx_ai_report_pdf_exports_room_user", columnList = "room_id, requested_by_user_id"),
+                @Index(name = "idx_ai_report_pdf_exports_room_user_type", columnList = "room_id, requested_by_user_id, pdf_type"),
                 @Index(name = "idx_ai_report_pdf_exports_pdf_retry", columnList = "pdf_status, pdf_last_attempted_at"),
                 @Index(name = "idx_ai_report_pdf_exports_notification_retry", columnList = "notification_status, notification_last_attempted_at")
         }
@@ -53,6 +53,10 @@ public class AiReportPdfExport {
 
     @Column(name = "requested_by_user_id", nullable = false)
     private Long requestedByUserId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "pdf_type", nullable = false, length = 20)
+    private AiReportPdfType pdfType;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "pdf_status", nullable = false, length = 20)
@@ -98,10 +102,20 @@ public class AiReportPdfExport {
     private LocalDateTime updatedAt;
 
     public static AiReportPdfExport notStarted(Long aiReportId, Long roomId, Long requestedByUserId) {
+        return notStarted(aiReportId, roomId, requestedByUserId, AiReportPdfType.BASE);
+    }
+
+    public static AiReportPdfExport notStarted(
+            Long aiReportId,
+            Long roomId,
+            Long requestedByUserId,
+            AiReportPdfType pdfType
+    ) {
         AiReportPdfExport export = new AiReportPdfExport();
         export.aiReportId = aiReportId;
         export.roomId = roomId;
         export.requestedByUserId = requestedByUserId;
+        export.pdfType = pdfType == null ? AiReportPdfType.BASE : pdfType;
         export.pdfStatus = AiReportPdfStatus.NOT_STARTED;
         export.pdfRetryCount = 0;
         export.notificationStatus = AiReportNotificationStatus.NOT_SENT;
@@ -151,6 +165,18 @@ public class AiReportPdfExport {
         this.notificationRetryCount++;
         this.notificationLastAttemptedAt = attemptedAt;
         this.notificationErrorMessage = truncate(errorMessage);
+    }
+
+    public void resetForRegeneration() {
+        this.pdfStatus = AiReportPdfStatus.NOT_STARTED;
+        this.pdfRetryCount = 0;
+        this.pdfLastAttemptedAt = null;
+        this.pdfErrorMessage = null;
+        this.notificationStatus = AiReportNotificationStatus.NOT_SENT;
+        this.notificationSentAt = null;
+        this.notificationErrorMessage = null;
+        this.notificationRetryCount = 0;
+        this.notificationLastAttemptedAt = null;
     }
 
     private String truncate(String message) {

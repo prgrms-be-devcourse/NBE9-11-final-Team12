@@ -3,6 +3,7 @@ package com.sisibibi.api.domain.report.repository;
 import com.sisibibi.api.domain.report.entity.AiReportNotificationStatus;
 import com.sisibibi.api.domain.report.entity.AiReportPdfExport;
 import com.sisibibi.api.domain.report.entity.AiReportPdfStatus;
+import com.sisibibi.api.domain.report.entity.AiReportPdfType;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -16,9 +17,17 @@ import java.util.Optional;
 
 public interface AiReportPdfExportRepository extends JpaRepository<AiReportPdfExport, Long> {
 
-    Optional<AiReportPdfExport> findByAiReportIdAndRequestedByUserId(Long aiReportId, Long requestedByUserId);
+    Optional<AiReportPdfExport> findByAiReportIdAndRequestedByUserIdAndPdfType(
+            Long aiReportId,
+            Long requestedByUserId,
+            AiReportPdfType pdfType
+    );
 
-    Optional<AiReportPdfExport> findByRoomIdAndRequestedByUserId(Long roomId, Long requestedByUserId);
+    Optional<AiReportPdfExport> findByRoomIdAndRequestedByUserIdAndPdfType(
+            Long roomId,
+            Long requestedByUserId,
+            AiReportPdfType pdfType
+    );
 
     List<AiReportPdfExport> findByAiReportId(Long aiReportId);
 
@@ -32,10 +41,12 @@ public interface AiReportPdfExportRepository extends JpaRepository<AiReportPdfEx
             from AiReportPdfExport pdfExport
             where pdfExport.aiReportId = :aiReportId
               and pdfExport.requestedByUserId = :requestedByUserId
+              and pdfExport.pdfType = :pdfType
             """)
-    Optional<AiReportPdfExport> findByAiReportIdAndRequestedByUserIdForUpdate(
+    Optional<AiReportPdfExport> findByAiReportIdAndRequestedByUserIdAndPdfTypeForUpdate(
             @Param("aiReportId") Long aiReportId,
-            @Param("requestedByUserId") Long requestedByUserId
+            @Param("requestedByUserId") Long requestedByUserId,
+            @Param("pdfType") AiReportPdfType pdfType
     );
 
     @Query("""

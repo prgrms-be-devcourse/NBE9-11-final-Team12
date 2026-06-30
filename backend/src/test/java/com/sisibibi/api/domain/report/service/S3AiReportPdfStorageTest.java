@@ -1,5 +1,6 @@
 package com.sisibibi.api.domain.report.service;
 
+import com.sisibibi.api.domain.report.entity.AiReportPdfType;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import com.sisibibi.api.global.storage.S3StorageProperties;
@@ -57,9 +58,9 @@ class S3AiReportPdfStorageTest {
         given(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
                 .willReturn(PutObjectResponse.builder().build());
 
-        String key = storage.upload(1L, 10L, 7L, new byte[]{1, 2, 3});
+        String key = storage.upload(1L, 10L, 7L, AiReportPdfType.BASE, new byte[]{1, 2, 3});
 
-        assertThat(key).isEqualTo("ai-reports/1/10/7.pdf");
+        assertThat(key).isEqualTo("ai-reports/1/10/7-base.pdf");
         ArgumentCaptor<PutObjectRequest> captor = ArgumentCaptor.forClass(PutObjectRequest.class);
         verify(s3Client).putObject(captor.capture(), any(RequestBody.class));
         assertThat(captor.getValue().contentType()).isEqualTo("application/pdf");
@@ -81,7 +82,7 @@ class S3AiReportPdfStorageTest {
     void missingS3Config_throwsCustomException() {
         storageProperties.setBucket(null);
 
-        assertThatThrownBy(() -> storage.upload(1L, 10L, 7L, new byte[]{1}))
+        assertThatThrownBy(() -> storage.upload(1L, 10L, 7L, AiReportPdfType.BASE, new byte[]{1}))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.S3_CONFIG_MISSING);

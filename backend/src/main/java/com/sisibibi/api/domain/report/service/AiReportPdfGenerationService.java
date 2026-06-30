@@ -37,7 +37,13 @@ public class AiReportPdfGenerationService {
             try {
                 AiReportPdfModel model = dataCollector.collect(export);
                 byte[] pdfBytes = renderer.render(model);
-                String objectKey = storage.upload(model.roomId(), model.reportId(), export.getRequestedByUserId(), pdfBytes);
+                String objectKey = storage.upload(
+                        model.roomId(),
+                        model.reportId(),
+                        export.getRequestedByUserId(),
+                        export.getPdfType(),
+                        pdfBytes
+                );
                 persistenceService.completePdf(exportId, objectKey);
                 return model;
             } catch (RuntimeException e) {

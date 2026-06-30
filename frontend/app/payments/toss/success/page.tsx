@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Loader2 } from "lucide-react"
 import { ApiError } from "@/lib/api/client"
 import { paymentApi } from "@/lib/api/services"
+import { getPaymentSuccessRedirectPath } from "@/lib/payment-success-flow"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
@@ -24,6 +25,7 @@ function TossPaymentSuccessContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [error, setError] = useState("")
+  const [completed, setCompleted] = useState(false)
 
   const roomId = searchParams.get("roomId")
 
@@ -41,10 +43,16 @@ function TossPaymentSuccessContent() {
 
     async function confirmPayment() {
       try {
-        await paymentApi.confirm({ paymentKey, orderId, amount })
+        const payment = await paymentApi.confirm({ paymentKey, orderId, amount })
         if (canceled) return
 
-        router.replace(roomId ? `/rooms/${roomId}` : "/rooms")
+        const redirectPath = getPaymentSuccessRedirectPath(payment, roomId)
+        if (redirectPath) {
+          router.replace(redirectPath)
+          return
+        }
+
+        setCompleted(true)
       } catch (confirmError) {
         if (canceled) return
         setError(messageOf(confirmError))
@@ -69,6 +77,26 @@ function TossPaymentSuccessContent() {
           <CardContent>
             <Button className="w-full" onClick={() => router.replace(roomId ? `/rooms/${roomId}` : "/rooms")}>
               토론방으로 돌아가기
+            </Button>
+          </CardContent>
+        </Card>
+      </main>
+    )
+  }
+
+  if (completed) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-md items-center px-4">
+        <Card className="w-full">
+          <CardHeader>
+            <CardTitle>결제가 완료되었습니다</CardTitle>
+            <CardDescription>
+              커스텀 AI 리포트 생성 요청을 접수했습니다. 리포트가 준비되면 PDF 다운로드를 진행할 수 있습니다.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button className="w-full" onClick={() => router.replace("/rooms")}>
+              토론방 목록으로 돌아가기
             </Button>
           </CardContent>
         </Card>

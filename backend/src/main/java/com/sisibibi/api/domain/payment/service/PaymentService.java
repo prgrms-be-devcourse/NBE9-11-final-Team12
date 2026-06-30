@@ -10,9 +10,7 @@ import com.sisibibi.api.domain.payment.entity.*;
 import com.sisibibi.api.domain.payment.repository.CustomAiReportRequestRepository;
 import com.sisibibi.api.domain.payment.repository.PaymentRepository;
 import com.sisibibi.api.domain.report.entity.AiReportCustomPrompt;
-import com.sisibibi.api.domain.report.entity.AiReportStatus;
 import com.sisibibi.api.domain.report.prompt.CustomPromptValidator;
-import com.sisibibi.api.domain.report.repository.AiReportRepository;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -28,7 +26,6 @@ public class PaymentService {
 
   private final PaymentRepository paymentRepository;
   private final CustomAiReportRequestRepository customAiReportRequestRepository;
-  private final AiReportRepository aiReportRepository;
   private final CustomPromptValidator customPromptValidator;
   private final PaymentClient paymentClient;
   private final PaymentCompletionService paymentCompletionService;
@@ -37,8 +34,6 @@ public class PaymentService {
 
   @Transactional
   public PaymentRes createCustomAiReportPayment(Long userId, CreateCustomAiReportPaymentReq request) {
-    validateBaseReportCompleted(request.roomId());
-
     if (request.amount() != customAiReportPrice()) {
       throw new CustomException(ErrorCode.PAYMENT_AMOUNT_MISMATCH);
     }
@@ -107,16 +102,6 @@ public class PaymentService {
         .orElseThrow(() -> new CustomException(ErrorCode.PAYMENT_NOT_FOUND));
 
     return PaymentRes.from(payment);
-  }
-
-  private void validateBaseReportCompleted(Long roomId) {
-    boolean completed = aiReportRepository.findByRoomId(roomId)
-        .filter(report -> report.getStatus() == AiReportStatus.COMPLETED)
-        .isPresent();
-
-    if (!completed) {
-      throw new CustomException(ErrorCode.AI_REPORT_NOT_FOUND);
-    }
   }
 
   private void validatePaymentKeyNotUsedByAnotherOrder(Long userId, ConfirmPaymentReq request) {
