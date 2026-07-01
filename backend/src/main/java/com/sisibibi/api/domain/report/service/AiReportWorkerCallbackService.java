@@ -90,6 +90,7 @@ public class AiReportWorkerCallbackService {
         );
     }
 
+    // 수정
     @Transactional
     public AiReportRes complete(Long reportId, AiReportWorkerCompleteReq request) {
         AiReport report = findReportForUpdate(reportId);
