@@ -3,6 +3,7 @@ package com.sisibibi.api.domain.report.service;
 import com.sisibibi.api.domain.report.entity.AiReport;
 import com.sisibibi.api.domain.report.entity.AiReportCustomReport;
 import com.sisibibi.api.domain.report.entity.AiReportPdfExport;
+import com.sisibibi.api.domain.report.entity.AiReportPdfType;
 import com.sisibibi.api.domain.report.repository.AiReportPdfQueryRepository;
 import com.sisibibi.api.domain.report.repository.AiReportRepository;
 import com.sisibibi.api.domain.room.entity.Room;
@@ -58,7 +59,7 @@ public class AiReportPdfDataCollector {
                 queryRepository.findTopOpinions(room.getId(), SpeechStance.PRO, 3);
         List<AiReportPdfModel.TopOpinion> conTopOpinions =
                 queryRepository.findTopOpinions(room.getId(), SpeechStance.CON, 3);
-        List<AiReportCustomReport> customReports = report.getCustomReports() == null
+        List<AiReportCustomReport> customReports = export.getPdfType() == AiReportPdfType.BASE || report.getCustomReports() == null
                 ? List.of()
                 : report.getCustomReports().stream()
                         .filter(r -> r.isVisibleTo(export.getRequestedByUserId()))

@@ -87,6 +87,14 @@ public record AiReportRes(
         );
     }
 
+    public AiReportRes withPdf(AiReportPdfStatusRes newPdf) {
+        return new AiReportRes(
+                reportId, roomId, status, coreLine, keyIssues,
+                aiSummary, commonGround, aiOpinion, customReports,
+                errorMessage, requestedAt, completedAt, newPdf
+        );
+    }
+
     public record CustomReportRes(
             String requestLabel,
             String prompt,

@@ -19,6 +19,7 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -105,6 +106,22 @@ public class StageSummary {
 
     public boolean shouldSkipGeneration() {
         return status == StageSummaryStatus.PENDING || status == StageSummaryStatus.COMPLETED;
+    }
+
+    public boolean isPendingAttemptStale(LocalDateTime now, Duration timeout) {
+        if (status != StageSummaryStatus.PENDING) {
+            return false;
+        }
+        if (lastAttemptedAt == null) {
+            return true;
+        }
+        if (timeout == null) {
+            return false;
+        }
+        Duration resolvedTimeout = timeout.isNegative() || timeout.isZero()
+                ? Duration.ZERO
+                : timeout;
+        return !lastAttemptedAt.plus(resolvedTimeout).isAfter(now);
     }
 
     public boolean canRetry(int maxAttempts) {

@@ -53,7 +53,8 @@ public class StageSummaryService {
                         roomId,
                         LocalDateTime.now(),
                         stageSummaryProperties.getMinCompletedSpeakerCount(),
-                        stageSummaryProperties.getMaxGenerationAttempts()
+                        stageSummaryProperties.getMaxGenerationAttempts(),
+                        stageSummaryProperties.getGenerateTimeout()
                 );
 
         if (!context.shouldCallAi()) {

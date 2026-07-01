@@ -124,7 +124,7 @@ public enum ErrorCode {
     AI_REPORT_NOTIFICATION_FAILED(HttpStatus.BAD_GATEWAY, "AI 리포트 완료 알림 발송에 실패했습니다."),
     AI_REPORT_QUEUE_PUBLISH_FAILED(HttpStatus.BAD_GATEWAY, "AI 리포트 생성 작업을 큐에 등록하지 못했습니다."),
     AI_REPORT_INVALID_RESPONSE(HttpStatus.BAD_GATEWAY, "AI 리포트 서버 응답 형식이 올바르지 않습니다."),
-    AI_REPORT_CUSTOM_PROMPT_TOO_MANY(HttpStatus.BAD_REQUEST, "customPrompts는 최대 5개까지 입력할 수 있습니다."),
+    AI_REPORT_CUSTOM_PROMPT_TOO_MANY(HttpStatus.BAD_REQUEST, "customPrompts는 최대 3개까지 입력할 수 있습니다."),
     AI_REPORT_CUSTOM_PROMPT_REQUIRED(HttpStatus.BAD_REQUEST, "개인화 요청 prompt는 비어 있을 수 없습니다."),
     AI_REPORT_CUSTOM_PROMPT_TOO_LONG(HttpStatus.BAD_REQUEST, "개인화 요청 prompt는 정책 길이를 초과할 수 없습니다."),
     AI_REPORT_CUSTOM_PROMPT_INVALID(HttpStatus.BAD_REQUEST, "개인화 요청에 허용되지 않는 문자가 포함되어 있습니다."),

@@ -78,7 +78,8 @@ class StageSummaryServiceTest {
                 eq(1L),
                 any(LocalDateTime.class),
                 eq(10),
-                eq(3)
+                eq(3),
+                eq(Duration.ofSeconds(10))
         )).willReturn(context);
         given(stageSummaryGenerator.generate(room, List.of(speech))).willReturn(result);
         given(stageSummaryPersistenceService.complete(
@@ -113,7 +114,8 @@ class StageSummaryServiceTest {
                 eq(1L),
                 any(LocalDateTime.class),
                 eq(10),
-                eq(3)
+                eq(3),
+                eq(Duration.ofSeconds(10))
         )).willReturn(StageSummaryGenerationContext.skip());
 
         stageSummaryService.generateIfNeeded(1L);
@@ -132,7 +134,8 @@ class StageSummaryServiceTest {
                 eq(1L),
                 any(LocalDateTime.class),
                 eq(10),
-                eq(3)
+                eq(3),
+                eq(Duration.ofSeconds(10))
         )).willReturn(context);
         given(stageSummaryGenerator.generate(room, List.of()))
                 .willReturn(new StageSummaryResult("", List.of("쟁점 1", "쟁점 2", "쟁점 3")));
@@ -152,7 +155,8 @@ class StageSummaryServiceTest {
                 eq(1L),
                 any(LocalDateTime.class),
                 eq(10),
-                eq(3)
+                eq(3),
+                eq(Duration.ofSeconds(10))
         )).willReturn(context);
         given(stageSummaryGenerator.generate(room, List.of()))
                 .willReturn(new StageSummaryResult("중간 정리", List.of("쟁점 1", "쟁점 2")));
@@ -172,7 +176,8 @@ class StageSummaryServiceTest {
                 eq(1L),
                 any(LocalDateTime.class),
                 eq(10),
-                eq(3)
+                eq(3),
+                eq(Duration.ofSeconds(10))
         )).willReturn(context);
         given(stageSummaryGenerator.generate(room, List.of()))
                 .willThrow(new IllegalStateException("temporary api failure"));
@@ -195,7 +200,8 @@ class StageSummaryServiceTest {
                 eq(1L),
                 any(LocalDateTime.class),
                 eq(10),
-                eq(3)
+                eq(3),
+                eq(Duration.ofMillis(1))
         )).willReturn(context);
 
         stageSummaryService.generateIfNeeded(1L);
@@ -215,7 +221,8 @@ class StageSummaryServiceTest {
                 eq(1L),
                 any(LocalDateTime.class),
                 eq(10),
-                eq(3)
+                eq(3),
+                eq(Duration.ofSeconds(10))
         )).willReturn(context);
 
         Thread.currentThread().interrupt();
