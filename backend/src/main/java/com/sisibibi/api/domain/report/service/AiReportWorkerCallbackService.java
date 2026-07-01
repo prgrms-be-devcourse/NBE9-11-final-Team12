@@ -90,17 +90,14 @@ public class AiReportWorkerCallbackService {
         );
     }
 
+    // 수정
     @Transactional
     public AiReportRes complete(Long reportId, AiReportWorkerCompleteReq request) {
         AiReport report = findReportForUpdate(reportId);
 
-        // 만약 이미 완료 처리된 리포트라면 중복 처리하지 않고 즉시 반환
-        if (report.getStatus() == AiReportStatus.COMPLETED) {
-            return AiReportRes.from(report);
-        }
-
         // 모드에 따른 정밀 검증 후 저장
         AiReportGenerateRes response = request.toGenerateResponse();
+
         if (request.generationType() == AiReportGenerationType.CUSTOM_ONLY) {
             validateCustomReports(response, report.getCustomPrompts().size());
             report.completeCustomReports(response);
@@ -109,7 +106,13 @@ public class AiReportWorkerCallbackService {
             return AiReportRes.from(report);
         }
 
-        validateBaseReport(response); // 기본 필드(요약, 총평 등)가 잘 들어왔나 검사
+        // 기본 리포트 생성 콜백이 이미 완료 처리된 리포트라면 중복 처리하지 않고 즉시 반환
+        if (report.getStatus() == AiReportStatus.COMPLETED) {
+            return AiReportRes.from(report);
+        }
+
+        validateBaseReport(response);
+
         if (request.generationType() == AiReportGenerationType.BASE_WITH_CUSTOM) {
             validateCustomReports(response, report.getCustomPrompts().size());
         }
