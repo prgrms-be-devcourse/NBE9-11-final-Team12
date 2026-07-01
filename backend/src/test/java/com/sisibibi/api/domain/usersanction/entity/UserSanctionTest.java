@@ -63,6 +63,54 @@ class UserSanctionTest {
     }
 
     @Test
+    void create_throwsInvalidPeriod_whenWarningHasEndTime() {
+        assertThatThrownBy(() -> UserSanction.create(
+                10L,
+                99L,
+                null,
+                UserSanctionType.WARNING,
+                "경고",
+                NOW,
+                NOW.plusHours(1)
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.USER_SANCTION_INVALID_PERIOD);
+    }
+
+    @Test
+    void create_throwsInvalidPeriod_whenAccountSuspensionHasEndTime() {
+        assertThatThrownBy(() -> UserSanction.create(
+                10L,
+                99L,
+                null,
+                UserSanctionType.ACCOUNT_SUSPENSION,
+                "계정 정지",
+                NOW,
+                NOW.plusHours(1)
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.USER_SANCTION_INVALID_PERIOD);
+    }
+
+    @Test
+    void create_throwsInvalidPeriod_whenRestrictionEndIsNotAfterStart() {
+        assertThatThrownBy(() -> UserSanction.create(
+                10L,
+                99L,
+                null,
+                UserSanctionType.CHAT_RESTRICTION,
+                "채팅 제한",
+                NOW,
+                NOW
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.USER_SANCTION_INVALID_PERIOD);
+    }
+
+    @Test
     void create_allowsAccountSuspensionWithoutEndTime() {
         UserSanction sanction = UserSanction.create(
                 10L,
@@ -132,6 +180,24 @@ class UserSanctionTest {
     }
 
     @Test
+    void revoke_throwsReasonRequired_whenReasonIsBlank() {
+        UserSanction sanction = UserSanction.create(
+                10L,
+                99L,
+                null,
+                UserSanctionType.CHAT_RESTRICTION,
+                "채팅 제한",
+                NOW,
+                NOW.plusHours(24)
+        );
+
+        assertThatThrownBy(() -> sanction.revoke(100L, " ", NOW.plusHours(1)))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.USER_SANCTION_REASON_REQUIRED);
+    }
+
+    @Test
     void extend_updatesEndsAt_whenRequestedEndIsLater() {
         UserSanction sanction = UserSanction.create(
                 10L,
@@ -172,5 +238,109 @@ class UserSanctionTest {
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.USER_SANCTION_NOT_EXTENDABLE);
+    }
+
+    @Test
+    void extend_throwsNotExtendable_whenSanctionIsWarning() {
+        UserSanction sanction = UserSanction.create(
+                10L,
+                99L,
+                null,
+                UserSanctionType.WARNING,
+                "경고",
+                NOW,
+                null
+        );
+
+        assertThatThrownBy(() -> sanction.extend(99L, "연장", NOW.plusHours(1), NOW))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.USER_SANCTION_NOT_EXTENDABLE);
+    }
+
+    @Test
+    void extend_throwsNotExtendable_whenSanctionIsAccountSuspension() {
+        UserSanction sanction = UserSanction.create(
+                10L,
+                99L,
+                null,
+                UserSanctionType.ACCOUNT_SUSPENSION,
+                "계정 정지",
+                NOW,
+                null
+        );
+
+        assertThatThrownBy(() -> sanction.extend(99L, "연장", NOW.plusHours(1), NOW))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.USER_SANCTION_NOT_EXTENDABLE);
+    }
+
+    @Test
+    void extend_throwsNotExtendable_whenRequestedEndIsNull() {
+        UserSanction sanction = UserSanction.create(
+                10L,
+                99L,
+                null,
+                UserSanctionType.SPEECH_RESTRICTION,
+                "의견 제한",
+                NOW,
+                NOW.plusHours(24)
+        );
+
+        assertThatThrownBy(() -> sanction.extend(99L, "연장", null, NOW))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.USER_SANCTION_NOT_EXTENDABLE);
+    }
+
+    @Test
+    void extend_throwsNotExtendable_whenRequestedEndExceedsThirtyDaysFromNow() {
+        UserSanction sanction = UserSanction.create(
+                10L,
+                99L,
+                null,
+                UserSanctionType.SPEECH_RESTRICTION,
+                "의견 제한",
+                NOW,
+                NOW.plusHours(24)
+        );
+
+        assertThatThrownBy(() -> sanction.extend(99L, "연장", NOW.plusHours(721), NOW))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.USER_SANCTION_NOT_EXTENDABLE);
+    }
+
+    @Test
+    void stateAt_returnsExpired_whenRestrictionEndIsBeforeNow() {
+        UserSanction sanction = UserSanction.create(
+                10L,
+                99L,
+                null,
+                UserSanctionType.CHAT_RESTRICTION,
+                "채팅 제한",
+                NOW,
+                NOW.plusHours(1)
+        );
+
+        assertThat(sanction.isActiveAt(NOW.plusHours(2))).isFalse();
+        assertThat(sanction.stateAt(NOW.plusHours(2))).isEqualTo(UserSanctionState.EXPIRED);
+    }
+
+    @Test
+    void create_throwsReasonTooLong_whenReasonExceedsLimit() {
+        assertThatThrownBy(() -> UserSanction.create(
+                10L,
+                99L,
+                null,
+                UserSanctionType.WARNING,
+                "가".repeat(501),
+                NOW,
+                null
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.USER_SANCTION_REASON_TOO_LONG);
     }
 }
