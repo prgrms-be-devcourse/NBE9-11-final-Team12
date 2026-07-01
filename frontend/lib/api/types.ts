@@ -452,7 +452,7 @@ export type StageEvent = WebSocketEventEnvelope<
     status: SpeakingQueueStatus
     assignedAt: string | null
     expiresAt: string | null
-    endReason: "COMPLETED" | "EXPIRED" | null
+    endReason: "COMPLETED" | "EXPIRED" | "LEFT_ROOM" | "IDLE_TIMEOUT" | null
     balancedAssignment: boolean
     occurredAt: string
   },

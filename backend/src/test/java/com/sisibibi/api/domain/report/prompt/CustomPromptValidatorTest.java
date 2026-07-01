@@ -14,6 +14,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -43,6 +44,128 @@ class CustomPromptValidatorTest {
 
         assertThat(result).containsExactly(new CustomPromptCommand("custom 1", "핵심 쟁점 정리"));
         verify(promptGuardService).scan("핵심 쟁점 정리");
+    }
+
+    @Test
+    void normalizeAndScan_returnsEmptyList_whenRequestIsNull() {
+        List<CustomPromptCommand> result = validator.normalizeAndScan(null);
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void normalizeAndScan_trimsAndTruncatesLongLabel() {
+        given(promptGuardService.scan("요약 기준 정리"))
+                .willReturn(PromptGuardResult.allowed(PromptSeverity.SAFE, null));
+
+        String longLabel = "  1234567890 1234567890 1234567890 1234567890 1234567890 초과  ";
+
+        List<CustomPromptCommand> result = validator.normalizeAndScan(new AiReportGenerateReq(List.of(
+                new AiReportGenerateReq.CustomPromptReq(longLabel, "요약 기준 정리")
+        )));
+
+        assertThat(result.getFirst().label()).hasSize(50);
+        assertThat(result.getFirst().label()).startsWith("1234567890");
+    }
+
+    @Test
+    void normalizeAndScan_usesDefaultLabel_whenNormalizedLabelIsBlank() {
+        given(promptGuardService.scan("요약 기준 정리"))
+                .willReturn(PromptGuardResult.allowed(PromptSeverity.SAFE, null));
+
+        List<CustomPromptCommand> result = validator.normalizeAndScan(new AiReportGenerateReq(List.of(
+                new AiReportGenerateReq.CustomPromptReq("\u3000", "요약 기준 정리")
+        )));
+
+        assertThat(result).containsExactly(new CustomPromptCommand("custom 1", "요약 기준 정리"));
+    }
+
+    @Test
+    void normalizeAndScan_throwsTooMany_whenPromptCountExceedsLimit() {
+        AiReportGenerateReq request = new AiReportGenerateReq(List.of(
+                new AiReportGenerateReq.CustomPromptReq("1", "첫 번째"),
+                new AiReportGenerateReq.CustomPromptReq("2", "두 번째"),
+                new AiReportGenerateReq.CustomPromptReq("3", "세 번째"),
+                new AiReportGenerateReq.CustomPromptReq("4", "네 번째")
+        ));
+
+        assertThatThrownBy(() -> validator.normalizeAndScan(request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.AI_REPORT_CUSTOM_PROMPT_TOO_MANY);
+    }
+
+    @Test
+    void normalizeAndScan_throwsRequired_whenPromptIsNull() {
+        AiReportGenerateReq request = new AiReportGenerateReq(List.of(
+                new AiReportGenerateReq.CustomPromptReq("빈 요청", null)
+        ));
+
+        assertThatThrownBy(() -> validator.normalizeAndScan(request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.AI_REPORT_CUSTOM_PROMPT_REQUIRED);
+    }
+
+    @Test
+    void normalizeAndScan_throwsRequired_whenNormalizedPromptIsBlank() {
+        AiReportGenerateReq request = new AiReportGenerateReq(List.of(
+                new AiReportGenerateReq.CustomPromptReq("빈 요청", "\u3000")
+        ));
+
+        assertThatThrownBy(() -> validator.normalizeAndScan(request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.AI_REPORT_CUSTOM_PROMPT_REQUIRED);
+    }
+
+    @Test
+    void normalizeAndScan_throwsTooLong_whenPromptExceedsLimit() {
+        properties.setCustomPromptMaxLength(5);
+        AiReportGenerateReq request = new AiReportGenerateReq(List.of(
+                new AiReportGenerateReq.CustomPromptReq("긴 요청", "123456")
+        ));
+
+        assertThatThrownBy(() -> validator.normalizeAndScan(request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.AI_REPORT_CUSTOM_PROMPT_TOO_LONG);
+    }
+
+    @Test
+    void normalizeAndScan_throwsInvalid_whenPromptHasUnpairedHighSurrogate() {
+        AiReportGenerateReq request = new AiReportGenerateReq(List.of(
+                new AiReportGenerateReq.CustomPromptReq("잘못된 문자", "요약\uD83D")
+        ));
+
+        assertThatThrownBy(() -> validator.normalizeAndScan(request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.AI_REPORT_CUSTOM_PROMPT_INVALID);
+    }
+
+    @Test
+    void normalizeAndScan_throwsInvalid_whenPromptHasUnpairedLowSurrogate() {
+        AiReportGenerateReq request = new AiReportGenerateReq(List.of(
+                new AiReportGenerateReq.CustomPromptReq("잘못된 문자", "요약\uDE00")
+        ));
+
+        assertThatThrownBy(() -> validator.normalizeAndScan(request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.AI_REPORT_CUSTOM_PROMPT_INVALID);
+    }
+
+    @Test
+    void normalizeAndScan_throwsInvalid_whenPromptHasDisallowedControlCharacter() {
+        AiReportGenerateReq request = new AiReportGenerateReq(List.of(
+                new AiReportGenerateReq.CustomPromptReq("제어 문자", "요약\u0000정리")
+        ));
+
+        assertThatThrownBy(() -> validator.normalizeAndScan(request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.AI_REPORT_CUSTOM_PROMPT_INVALID);
     }
 
     @Test
@@ -99,6 +222,37 @@ class CustomPromptValidatorTest {
 
         assertThat(output).contains("Prompt guard unavailable. failOpen=false");
         assertThat(output).contains("promptHash=");
+    }
+
+    @Test
+    void normalizeAndScan_wrapsRuntimeException_whenPromptGuardFailsClosed() {
+        doThrow(new IllegalStateException("guard down"))
+                .when(promptGuardService)
+                .scan("요약 관점 정리");
+
+        AiReportGenerateReq request = new AiReportGenerateReq(List.of(
+                new AiReportGenerateReq.CustomPromptReq("관점", "요약 관점 정리")
+        ));
+
+        assertThatThrownBy(() -> validator.normalizeAndScan(request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PROMPT_GUARD_UNAVAILABLE);
+    }
+
+    @Test
+    void normalizeAndScan_throwsUnavailable_whenPromptGuardReturnsNull() {
+        given(promptGuardService.scan("요약 관점 정리"))
+                .willReturn(null);
+
+        AiReportGenerateReq request = new AiReportGenerateReq(List.of(
+                new AiReportGenerateReq.CustomPromptReq("관점", "요약 관점 정리")
+        ));
+
+        assertThatThrownBy(() -> validator.normalizeAndScan(request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PROMPT_GUARD_UNAVAILABLE);
     }
 
     @Test

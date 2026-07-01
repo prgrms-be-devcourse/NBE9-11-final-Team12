@@ -205,6 +205,7 @@ export function MainStage({
   const [fullQueueLoading, setFullQueueLoading] = useState(false)
   const [fullQueueError, setFullQueueError] = useState("")
   const [queueBalanceNotice, setQueueBalanceNotice] = useState("")
+  const [idleNotice, setIdleNotice] = useState("")
   const [requestStatus, setRequestStatus] = useState<StageRequestStatus | null>(null)
   const [requestStatusLoading, setRequestStatusLoading] = useState(false)
   const [stageSummary, setStageSummary] = useState<StageSummary | null>(null)
@@ -561,6 +562,12 @@ export function MainStage({
   }, [queueBalanceNotice])
 
   useEffect(() => {
+    if (!idleNotice) return
+    const timerId = window.setTimeout(() => setIdleNotice(""), 8000)
+    return () => window.clearTimeout(timerId)
+  }, [idleNotice])
+
+  useEffect(() => {
     if (!liveEnabled || stompConnected) return
     if (document.visibilityState !== "visible") return
     const hasActiveStageInterest = Boolean(
@@ -585,13 +592,23 @@ export function MainStage({
         if (event.eventType === "SPEAKER_ASSIGNED" && event.data.balancedAssignment) {
           setQueueBalanceNotice("찬/반 균형이 일어나 대기열이 변경되었습니다.")
         }
+        if (event.eventType === "SPEAKER_IDLE_WARNED" && user?.userId === event.data.userId) {
+          setIdleNotice("20초 동안 의견 작성이 없어 발언권이 곧 종료됩니다. 의견을 작성하거나 발언을 종료해주세요.")
+        }
+        if (event.eventType === "SPEAKER_COMPLETED" && event.data.endReason === "IDLE_TIMEOUT") {
+          setIdleNotice(
+            user?.userId === event.data.userId
+              ? "잠수로 발언권이 종료되었습니다."
+              : "응답이 없어 현재 발언이 종료되었습니다.",
+          )
+        }
         scheduleStageRecovery()
       },
       setStageError,
     )
 
     return unsubscribe
-  }, [liveEnabled, rememberEvent, roomId, scheduleStageRecovery, stompConnection])
+  }, [liveEnabled, rememberEvent, roomId, scheduleStageRecovery, stompConnection, user?.userId])
 
   useEffect(() => {
     if (!liveEnabled || !stompConnection) return
@@ -886,6 +903,11 @@ export function MainStage({
         {queueBalanceNotice && (
           <p className="mb-2 rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 text-xs text-primary">
             {queueBalanceNotice}
+          </p>
+        )}
+        {idleNotice && (
+          <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            {idleNotice}
           </p>
         )}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
