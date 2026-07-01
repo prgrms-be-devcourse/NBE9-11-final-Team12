@@ -18,6 +18,6 @@ public class PromptGuardProperties {
     private Duration connectTimeout = Duration.ofMillis(500);
     private Duration readTimeout = Duration.ofMillis(1000);
     private boolean failOpen = false;
-    private int customPromptMaxCount = 5;
+    private int customPromptMaxCount = 3;
     private int customPromptMaxLength = 1000;
 }

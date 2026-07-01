@@ -29,6 +29,7 @@ test("shows base report generation progress after user requests it", () => {
 test("shows custom report generation progress after user requests it", () => {
   const state = getAiReportProgressActionState({
     status: "QUEUED",
+    coreLine: "core",
     pdf: { pdfExportId: 99, pdfStatus: "NOT_STARTED", downloadAvailable: false },
   }, "custom")
 
@@ -38,6 +39,20 @@ test("shows custom report generation progress after user requests it", () => {
     clickable: false,
     tone: "pending",
   })
+})
+
+test("shows base report generation while the base report is not completed yet even after a custom request", () => {
+  const state = getAiReportProgressActionState({
+    status: "PROCESSING",
+    coreLine: null,
+    completedAt: null,
+    pdf: { pdfExportId: 99, pdfStatus: "NOT_STARTED", downloadAvailable: false },
+  }, "custom")
+
+  assert.equal(state?.label, "기본 리포트 완료 후 커스텀 리포트가 생성됩니다.")
+  assert.equal(state?.busy, true)
+  assert.equal(state?.clickable, false)
+  assert.equal(state?.tone, "pending")
 })
 
 test("shows pdf preparation after report completes before download is ready", () => {

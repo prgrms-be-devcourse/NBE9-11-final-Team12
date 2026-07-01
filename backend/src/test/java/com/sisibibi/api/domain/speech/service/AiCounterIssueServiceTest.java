@@ -23,6 +23,8 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -123,6 +125,57 @@ class AiCounterIssueServiceTest {
         assertThat(event.roomId()).isEqualTo(roomId);
         assertThat(event.payload().issueId()).isEqualTo(11L);
         assertThat(event.payload().targetStance()).isEqualTo(SpeechStance.CON);
+    }
+
+    @Test
+    void suggestIfNeeded_submitsAiGenerationToExecutor() {
+        Long roomId = 1L;
+        AtomicReference<Runnable> submittedTask = new AtomicReference<>();
+        aiCounterIssueProperties.setMaxGenerationAttempts(1);
+        aiCounterIssueService = createService(submittedTask::set);
+        SpeakingQueue first = completedQueue(30L, SpeechStance.PRO);
+        SpeakingQueue second = completedQueue(29L, SpeechStance.PRO);
+        SpeakingQueue third = completedQueue(28L, SpeechStance.PRO);
+        AiCounterIssue pending = AiCounterIssue.pending(roomId, 30L, SpeechStance.CON);
+        ReflectionTestUtils.setField(pending, "id", 11L);
+        Room room = Room.open(
+                1L,
+                "AI debate topic",
+                LocalDateTime.of(2026, 6, 25, 13, 0),
+                LocalDateTime.of(2026, 6, 25, 15, 0),
+                100
+        );
+
+        given(speakingQueueRepository
+                .findTop3ByRoomIdAndStatusInAndStanceIsNotNullOrderByAssignedAtDesc(
+                        roomId,
+                        List.of(SpeakingQueueStatus.COMPLETED)
+                ))
+                .willReturn(List.of(first, second, third));
+        given(aiCounterIssuePersistenceService.createPendingIfAbsent(
+                roomId,
+                30L,
+                SpeechStance.CON
+        )).willReturn(Optional.of(pending));
+        given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
+        given(aiCounterIssuePersistenceService.markAttemptStarted(11L))
+                .willReturn(pending);
+        given(aiCounterIssueGenerator.generate(room, SpeechStance.CON))
+                .willThrow(new IllegalStateException("stop after async dispatch"));
+
+        aiCounterIssueService.suggestIfNeeded(roomId);
+
+        assertThat(submittedTask.get()).isNotNull();
+        verify(roomRepository, never()).findById(roomId);
+        verify(aiCounterIssueGenerator, never()).generate(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any()
+        );
+
+        submittedTask.get().run();
+
+        verify(roomRepository).findById(roomId);
+        verify(aiCounterIssueGenerator).generate(room, SpeechStance.CON);
     }
 
     @Test
@@ -286,6 +339,10 @@ class AiCounterIssueServiceTest {
     }
 
     private AiCounterIssueService createService() {
+        return createService(Runnable::run);
+    }
+
+    private AiCounterIssueService createService(Executor executor) {
         return new AiCounterIssueService(
                 speakingQueueRepository,
                 aiCounterIssuePersistenceService,
@@ -293,6 +350,7 @@ class AiCounterIssueServiceTest {
                 speakingStreakPolicy,
                 aiCounterIssueGenerator,
                 eventPublisher,
+                executor,
                 aiCounterIssueProperties
         );
     }

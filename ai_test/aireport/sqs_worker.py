@@ -113,12 +113,20 @@ class AiReportSqsWorker:
                 message.generation_type,
             )
             generation_request = processing_response["request"]
-        except Exception:
+        except Exception as exc:
             logger.exception(
                 "Failed to start AI report processing. reportId=%s roomId=%s",
                 message.report_id,
                 message.room_id,
             )
+            # AI 리포트가 DB에 없는 경우(404) 재시도해도 성공할 수 없으므로 메시지 삭제
+            cause = getattr(exc, "__cause__", None)
+            if isinstance(cause, urllib.error.HTTPError) and cause.code == 404:
+                logger.warning(
+                    "AI report not found in backend, deleting stale SQS message. reportId=%s",
+                    message.report_id,
+                )
+                self._delete_message(receipt_handle)
             return False
 
         try:

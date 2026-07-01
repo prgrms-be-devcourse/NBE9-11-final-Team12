@@ -13,11 +13,14 @@ import com.sisibibi.api.domain.speech.entity.SpeakingQueueStatus;
 import com.sisibibi.api.domain.speech.entity.SpeechStance;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.domain.speech.util.SpeakingStreakPolicy;
+import com.sisibibi.api.global.config.AsyncConfig;
 import com.sisibibi.api.global.exception.CustomException;
 import com.sisibibi.api.global.exception.ErrorCode;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.Executor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -38,6 +41,7 @@ public class AiCounterIssueService {
     private final SpeakingStreakPolicy speakingStreakPolicy;
     private final SpeechAiGenerator aiCounterIssueGenerator;
     private final ApplicationEventPublisher eventPublisher;
+    private final Executor aiCounterIssueExecutor;
     private final AiCounterIssueProperties aiCounterIssueProperties;
 
     public AiCounterIssueService(
@@ -47,6 +51,7 @@ public class AiCounterIssueService {
             SpeakingStreakPolicy speakingStreakPolicy,
             SpeechAiGenerator aiCounterIssueGenerator,
             ApplicationEventPublisher eventPublisher,
+            @Qualifier(AsyncConfig.AI_COUNTER_ISSUE_TASK_EXECUTOR) Executor aiCounterIssueExecutor,
             AiCounterIssueProperties aiCounterIssueProperties
     ) {
         this.speakingQueueRepository = speakingQueueRepository;
@@ -55,6 +60,7 @@ public class AiCounterIssueService {
         this.speakingStreakPolicy = speakingStreakPolicy;
         this.aiCounterIssueGenerator = aiCounterIssueGenerator;
         this.eventPublisher = eventPublisher;
+        this.aiCounterIssueExecutor = aiCounterIssueExecutor;
         this.aiCounterIssueProperties = aiCounterIssueProperties;
     }
 
@@ -83,7 +89,15 @@ public class AiCounterIssueService {
                         targetStance.get()
                 );
 
-        pendingIssue.ifPresent(this::generateAndComplete);
+        pendingIssue.ifPresent(this::submitGeneration);
+    }
+
+    private void submitGeneration(AiCounterIssue issue) {
+        try {
+            aiCounterIssueExecutor.execute(() -> generateAndComplete(issue));
+        } catch (RuntimeException exception) {
+            failIssue(issue, exception);
+        }
     }
 
     private void generateAndComplete(AiCounterIssue issue) {

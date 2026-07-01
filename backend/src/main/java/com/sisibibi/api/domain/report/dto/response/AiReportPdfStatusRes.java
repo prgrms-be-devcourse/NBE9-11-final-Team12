@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 
 public record AiReportPdfStatusRes(
         Long pdfExportId,
+        String pdfType,
         String pdfStatus,
         String notificationStatus,
         boolean downloadAvailable,
@@ -14,7 +15,7 @@ public record AiReportPdfStatusRes(
         LocalDateTime notificationSentAt
 ) {
     public static AiReportPdfStatusRes notStarted() {
-        return new AiReportPdfStatusRes(null, "NOT_STARTED", "NOT_SENT", false, null, null, null);
+        return new AiReportPdfStatusRes(null, "BASE", "NOT_STARTED", "NOT_SENT", false, null, null, null);
     }
 
     public static AiReportPdfStatusRes from(AiReportPdfExport export) {
@@ -23,6 +24,7 @@ public record AiReportPdfStatusRes(
                 : export.getNotificationErrorMessage();
         return new AiReportPdfStatusRes(
                 export.getId(),
+                export.getPdfType().name(),
                 export.getPdfStatus().name(),
                 export.getNotificationStatus().name(),
                 export.isDownloadAvailable(),

@@ -15,6 +15,7 @@ import com.sisibibi.api.domain.speech.entity.StageSummaryStatus;
 import com.sisibibi.api.domain.speech.repository.SpeakingQueueRepository;
 import com.sisibibi.api.domain.speech.repository.SpeechRepository;
 import com.sisibibi.api.domain.speech.repository.StageSummaryRepository;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -31,6 +32,7 @@ class StageSummaryPersistenceServiceTest {
 
     private static final int MIN_COMPLETED_SPEAKER_COUNT = 10;
     private static final int MAX_ATTEMPTS = 3;
+    private static final Duration GENERATE_TIMEOUT = Duration.ofSeconds(10);
 
     @Mock
     private RoomRepository roomRepository;
@@ -227,6 +229,78 @@ class StageSummaryPersistenceServiceTest {
         assertThat(context.shouldCallAi()).isFalse();
         assertThat(exhausted.getStatus()).isEqualTo(StageSummaryStatus.FAILED);
         verify(speechRepository, never()).findStageSummarySourceSpeeches(any(), any());
+    }
+
+    @Test
+    void prepareGeneration_skipsRecentPendingSummary() {
+        Room room = room(
+                1L,
+                LocalDateTime.of(2026, 6, 26, 10, 0),
+                LocalDateTime.of(2026, 6, 26, 12, 0)
+        );
+        LocalDateTime now = LocalDateTime.of(2026, 6, 26, 11, 0, 5);
+        StageSummary pending = StageSummary.pending(
+                1L,
+                LocalDateTime.of(2026, 6, 26, 11, 0),
+                10
+        );
+        pending.markAttemptStarted(LocalDateTime.of(2026, 6, 26, 11, 0));
+        given(roomRepository.findByIdForUpdate(1L)).willReturn(Optional.of(room));
+        given(speakingQueueRepository.countDistinctCompletedSpeakersByRoomId(1L))
+                .willReturn(10L);
+        given(stageSummaryRepository.findByRoomIdForUpdate(1L)).willReturn(Optional.of(pending));
+
+        StageSummaryGenerationContext context = stageSummaryPersistenceService.prepareGeneration(
+                1L,
+                now,
+                MIN_COMPLETED_SPEAKER_COUNT,
+                MAX_ATTEMPTS,
+                GENERATE_TIMEOUT
+        );
+
+        assertThat(context.shouldCallAi()).isFalse();
+        assertThat(pending.getStatus()).isEqualTo(StageSummaryStatus.PENDING);
+        assertThat(pending.getRetryCount()).isZero();
+        verify(speechRepository, never()).findStageSummarySourceSpeeches(any(), any());
+    }
+
+    @Test
+    void prepareGeneration_retriesStalePendingSummary() {
+        Room room = room(
+                1L,
+                LocalDateTime.of(2026, 6, 26, 10, 0),
+                LocalDateTime.of(2026, 6, 26, 12, 0)
+        );
+        LocalDateTime now = LocalDateTime.of(2026, 6, 26, 11, 1);
+        StageSummary stalePending = StageSummary.pending(
+                1L,
+                LocalDateTime.of(2026, 6, 26, 11, 0),
+                10
+        );
+        ReflectionTestUtils.setField(stalePending, "id", 77L);
+        stalePending.markAttemptStarted(LocalDateTime.of(2026, 6, 26, 11, 0));
+        Speech sourceSpeech = Speech.createMainOpinion(1L, 7L, "stale pending source", SpeechStance.PRO);
+        given(roomRepository.findByIdForUpdate(1L)).willReturn(Optional.of(room));
+        given(speakingQueueRepository.countDistinctCompletedSpeakersByRoomId(1L))
+                .willReturn(10L);
+        given(stageSummaryRepository.findByRoomIdForUpdate(1L)).willReturn(Optional.of(stalePending));
+        given(speechRepository.findStageSummarySourceSpeeches(1L, stalePending.getTriggeredAt()))
+                .willReturn(List.of(sourceSpeech));
+
+        StageSummaryGenerationContext context = stageSummaryPersistenceService.prepareGeneration(
+                1L,
+                now,
+                MIN_COMPLETED_SPEAKER_COUNT,
+                MAX_ATTEMPTS,
+                GENERATE_TIMEOUT
+        );
+
+        assertThat(stalePending.getStatus()).isEqualTo(StageSummaryStatus.PENDING);
+        assertThat(stalePending.getRetryCount()).isEqualTo(1);
+        assertThat(stalePending.getLastAttemptedAt()).isEqualTo(now);
+        assertThat(context.shouldCallAi()).isTrue();
+        assertThat(context.summaryId()).isEqualTo(77L);
+        assertThat(context.speeches()).containsExactly(sourceSpeech);
     }
 
     @Test

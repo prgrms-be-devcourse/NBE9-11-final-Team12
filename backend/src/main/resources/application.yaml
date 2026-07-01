@@ -157,7 +157,7 @@ app:
     connect-timeout: ${PROMPT_GUARD_CONNECT_TIMEOUT:500ms}
     read-timeout: ${PROMPT_GUARD_READ_TIMEOUT:1000ms}
     fail-open: ${PROMPT_GUARD_FAIL_OPEN:false}
-    custom-prompt-max-count: ${PROMPT_GUARD_CUSTOM_PROMPT_MAX_COUNT:5}
+    custom-prompt-max-count: ${PROMPT_GUARD_CUSTOM_PROMPT_MAX_COUNT:3}
     custom-prompt-max-length: ${PROMPT_GUARD_CUSTOM_PROMPT_MAX_LENGTH:1000}
   auth:
     jwt:

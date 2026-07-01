@@ -97,8 +97,11 @@ export type AiReportPdfStatus =
   | "READY"
   | "FAILED"
 
+export type AiReportPdfType = "BASE" | "CUSTOM"
+
 export type AiReportPdf = {
   pdfExportId: number | null
+  pdfType: AiReportPdfType
   pdfStatus: AiReportPdfStatus
   notificationStatus: "NOT_SENT" | "SENT" | "FAILED"
   downloadAvailable: boolean
