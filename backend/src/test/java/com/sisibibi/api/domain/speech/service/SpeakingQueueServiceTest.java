@@ -68,10 +68,12 @@ class SpeakingQueueServiceTest {
     private SpeakingQueueService speakingQueueService;
 
     @Test
-    void requestSpeakingTurn_returnsWaitingRequestWithoutImmediateAssignment() {
+    void requestSpeakingTurn_returnsWaitingRequestWhenStageAlreadyHasSpeaker() {
         SpeakingQueue saved = persistedWaitingRequest(1L, 7L, 15);
         given(speakingQueuePersistenceService.createWaitingRequest(1L, 7L, SpeechStance.PRO))
                 .willReturn(saved);
+        given(speakingQueuePersistenceService.hasAssignedSpeaker(1L))
+                .willReturn(true);
 
         StageRequestRes response =
                 speakingQueueService.requestSpeakingTurn(1L, 7L, SpeechStance.PRO);
@@ -123,6 +125,8 @@ class SpeakingQueueServiceTest {
         SpeakingQueue saved = persistedWaitingRequest(1L, 7L, 15);
         given(speakingQueuePersistenceService.createWaitingRequest(1L, 7L, SpeechStance.PRO))
                 .willReturn(saved);
+        given(speakingQueuePersistenceService.hasAssignedSpeaker(1L))
+                .willReturn(true);
         doThrow(new IllegalStateException("redis unavailable"))
                 .when(redisSpeakingQueueRepository)
                 .upsert(1L, 7L, 15);
@@ -166,6 +170,8 @@ class SpeakingQueueServiceTest {
         SpeakingQueue saved = persistedWaitingRequest(1L, 7L, 15);
         given(speakingQueuePersistenceService.createWaitingRequest(1L, 7L, SpeechStance.PRO))
                 .willReturn(saved);
+        given(speakingQueuePersistenceService.hasAssignedSpeaker(1L))
+                .willReturn(true);
         doThrow(new IllegalStateException("redis unavailable"))
                 .when(redisSpeakingQueueRepository)
                 .upsert(1L, 7L, 15);
@@ -205,6 +211,8 @@ class SpeakingQueueServiceTest {
         SpeakingQueue saved = persistedWaitingRequest(1L, 7L, 15);
         given(speakingQueuePersistenceService.createWaitingRequest(1L, 7L, SpeechStance.PRO))
                 .willReturn(saved);
+        given(speakingQueuePersistenceService.hasAssignedSpeaker(1L))
+                .willReturn(true);
         doThrow(new IllegalStateException("redis unavailable"))
                 .when(redisSpeakingQueueRepository)
                 .upsert(1L, 7L, 15);
@@ -243,6 +251,8 @@ class SpeakingQueueServiceTest {
         SpeakingQueue laterWaiting = persistedWaitingRequest(1L, 8L, 16);
         given(speakingQueuePersistenceService.createWaitingRequest(1L, 7L, SpeechStance.PRO))
                 .willReturn(saved);
+        given(speakingQueuePersistenceService.hasAssignedSpeaker(1L))
+                .willReturn(true);
         doThrow(new IllegalStateException("redis unavailable"))
                 .when(redisSpeakingQueueRepository)
                 .upsert(1L, 7L, 15);
@@ -294,6 +304,8 @@ class SpeakingQueueServiceTest {
         SpeakingQueue saved = persistedWaitingRequest(1L, 7L, 15);
         given(speakingQueuePersistenceService.createWaitingRequest(1L, 7L, SpeechStance.PRO))
                 .willReturn(saved);
+        given(speakingQueuePersistenceService.hasAssignedSpeaker(1L))
+                .willReturn(true);
         doThrow(new IllegalStateException("redis unavailable"))
                 .when(redisSpeakingQueueRepository)
                 .upsert(1L, 7L, 15);
@@ -313,27 +325,42 @@ class SpeakingQueueServiceTest {
     }
 
     @Test
-    void requestSpeakingTurn_doesNotAttemptImmediateAssignment() {
+    void requestSpeakingTurn_assignsImmediatelyWhenStageIsEmpty() {
         SpeakingQueue saved = persistedWaitingRequest(1L, 7L, 15);
+        SpeakingQueue assigned = assignedRequest(1L, 7L, 15);
         given(speakingQueuePersistenceService.createWaitingRequest(1L, 7L, SpeechStance.PRO))
                 .willReturn(saved);
+        given(speakingQueuePersistenceService.hasAssignedSpeaker(1L))
+                .willReturn(false);
+        given(speakingQueueProperties.getTurnDuration())
+                .willReturn(Duration.ofMinutes(2));
+        given(speakingQueuePersistenceService.assignNextSpeaker(
+                eq(1L),
+                any(LocalDateTime.class),
+                any(LocalDateTime.class)
+        )).willReturn(assignmentResult(assigned));
 
         StageRequestRes response =
                 speakingQueueService.requestSpeakingTurn(1L, 7L, SpeechStance.PRO);
 
-        assertThat(response.status()).isEqualTo(SpeakingQueueStatus.WAITING);
+        assertThat(response.status()).isEqualTo(SpeakingQueueStatus.ASSIGNED);
         assertThat(response.queueOrder()).isEqualTo(15);
         verify(redisSpeakingQueueRepository).upsert(1L, 7L, 15);
-        verify(speakingQueuePersistenceService, never()).assignNextSpeaker(
+        verify(redisSpeakingQueueRepository).assign(1L, 7L);
+        verify(speakingQueuePersistenceService).assignNextSpeaker(
                 eq(1L),
                 any(LocalDateTime.class),
                 any(LocalDateTime.class)
         );
         ArgumentCaptor<StageChangedEvent> eventCaptor =
                 ArgumentCaptor.forClass(StageChangedEvent.class);
-        verify(eventPublisher).publishEvent(eventCaptor.capture());
-        assertThat(eventCaptor.getValue().type())
-                .isEqualTo(StageEventType.SPEAKING_REQUESTED);
+        verify(eventPublisher, times(2)).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getAllValues())
+                .extracting(StageChangedEvent::type)
+                .containsExactly(
+                        StageEventType.SPEAKING_REQUESTED,
+                        StageEventType.SPEAKER_ASSIGNED
+                );
     }
 
     @Test
