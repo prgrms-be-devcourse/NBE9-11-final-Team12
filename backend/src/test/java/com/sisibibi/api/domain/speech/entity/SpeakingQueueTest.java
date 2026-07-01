@@ -281,4 +281,162 @@ class SpeakingQueueTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Only assigned speaking requests can be completed.");
     }
+
+    @Test
+    void assign_rejectsNullAssignmentTime() {
+        SpeakingQueue speakingQueue = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+
+        assertThatThrownBy(() -> speakingQueue.assign(
+                null,
+                LocalDateTime.of(2026, 6, 12, 11, 33)
+        ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Speaking expiration must be after assignment.");
+    }
+
+    @Test
+    void assign_rejectsNullExpirationTime() {
+        SpeakingQueue speakingQueue = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+
+        assertThatThrownBy(() -> speakingQueue.assign(
+                LocalDateTime.of(2026, 6, 12, 11, 31),
+                null
+        ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Speaking expiration must be after assignment.");
+    }
+
+    @Test
+    void recordActivity_rejectsNonAssignedRequest() {
+        SpeakingQueue speakingQueue = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+
+        assertThatThrownBy(() -> speakingQueue.recordActivity(
+                LocalDateTime.of(2026, 6, 12, 11, 31)
+        ))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Only assigned speaking requests can record activity.");
+    }
+
+    @Test
+    void recordActivity_rejectsNullActivityTime() {
+        SpeakingQueue speakingQueue = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        speakingQueue.assign(
+                LocalDateTime.of(2026, 6, 12, 11, 31),
+                LocalDateTime.of(2026, 6, 12, 11, 34)
+        );
+
+        assertThatThrownBy(() -> speakingQueue.recordActivity(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Activity time is required.");
+    }
+
+    @Test
+    void isIdleWarningDue_returnsFalseWhenAlreadyWarned() {
+        SpeakingQueue speakingQueue = assignedQueue();
+        LocalDateTime assignedAt = speakingQueue.getAssignedAt();
+        speakingQueue.markIdleWarningIfDue(
+                assignedAt.plusSeconds(20),
+                Duration.ofSeconds(20),
+                Duration.ofSeconds(40)
+        );
+
+        assertThat(speakingQueue.isIdleWarningDue(
+                assignedAt.plusSeconds(40),
+                Duration.ofSeconds(20),
+                Duration.ofSeconds(40)
+        )).isFalse();
+    }
+
+    @Test
+    void isIdleWarningDue_returnsFalseWhenNotInactiveLongEnough() {
+        SpeakingQueue speakingQueue = assignedQueue();
+        LocalDateTime assignedAt = speakingQueue.getAssignedAt();
+
+        assertThat(speakingQueue.isIdleWarningDue(
+                assignedAt.plusSeconds(19),
+                Duration.ofSeconds(20),
+                Duration.ofSeconds(40)
+        )).isFalse();
+    }
+
+    @Test
+    void isIdleTimedOut_returnsFalseWhenNotAssigned() {
+        SpeakingQueue speakingQueue = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+
+        assertThat(speakingQueue.isIdleTimedOut(
+                LocalDateTime.of(2026, 6, 12, 11, 40),
+                Duration.ofSeconds(20)
+        )).isFalse();
+    }
+
+    @Test
+    void isIdleTimedOut_returnsFalseWhenWarningWasNotSent() {
+        SpeakingQueue speakingQueue = assignedQueue();
+
+        assertThat(speakingQueue.isIdleTimedOut(
+                speakingQueue.getAssignedAt().plusSeconds(40),
+                Duration.ofSeconds(20)
+        )).isFalse();
+    }
+
+    @Test
+    void isIdleTimedOut_returnsFalseWhenAlreadyExpired() {
+        SpeakingQueue speakingQueue = assignedQueue();
+        LocalDateTime assignedAt = speakingQueue.getAssignedAt();
+        speakingQueue.markIdleWarningIfDue(
+                assignedAt.plusSeconds(20),
+                Duration.ofSeconds(20),
+                Duration.ofSeconds(40)
+        );
+
+        assertThat(speakingQueue.isIdleTimedOut(
+                assignedAt.plusMinutes(4),
+                Duration.ofSeconds(20)
+        )).isFalse();
+    }
+
+    private SpeakingQueue assignedQueue() {
+        SpeakingQueue speakingQueue = SpeakingQueue.waiting(
+                1L,
+                7L,
+                15,
+                SpeechStance.PRO,
+                LocalDateTime.of(2026, 6, 12, 11, 30)
+        );
+        speakingQueue.assign(
+                LocalDateTime.of(2026, 6, 12, 11, 31),
+                LocalDateTime.of(2026, 6, 12, 11, 34)
+        );
+        return speakingQueue;
+    }
 }

@@ -276,6 +276,263 @@ class AiReportPersistenceServiceTest {
     }
 
     @Test
+    void requestGeneration_throwsRoomNotFound_whenRoomDoesNotExist() {
+        given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> aiReportPersistenceService.requestGeneration(10L, 7L, List.of()))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
+    }
+
+    @Test
+    void requestGeneration_throwsRoomNotClosed_whenRoomIsOpen() {
+        Room room = Room.open(
+                1L,
+                "진행 중인 토론방",
+                LocalDateTime.of(2026, 6, 22, 10, 0),
+                LocalDateTime.of(2026, 6, 22, 13, 0),
+                10
+        );
+        ReflectionTestUtils.setField(room, "id", 10L);
+        given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
+
+        assertThatThrownBy(() -> aiReportPersistenceService.requestGeneration(10L, 7L, List.of()))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.AI_REPORT_ROOM_NOT_CLOSED);
+    }
+
+    @Test
+    void requestGeneration_skipsPublish_whenExistingReportIsInProgress() {
+        Room room = closedRoom(10L, 1L, "room title");
+        AiReport existing = AiReport.pending(10L);
+        ReflectionTestUtils.setField(existing, "id", 55L);
+
+        given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
+        given(aiReportRepository.findByRoomIdForUpdate(10L)).willReturn(Optional.of(existing));
+
+        AiReportRequestResult result = aiReportPersistenceService.requestGeneration(10L, 7L, List.of());
+
+        assertThat(result.shouldPublish()).isFalse();
+        assertThat(result.generationType()).isEqualTo(AiReportGenerationType.SKIP);
+        assertThat(result.response().status()).isEqualTo("REQUESTED");
+        verify(aiReportRepository, never()).save(any());
+    }
+
+    @Test
+    void requestGeneration_skipsPublish_whenCompletedReportExistsAndCustomPromptsAreEmpty() {
+        Room room = closedRoom(10L, 1L, "room title");
+        AiReport existing = completedAiReport(10L);
+        ReflectionTestUtils.setField(existing, "id", 55L);
+
+        given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
+        given(aiReportRepository.findByRoomIdForUpdate(10L)).willReturn(Optional.of(existing));
+
+        AiReportRequestResult result = aiReportPersistenceService.requestGeneration(10L, 7L, List.of());
+
+        assertThat(result.shouldPublish()).isFalse();
+        assertThat(result.generationType()).isEqualTo(AiReportGenerationType.SKIP);
+        assertThat(result.response().status()).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    void requestGeneration_requestsCustomOnly_whenCompletedReportExistsAndCustomPromptsExist() {
+        Room room = closedRoom(10L, 1L, "room title");
+        AiReport existing = completedAiReport(10L);
+        ReflectionTestUtils.setField(existing, "id", 55L);
+        List<CustomPromptCommand> customPrompts = List.of(
+                new CustomPromptCommand("custom 1", "개인화 질문")
+        );
+
+        given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
+        given(aiReportRepository.findByRoomIdForUpdate(10L)).willReturn(Optional.of(existing));
+
+        AiReportRequestResult result = aiReportPersistenceService.requestGeneration(10L, 7L, customPrompts);
+
+        assertThat(result.shouldPublish()).isTrue();
+        assertThat(result.generationType()).isEqualTo(AiReportGenerationType.CUSTOM_ONLY);
+        assertThat(existing.getStatus()).isEqualTo(AiReportStatus.REQUESTED);
+        assertThat(existing.getCustomPrompts()).containsExactly(
+                new AiReportCustomPrompt(7L, "custom 1", "개인화 질문")
+        );
+    }
+
+    @Test
+    void requestGeneration_savesNewReportAsBaseOnly_whenReportDoesNotExistAndCustomPromptsAreNull() {
+        Room room = closedRoom(10L, 1L, "room title");
+        given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
+        given(aiReportRepository.findByRoomIdForUpdate(10L)).willReturn(Optional.empty());
+        given(aiReportRepository.save(any(AiReport.class))).willAnswer(invocation -> {
+            AiReport report = invocation.getArgument(0);
+            ReflectionTestUtils.setField(report, "id", 55L);
+            return report;
+        });
+
+        AiReportRequestResult result = aiReportPersistenceService.requestGeneration(10L, 7L, null);
+
+        assertThat(result.shouldPublish()).isTrue();
+        assertThat(result.generationType()).isEqualTo(AiReportGenerationType.BASE_ONLY);
+        assertThat(result.response().status()).isEqualTo("REQUESTED");
+    }
+
+    @Test
+    void requestGeneration_retriesExistingFailedReportAsBaseWithCustom() {
+        Room room = closedRoom(10L, 1L, "room title");
+        AiReport existing = AiReport.pending(10L);
+        existing.fail("failed");
+        ReflectionTestUtils.setField(existing, "id", 55L);
+        List<CustomPromptCommand> customPrompts = List.of(
+                new CustomPromptCommand("custom 1", "개인화 질문")
+        );
+
+        given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
+        given(aiReportRepository.findByRoomIdForUpdate(10L)).willReturn(Optional.of(existing));
+
+        AiReportRequestResult result = aiReportPersistenceService.requestGeneration(10L, 7L, customPrompts);
+
+        assertThat(result.shouldPublish()).isTrue();
+        assertThat(result.generationType()).isEqualTo(AiReportGenerationType.BASE_WITH_CUSTOM);
+        assertThat(existing.getStatus()).isEqualTo(AiReportStatus.REQUESTED);
+        assertThat(existing.getCustomPrompts()).containsExactly(
+                new AiReportCustomPrompt(7L, "custom 1", "개인화 질문")
+        );
+    }
+
+    @Test
+    void requestBaseGenerationFromRoomClose_createsBaseReport_whenReportDoesNotExist() {
+        Room room = closedRoom(10L, 1L, "room title");
+        given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
+        given(aiReportRepository.findByRoomIdForUpdate(10L)).willReturn(Optional.empty());
+        given(aiReportRepository.save(any(AiReport.class))).willAnswer(invocation -> {
+            AiReport report = invocation.getArgument(0);
+            ReflectionTestUtils.setField(report, "id", 55L);
+            return report;
+        });
+
+        AiReportRequestResult result = aiReportPersistenceService.requestBaseGenerationFromRoomClose(10L);
+
+        assertThat(result.shouldPublish()).isTrue();
+        assertThat(result.generationType()).isEqualTo(AiReportGenerationType.BASE_ONLY);
+    }
+
+    @Test
+    void requestBaseGenerationFromRoomClose_retriesFailedReport() {
+        Room room = closedRoom(10L, 1L, "room title");
+        AiReport existing = AiReport.pending(10L);
+        existing.markPublishFailed("PUBLISH_ERROR", "failed");
+        ReflectionTestUtils.setField(existing, "id", 55L);
+
+        given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
+        given(aiReportRepository.findByRoomIdForUpdate(10L)).willReturn(Optional.of(existing));
+
+        AiReportRequestResult result = aiReportPersistenceService.requestBaseGenerationFromRoomClose(10L);
+
+        assertThat(result.shouldPublish()).isTrue();
+        assertThat(result.generationType()).isEqualTo(AiReportGenerationType.BASE_ONLY);
+        assertThat(existing.getStatus()).isEqualTo(AiReportStatus.REQUESTED);
+    }
+
+    @Test
+    void requestBaseGenerationFromRoomClose_skips_whenReportIsCompleted() {
+        Room room = closedRoom(10L, 1L, "room title");
+        AiReport existing = completedAiReport(10L);
+        ReflectionTestUtils.setField(existing, "id", 55L);
+
+        given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
+        given(aiReportRepository.findByRoomIdForUpdate(10L)).willReturn(Optional.of(existing));
+
+        AiReportRequestResult result = aiReportPersistenceService.requestBaseGenerationFromRoomClose(10L);
+
+        assertThat(result.shouldPublish()).isFalse();
+        assertThat(result.generationType()).isEqualTo(AiReportGenerationType.SKIP);
+    }
+
+    @Test
+    void requestCustomGeneration_throwsRequired_whenCustomPromptsAreEmpty() {
+        assertThatThrownBy(() -> aiReportPersistenceService.requestCustomGeneration(10L, 7L, List.of()))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.AI_REPORT_CUSTOM_PROMPT_REQUIRED);
+    }
+
+    @Test
+    void requestCustomGeneration_throwsNotFound_whenReportDoesNotExist() {
+        Room room = closedRoom(10L, 1L, "room title");
+        given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
+        given(aiReportRepository.findByRoomIdForUpdate(10L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> aiReportPersistenceService.requestCustomGeneration(
+                10L,
+                7L,
+                List.of(new CustomPromptCommand("custom 1", "개인화 질문"))
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.AI_REPORT_NOT_FOUND);
+    }
+
+    @Test
+    void requestCustomGeneration_remembersPromptsAndPublishes_whenReportIsInProgress() {
+        Room room = closedRoom(10L, 1L, "room title");
+        AiReport existing = AiReport.pending(10L);
+        ReflectionTestUtils.setField(existing, "id", 55L);
+        List<CustomPromptCommand> customPrompts = List.of(
+                new CustomPromptCommand("custom 1", "개인화 질문")
+        );
+
+        given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
+        given(aiReportRepository.findByRoomIdForUpdate(10L)).willReturn(Optional.of(existing));
+
+        AiReportRequestResult result = aiReportPersistenceService.requestCustomGeneration(10L, 7L, customPrompts);
+
+        assertThat(result.shouldPublish()).isTrue();
+        assertThat(result.generationType()).isEqualTo(AiReportGenerationType.CUSTOM_ONLY);
+        assertThat(existing.getCustomPrompts()).containsExactly(
+                new AiReportCustomPrompt(7L, "custom 1", "개인화 질문")
+        );
+    }
+
+    @Test
+    void requestCustomGeneration_throwsAlreadyExists_whenReportStatusCannotRequestCustom() {
+        Room room = closedRoom(10L, 1L, "room title");
+        AiReport existing = AiReport.pending(10L);
+        existing.fail("failed");
+        ReflectionTestUtils.setField(existing, "id", 55L);
+        given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
+        given(aiReportRepository.findByRoomIdForUpdate(10L)).willReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> aiReportPersistenceService.requestCustomGeneration(
+                10L,
+                7L,
+                List.of(new CustomPromptCommand("custom 1", "개인화 질문"))
+        ))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.AI_REPORT_ALREADY_EXISTS);
+    }
+
+    @Test
+    void requestCustomGeneration_requestsCustomOnly_whenReportIsPublishFailed() {
+        Room room = closedRoom(10L, 1L, "room title");
+        AiReport existing = completedAiReport(10L);
+        existing.markPublishFailed("PUBLISH_ERROR", "failed");
+        ReflectionTestUtils.setField(existing, "id", 55L);
+        List<CustomPromptCommand> customPrompts = List.of(
+                new CustomPromptCommand("custom 1", "개인화 질문")
+        );
+
+        given(roomRepository.findByIdForUpdate(10L)).willReturn(Optional.of(room));
+        given(aiReportRepository.findByRoomIdForUpdate(10L)).willReturn(Optional.of(existing));
+
+        AiReportRequestResult result = aiReportPersistenceService.requestCustomGeneration(10L, 7L, customPrompts);
+
+        assertThat(result.shouldPublish()).isTrue();
+        assertThat(result.generationType()).isEqualTo(AiReportGenerationType.CUSTOM_ONLY);
+        assertThat(existing.getStatus()).isEqualTo(AiReportStatus.REQUESTED);
+    }
+
+    @Test
     void complete_savesCompletedReportFields() {
         AiReport report = AiReport.pending(10L, List.of(new AiReportCustomPrompt(
                 "custom 1",
@@ -438,6 +695,18 @@ class AiReportPersistenceServiceTest {
         room.close(LocalDateTime.of(2026, 6, 22, 13, 0));
         assertThat(room.getStatus()).isEqualTo(RoomStatus.CLOSED);
         return room;
+    }
+
+    private AiReport completedAiReport(Long roomId) {
+        AiReport report = AiReport.pending(roomId);
+        report.complete(new AiReportGenerateRes(
+                "core",
+                List.of("issue"),
+                "summary",
+                "common",
+                "opinion"
+        ));
+        return report;
     }
 
     private Speech completedSpeech(
