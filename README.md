@@ -376,9 +376,9 @@ k6 run performance/k6/core-api-mixed.js
 | --- | --- |
 | 장재원 | 팀장, 일정 관리, 성능 테스트, 의견 및 관리자 기능 |
 | 강승규 | 발언권 대기열, 대기열 정합성 및 성능테스트 |
+| 김한솔 | AI 리포트, 모델링, AI Worker |
 | 백채현 | WebSocket, 채팅 |
 | 이현태 | 배포 설계 및 CI/CD, 토론방, 토픽, Outbox, 결제 |
-| 김한솔 | AI 리포트, 모델링, AI Worker |
 
 ## 프로젝트 의의
 
