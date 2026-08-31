@@ -334,7 +334,7 @@ jobs:
           --cpus="1.0" \
           --env-file /tmp/.env \
           -e TZ=Asia/Seoul \
-          -e SPRING_PROFILES_ACTIVE=prod \
+          -e SPRING_PROFILES_ACTIVE=prod,monitoring \
           -e JAVA_TOOL_OPTIONS="-Xms256m -Xmx450m -XX:+ExitOnOutOfMemoryError" \
           -v /gen:/gen \
           "$IMAGE"
