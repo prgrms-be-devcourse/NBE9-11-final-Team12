@@ -209,3 +209,4 @@ serpapi:
 room-ranking:
   rebuild-on-startup: true
   read-mode: ${ROOM_RANKING_READ_MODE:redis}
+  write-mode: ${ROOM_RANKING_WRITE_MODE:lua}
