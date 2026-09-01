@@ -1,7 +1,10 @@
 package com.sisibibi.api.domain.roomranking.repository;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -16,6 +19,9 @@ public class RedisRoomRankingRepository {
   private static final String RANKING_KEY = "room:ranking";
 
   private static final int CHAT_MESSAGE_STAT_KEY_INDEX = 2;
+
+  @Value("${room-ranking.write-mode:lua}")
+  private String writeMode;
 
   private static final DefaultRedisScript<Long> INCREASE_STAT_AND_REFRESH_SCORE_SCRIPT =
       new DefaultRedisScript<>(
@@ -95,6 +101,16 @@ public class RedisRoomRankingRepository {
       long chatMessageCount,
       long reactionCount
   ) {
+    if ("redis".equalsIgnoreCase(writeMode)) {
+      setStatsAndRefreshScoreWithoutLua(
+          roomId,
+          participantCount,
+          chatMessageCount,
+          reactionCount
+      );
+      return;
+    }
+
     redisTemplate.execute(
         SET_STATS_AND_REFRESH_SCORE_SCRIPT,
         rankingKeys(),
@@ -149,6 +165,11 @@ public class RedisRoomRankingRepository {
   }
 
   private void increaseStatAndRefreshScore(Long roomId, int delta) {
+    if ("redis".equalsIgnoreCase(writeMode)) {
+      increaseStatAndRefreshScoreWithoutLua(roomId, delta);
+      return;
+    }
+
     redisTemplate.execute(
         INCREASE_STAT_AND_REFRESH_SCORE_SCRIPT,
         rankingKeys(),
@@ -180,5 +201,59 @@ public class RedisRoomRankingRepository {
 
   public void clearRanking() {
     redisTemplate.delete(rankingKeys());
+  }
+
+  private void setStatsAndRefreshScoreWithoutLua(
+      Long roomId,
+      long participantCount,
+      long chatMessageCount,
+      long reactionCount
+  ) {
+    String roomIdValue = roomId.toString();
+
+    redisTemplate.opsForHash().putAll(
+        PARTICIPANT_COUNT_KEY,
+        Map.of(roomIdValue, String.valueOf(participantCount))
+    );
+    redisTemplate.opsForHash().putAll(
+        CHAT_MESSAGE_COUNT_KEY,
+        Map.of(roomIdValue, String.valueOf(chatMessageCount))
+    );
+    redisTemplate.opsForHash().putAll(
+        REACTION_COUNT_KEY,
+        Map.of(roomIdValue, String.valueOf(reactionCount))
+    );
+
+    double score = calculateScore(participantCount, chatMessageCount, reactionCount);
+    redisTemplate.opsForZSet().add(RANKING_KEY, roomIdValue, score);
+  }
+
+  private void increaseStatAndRefreshScoreWithoutLua(Long roomId, int delta) {
+    String roomIdValue = roomId.toString();
+
+    Long nextCount = redisTemplate.opsForHash()
+        .increment(CHAT_MESSAGE_COUNT_KEY, roomIdValue, delta);
+
+    if (nextCount == null || nextCount < 0) {
+      nextCount = 0L;
+      redisTemplate.opsForHash().put(CHAT_MESSAGE_COUNT_KEY, roomIdValue, "0");
+    }
+
+    long participantCount = getCount(PARTICIPANT_COUNT_KEY, roomId);
+    long chatMessageCount = nextCount;
+    long reactionCount = getCount(REACTION_COUNT_KEY, roomId);
+
+    double score = calculateScore(participantCount, chatMessageCount, reactionCount);
+    redisTemplate.opsForZSet().add(RANKING_KEY, roomIdValue, score);
+  }
+
+  private double calculateScore(
+      long participantCount,
+      long chatMessageCount,
+      long reactionCount
+  ) {
+    return Math.log(1 + participantCount) * 0.5
+        + Math.log(1 + chatMessageCount) * 0.3
+        + Math.log(1 + reactionCount) * 0.2;
   }
 }
