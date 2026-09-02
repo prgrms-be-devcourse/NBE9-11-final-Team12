@@ -32,6 +32,10 @@ export default function () {
     adminParams({ name: "POST /api/v1/admin/topics/candidates/classified/refresh" })
   );
 
+  if (res.status !== 200) {
+    console.log(`status=${res.status}, body=${res.body}`);
+  }
+
   refreshDuration.add(res.timings.duration);
 
   const ok = res.status === 200;
