@@ -1,14 +1,21 @@
 .idea
 .terraform
+.terraform.lock.hcl
 
 secrets.tf
 
-.terraform.lock.hcl
 terraform.tfstate
-terraform.tfstate.backup
+terraform.tfstate.*
+.terraform.tfstate.lock.info
 
 terraform.tfvars
 *.tfvars
+
+# nested Terraform state
+**/terraform.tfstate
+**/terraform.tfstate.*
+**/.terraform.tfstate.lock.info
+**/.terraform/
 
 # Grafana Cloud runtime env
 compose/.env.grafana-cloud

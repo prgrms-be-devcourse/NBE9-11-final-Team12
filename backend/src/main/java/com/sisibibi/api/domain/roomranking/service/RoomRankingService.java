@@ -11,11 +11,13 @@ import com.sisibibi.api.domain.room.repository.RoomRepository;
 import com.sisibibi.api.domain.roomparticipant.entity.RoomParticipantStatus;
 import com.sisibibi.api.domain.roomparticipant.repository.RoomParticipantRepository;
 import com.sisibibi.api.domain.speechreaction.repository.SpeechReactionRepository;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,11 +35,18 @@ public class RoomRankingService {
   private final ChatMessageRepository chatMessageRepository;
   private final SpeechReactionRepository speechReactionRepository;
 
+  @Value("${room-ranking.read-mode:redis}")
+  private String readMode;
+
   public List<RoomRankingRes> getRankedOpenRooms() {
     return getRankedOpenRooms(DEFAULT_RANKING_LIMIT);
   }
 
   public List<RoomRankingRes> getRankedOpenRooms(int limit) {
+    if ("db".equalsIgnoreCase(readMode)) {
+      return aggregateOpenRoomsFromDb(limit);
+    }
+
     try {
       List<RoomRankingEntry> entries = redisRoomRankingRepository.findTopRooms(limit);
       if (entries.isEmpty()) {
@@ -171,5 +180,35 @@ public class RoomRankingService {
         .limit(limit)
         .map(room -> new RoomRankingRes(null, null, RoomSummaryRes.from(room)))
         .toList();
+  }
+
+  private List<RoomRankingRes> aggregateOpenRoomsFromDb(int limit) {
+    return roomRepository.findByStatusOrderByCreatedAtDesc(RoomStatus.OPEN)
+        .stream()
+        .map(room -> {
+          Long roomId = room.getId();
+          long participantCount = roomParticipantRepository.countByRoomIdAndStatus(
+              roomId,
+              RoomParticipantStatus.JOINED
+          );
+          long chatMessageCount = chatMessageRepository.countByRoomIdAndDeletedFalse(roomId);
+          long reactionCount = speechReactionRepository.countByRoomId(roomId);
+          double score = calculateScore(participantCount, chatMessageCount, reactionCount);
+
+          return new RoomRankingRes(null, score, RoomSummaryRes.from(room));
+        })
+        .sorted(Comparator.comparing(RoomRankingRes::score).reversed())
+        .limit(limit)
+        .toList();
+  }
+
+  private double calculateScore(
+      long participantCount,
+      long chatMessageCount,
+      long reactionCount
+  ) {
+    return Math.log(1 + participantCount) * 0.5
+        + Math.log(1 + chatMessageCount) * 0.3
+        + Math.log(1 + reactionCount) * 0.2;
   }
 }

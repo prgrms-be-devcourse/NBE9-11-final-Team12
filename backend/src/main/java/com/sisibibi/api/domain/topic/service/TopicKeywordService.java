@@ -1,5 +1,6 @@
 package com.sisibibi.api.domain.topic.service;
 
+import com.sisibibi.api.domain.topic.config.TopicAiClassificationProperties;
 import com.sisibibi.api.domain.topic.dto.response.issueRes.*;
 import com.sisibibi.api.domain.topic.dto.response.keywordres.ClassifiedIssueCandidateRes;
 import com.sisibibi.api.domain.topic.dto.response.keywordres.ClassifiedIssueNewsRes;
@@ -21,26 +22,42 @@ public class TopicKeywordService {
 
   private final ChatClient chatClient;
   private final ExecutorService aiClassificationExecutor;
+  private final TopicAiClassificationProperties properties;
 
 
   public TopicKeywordService(
       ChatClient.Builder chatClientBuilder,
-      ExecutorService aiClassificationExecutor
+      ExecutorService aiClassificationExecutor,
+      TopicAiClassificationProperties properties
   ) {
     this.chatClient = chatClientBuilder.build();
     this.aiClassificationExecutor = aiClassificationExecutor;
+    this.properties = properties;
   }
 
   public List<ClassifiedIssueCandidateRes> classify(List<IssueCandidateRes> candidates) {
+    if (properties.mode() == TopicAiClassificationProperties.Mode.SEQUENTIAL) {
+      return candidates.stream()
+          .map(this::classifySafely)
+          .toList();
+    }
+
     List<CompletableFuture<ClassifiedIssueCandidateRes>> futures = candidates.stream()
         .map(candidate -> CompletableFuture
-            .supplyAsync(() -> classify(candidate), aiClassificationExecutor)
-            .exceptionally(exception -> fallbackCandidate(candidate)))
+            .supplyAsync(() -> classifySafely(candidate), aiClassificationExecutor))
         .toList();
 
     return futures.stream()
         .map(CompletableFuture::join)
         .toList();
+  }
+
+  private ClassifiedIssueCandidateRes classifySafely(IssueCandidateRes candidate) {
+    try {
+      return classify(candidate);
+    } catch (Exception exception) {
+      return fallbackCandidate(candidate);
+    }
   }
 
   // AI 호출이 실패했을 때 API 전체가 터지지 않게 하기 위한 대체 응답
